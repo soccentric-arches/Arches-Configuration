@@ -1,0 +1,35 @@
+{
+  "platform": "joshua",
+  "model": "ti-sitara-am62",
+  "board_name": "TI Sitara (Joshua) — PRU cores, industrial protocols",
+  "has_rtc": true,
+  "has_tpm": false,
+  "secure_boot": true,
+  "service_allowlist": [
+    "sshd.service",
+    "systemd-networkd.service",
+    "systemd-resolved.service",
+    "wpa_supplicant.service",
+    "webconfigd.service",
+    "pru-manager.service",
+    "ti-ipc.service"
+  ],
+  "peripherals": [
+    { "id": "can0", "device": "can0", "human_name": "MCAN 0", "kind": "can", "caps": { "fd": true } },
+    { "id": "can1", "device": "can1", "human_name": "MCAN 1", "kind": "can", "caps": { "fd": true } },
+    { "id": "ttyS0", "device": "/dev/ttyS0", "human_name": "UART 0 (console)", "kind": "serial", "caps": { "modes": ["rs232"], "console_default": true } },
+    { "id": "ttyS1", "device": "/dev/ttyS1", "human_name": "UART 1", "kind": "serial", "caps": { "modes": ["rs232", "rs485"] } },
+    { "id": "i2c-0", "device": "/dev/i2c-0", "human_name": "I2C bus 0", "kind": "i2c", "caps": {} },
+    { "id": "spi0", "device": "/dev/spidev0.0", "human_name": "McSPI 0", "kind": "spi", "caps": {} },
+    { "id": "gpio-led-status", "device": "gpiochip0 line 0", "human_name": "Status LED", "kind": "gpio", "caps": { "direction": "out" } },
+    { "id": "pru0", "device": "/dev/rpmsg_pru30", "human_name": "PRU core 0", "kind": "pru", "caps": { "signed_fw": false, "cores": ["pru0", "pru1", "rtu0", "rtu1"] } },
+    { "id": "pru1", "device": "/dev/rpmsg_pru31", "human_name": "PRU core 1", "kind": "pru", "caps": { "signed_fw": false } },
+    { "id": "thermal-zone-0", "device": "/sys/class/thermal/thermal_zone0", "human_name": "SoC thermal zone", "kind": "thermal", "caps": { "throttle": true } },
+    { "id": "eth0", "device": "eth0", "human_name": "Ethernet 0 (PRU-ICSSG)", "kind": "net", "caps": {} },
+    { "id": "eth1", "device": "eth1", "human_name": "Ethernet 1 (PRU-ICSSG)", "kind": "net", "caps": {} }
+  ],
+  "dashboard_tiles": [
+    { "id": "pru", "title": "PRU core state", "metrics": ["joshua.pru0", "joshua.pru1"], "render": "state" },
+    { "id": "thermal", "title": "SoC temperature", "metrics": ["thermal.temp"], "render": "sparkline" }
+  ]
+}

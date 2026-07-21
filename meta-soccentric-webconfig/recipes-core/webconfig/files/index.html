@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="light" />
+  <title>SoCcentric WebConfig</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <button id="nav-toggle" class="icon-btn" aria-label="Toggle navigation">☰</button>
+      <a class="brand" href="#/">WebConfig</a>
+      <span id="platform-badge" class="badge" hidden></span>
+      <nav id="nav" class="nav" aria-label="Main"></nav>
+      <div class="spacer"></div>
+      <span id="session-indicator" class="session" hidden></span>
+      <button id="logout-btn" class="link-btn" hidden>Logout</button>
+    </header>
+
+    <!-- First-boot: force admin password creation (spec §4.8 — no default password) -->
+    <section id="first-boot" class="card center" hidden>
+      <h1>First boot — create an administrator</h1>
+      <p>This device has no configured password. Create an admin to continue
+        (CRA/SB-327: no default credentials).</p>
+      <form id="first-boot-form" class="form">
+        <label>Username <input name="username" required autocomplete="username" /></label>
+        <label>Password (min 8) <input name="password" type="password" minlength="8" required autocomplete="new-password" /></label>
+        <button type="submit">Create admin &amp; log in</button>
+      </form>
+      <p id="first-boot-error" class="error" hidden></p>
+    </section>
+
+    <!-- Login -->
+    <section id="login" class="card center" hidden>
+      <h1>Sign in</h1>
+      <form id="login-form" class="form">
+        <label>Username <input name="username" required autocomplete="username" /></label>
+        <label>Password <input name="password" type="password" required autocomplete="current-password" /></label>
+        <button type="submit">Sign in</button>
+      </form>
+      <p id="login-error" class="error" hidden></p>
+    </section>
+
+    <!-- Main application shell -->
+    <main id="view" class="view" hidden></main>
+
+    <!-- Reconnecting overlay (spec §4.1) -->
+    <div id="reconnect" class="overlay" hidden>
+      <div class="overlay-card">
+        <h2>Reconnecting…</h2>
+        <p>The device is rebooting. Waiting for it to come back.</p>
+        <div class="spinner" aria-hidden="true"></div>
+      </div>
+    </div>
+
+    <!-- Commit/confirm banner (spec §4.2 flagship feature) -->
+    <div id="confirm-banner" class="banner" hidden>
+      <span>Network changed. Reconnect on the new address and
+        <strong>confirm</strong> within <span id="confirm-seconds">90</span>s
+        or it rolls back.</span>
+      <button id="confirm-btn">Confirm</button>
+      <button id="confirm-rollback-btn" class="link-btn">Roll back now</button>
+    </div>
+  </div>
+
+  <script src="/schema-form.js" defer></script>
+  <script src="/pages.js" defer></script>
+  <script src="/app.js" defer></script>
+</body>
+</html>

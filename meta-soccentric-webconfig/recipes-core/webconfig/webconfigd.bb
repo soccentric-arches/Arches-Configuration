@@ -1,0 +1,85 @@
+# webconfigd — on-device WebConfig daemon recipe (spec §2/§5).
+#
+# Builds the Rust workspace with the exact release profile (opt-level=z, lto,
+# codegen-units=1, panic=abort, stripped) for the three cross-targets, using
+# the committed vendored crate tarball so builds are fully offline and
+# reproducible (spec §2). No network access at build time.
+#
+# The daemon runs as a non-root user with a hardened systemd unit (see
+# webconfigd.service) and talks to systemd over D-Bus via polkit (see
+# 50-webconfigd.polkit.rules). Assumption (per spec §7, one line): we use
+# oe-core's `cargo.bbclass` with `CARGO_SRC_DIR` pointing at the workspace
+# root and a vendored tarball fetched by a :npv-swipe fetcher.
+
+SUMMARY = "SoCcentric on-device web configuration daemon"
+DESCRIPTION = "Browser-based device configuration UI for embedded Linux; one Rust daemon, TLS, no database."
+HOMEPAGE = "https://soccentric.example/webconfig"
+LICENSE = "CLOSED"
+LIC_FILES_CHKSUM = "file://LICENSE;mdline=1;md5=TODO"
+
+SRC_URI = " \
+    file://webconfigd-${PV}.tar.gz;unpack=1 \
+    file://vendor.tar.gz;unpack=1;subdir=webconfigd-${PV} \
+    file://webconfigd.service \
+    file://webconfigd.env \
+    file://50-webconfigd.polkit.rules \
+"
+# SHA-256 of the source + vendored tarballs are recorded here for the SPDX/SBOM
+# and supply-chain audit (global §1: reproducible builds, pinned versions).
+SRC_URI[sha256sum] = "TODO_REPLACE_WITH_RELEASED_TARBALL_SHA256"
+
+S = "${WORKDIR}/webconfigd-${PV}"
+
+inherit cargo cargo-update-recipe-crates pkgconfig systemd useradd
+
+# --- Build configuration (spec §2 release profile is in Cargo.toml) ----------
+# The release profile (opt-level="z", lto=true, codegen-units=1, panic="abort",
+# strip="symbols") is committed in Cargo.toml and honored by cargo.bbclass.
+CARGO_BUILD_FLAGS = "--release"
+
+# Offline build: use the committed vendor/ tarball, never the network.
+CARGO_VENDORING_DIR = "${S}/vendor"
+export CARGO_NET_OFFLINE = "1"
+
+# Target the image's target triple (cross-compile handled by the toolchain).
+CARGO_SRC_DIR = "${S}"
+
+# --- Runtime user (non-root, spec §4.8) --------------------------------------
+WEBCONFIG_USER = "webconfig"
+WEBCONFIG_GROUP = "webconfig"
+USERADD_PACKAGES = "${PN}"
+USERADD_PARAM:${PN} = "-r -M -d /var/lib/webconfig -s /usr/sbin/nologin ${WEBCONFIG_USER}"
+GROUPADD_PARAM:${PN} = "-r ${WEBCONFIG_GROUP}"
+
+# --- Installed files ---------------------------------------------------------
+# The stripped, size-optimized binary (spec §2: 3-6 MB).
+do_install:append() {
+    install -d ${D}${bindir}
+    install -m 0755 ${B}/release/webconfigd ${D}${bindir}/webconfigd
+
+    # Data partition owned by the runtime user (config.json, users.json, certs).
+    install -d -o ${WEBCONFIG_USER} -g ${WEBCONFIG_GROUP} ${D}/var/lib/webconfig
+
+    # Hardened systemd unit + environment.
+    install -d ${D}${systemd_system_unitdir}
+    install -m 0644 ${WORKDIR}/webconfigd.service ${D}${systemd_system_unitdir}/
+    install -d ${D}${sysconfdir}/default
+    install -m 0644 ${WORKDIR}/webconfigd.env ${D}${sysconfdir}/default/webconfigd
+
+    # polkit rule granting the daemon the limited D-Bus actions it needs.
+    install -d ${D}${datadir}/polkit-1/rules.d
+    install -m 0644 ${WORKDIR}/50-webconfigd.polkit.rules \
+        ${D}${datadir}/polkit-1/rules.d/50-webconfigd.rules
+}
+
+SYSTEMD_SERVICE:${PN} = "webconfigd.service"
+SYSTEMD_AUTO_ENABLE:${PN} = "enable"
+
+# Pull in CA certs for TLS verification against upstream (OTA) servers.
+RDEPENDS:${PN} = "ca-certificates"
+# systemd is the supervisor (D-Bus actions via polkit).
+RRECOMMENDS:${PN} = "systemd polkit"
+
+# SPDX/SBOM: emit the cargo dependency manifest as part of the recipe metadata
+# (global §1 supply-chain concern; new deps require approval).
+INHERIT += "create-spdx"

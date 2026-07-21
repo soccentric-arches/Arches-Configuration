@@ -1,0 +1,11 @@
+# Pinned toolchain for reproducible builds across the six platforms and the
+# x86 CI host (spec §6: CI builds all three cross-targets on every commit).
+[toolchain]
+channel = "1.75.0"
+components = ["rustfmt", "clippy"]
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "armv7-unknown-linux-gnueabihf",
+]
+profile = "minimal"

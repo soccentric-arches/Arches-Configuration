@@ -1,0 +1,33 @@
+{
+  "platform": "zion",
+  "model": "xilinx-zynq-uscale",
+  "board_name": "Xilinx Zynq-7000 / UltraScale+ (Zion)",
+  "has_rtc": true,
+  "has_tpm": true,
+  "secure_boot": true,
+  "service_allowlist": [
+    "sshd.service",
+    "systemd-networkd.service",
+    "systemd-resolved.service",
+    "wpa_supplicant.service",
+    "webconfigd.service",
+    "fpga-manager.service"
+  ],
+  "peripherals": [
+    { "id": "can0", "device": "can0", "human_name": "CAN PS channel 0", "kind": "can", "caps": { "fd": true } },
+    { "id": "can1", "device": "can1", "human_name": "CAN PS channel 1", "kind": "can", "caps": { "fd": true } },
+    { "id": "ttyPS0", "device": "/dev/ttyPS0", "human_name": "PS UART 0 (console)", "kind": "serial", "caps": { "modes": ["rs232"], "console_default": true } },
+    { "id": "ttyUL0", "device": "/dev/ttyUL0", "human_name": "PL AXI UART 0", "kind": "serial", "caps": { "modes": ["rs232", "rs485"] } },
+    { "id": "i2c-0", "device": "/dev/i2c-0", "human_name": "PS I2C 0", "kind": "i2c", "caps": {} },
+    { "id": "spi0", "device": "/dev/spidev0.0", "human_name": "PS SPI 0", "kind": "spi", "caps": {} },
+    { "id": "gpio-led-status", "device": "gpiochip0 line 0", "human_name": "Status LED (PL)", "kind": "gpio", "caps": { "direction": "out" } },
+    { "id": "fpga-fabric", "device": "/sys/class/fpga_manager", "human_name": "FPGA fabric (PL)", "kind": "fpga", "caps": { "signed_bitstream": true, "load_timing": ["boot", "on-demand"] } },
+    { "id": "thermal-zone-0", "device": "/sys/class/thermal/thermal_zone0", "human_name": "PL thermal zone", "kind": "thermal", "caps": { "throttle": false } },
+    { "id": "eth0", "device": "eth0", "human_name": "GEM 0 (PS Ethernet)", "kind": "net", "caps": {} },
+    { "id": "eth1", "device": "eth1", "human_name": "GEM 1 (PS Ethernet)", "kind": "net", "caps": {} }
+  ],
+  "dashboard_tiles": [
+    { "id": "fpga", "title": "Active bitstream", "metrics": ["zion.bitstream", "zion.pl_status"], "render": "state" },
+    { "id": "thermal", "title": "PL temperature", "metrics": ["thermal.temp"], "render": "sparkline" }
+  ]
+}

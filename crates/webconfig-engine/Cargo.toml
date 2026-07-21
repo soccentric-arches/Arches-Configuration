@@ -1,0 +1,31 @@
+[package]
+name = "webconfig-engine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Canonical config store, schema engine, and system appliers for SoCcentric WebConfig (HTTP-free, hardware-free testable)."
+
+[lib]
+name = "webconfig_engine"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+jsonschema = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+time = { workspace = true }
+uuid = { workspace = true }
+hex = { workspace = true }
+sha2 = { workspace = true }
+base64 = { workspace = true }
+argon2 = { workspace = true }
+rand_core = { version = "0.6", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+tempfile = "3.10"

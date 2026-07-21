@@ -1,0 +1,142 @@
+//! Router assembly (spec §3: HTTP layer — TLS, auth/sessions/CSRF, static
+//! assets, JSON REST, one SSE endpoint).
+
+use axum::middleware::{from_fn, from_fn_with_state};
+use axum::routing::{get, post, put, delete};
+use axum::Router;
+use tower_http::services::{ServeDir, ServeFile};
+use tower_sessions::{MemoryStore, SameSite, SessionManagerLayer};
+
+use crate::api::{alerts, io, logs, meta, monitoring, network, security, services, system, updates};
+use crate::auth;
+use crate::csrf;
+use crate::sse;
+use crate::state::AppState;
+
+/// Build the application router. `static_dir` is the on-disk frontend assets
+/// directory (served by the daemon, executing entirely in the browser, spec §2).
+pub fn build_router(state: AppState, static_dir: std::path::PathBuf) -> Router {
+    let session_layer = SessionManagerLayer::new(MemoryStore::default())
+        .with_secure(false) // first-boot may be over plain HTTP; HTTPS enforced at TLS layer
+        .with_same_site(SameSite::Lax)
+        .with_http_only(true)
+        .with_path("/");
+
+    // Public auth routes — usable before login / during first boot (spec §4.8).
+    let auth_routes = Router::new()
+        .route("/auth/first-boot", post(auth::first_boot))
+        .route("/auth/login", post(auth::login))
+        .route("/auth/logout", post(auth::logout))
+        .route("/auth/whoami", get(auth::whoami));
+
+    // Protected API: require_auth (outer) + CSRF (inner, mutating only).
+    let protected = Router::new()
+        // Meta (spec §3): board manifest + per-section schema descriptor.
+        .route("/manifest", get(meta::manifest))
+        .route("/schemas/:section", get(meta::schema_section))
+        // System (§4.1)
+        .route("/system", get(system::get).put(system::put))
+        .route("/system/apply", post(system::apply))
+        .route("/system/info", get(system::info))
+        .route("/system/reboot", post(system::reboot))
+        .route("/system/shutdown", post(system::shutdown))
+        .route("/system/factory-reset", post(system::factory_reset))
+        .route("/system/root-password", post(system::root_password))
+        .route(
+            "/system/users",
+            get(system::list_users).post(system::create_user),
+        )
+        .route("/system/users/:name", delete(system::delete_user))
+        .route("/system/users/:name/role", put(system::set_role))
+        .route("/system/users/:name/password", put(system::change_password))
+        // Networking (§4.2)
+        .route("/network", get(network::get).put(network::put))
+        .route("/network/apply", post(network::apply))
+        .route("/network/confirm", post(network::confirm))
+        .route("/network/rollback", post(network::rollback))
+        .route("/network/scan", get(network::scan))
+        .route("/network/connectivity-test", post(network::connectivity_test))
+        // Services & Apps (§4.3)
+        .route("/services", get(services::list))
+        .route("/services/health", get(services::health_strip))
+        .route("/services/:unit/start", post(services::start))
+        .route("/services/:unit/stop", post(services::stop))
+        .route("/services/:unit/restart", post(services::restart))
+        .route("/services/:unit/enabled", put(services::set_enabled))
+        .route("/services/:unit/journal", get(services::journal))
+        .route("/services/mqtt", get(services::get_mqtt).put(services::put_mqtt))
+        .route("/services/mqtt/test", post(services::test_mqtt))
+        .route("/schemas", get(services::schemas))
+        .route("/apps/:id/settings", get(services::get_app_settings).put(services::put_app_settings))
+        // Updates (§4.4)
+        .route("/updates/slots", get(updates::slots))
+        .route("/updates/install", post(updates::install))
+        .route("/updates/reboot-to-apply", post(updates::reboot_to_apply))
+        .route("/updates/ota/check", get(updates::ota_check))
+        .route("/updates/backup", get(updates::backup))
+        .route("/updates/restore", post(updates::restore))
+        .route("/updates/diagnostics", get(updates::diagnostics))
+        .route("/updates/factory-reset", post(updates::factory_reset))
+        // Monitoring (§4.5)
+        .route("/monitoring/vitals", get(monitoring::vitals))
+        .route("/monitoring/emmc/:dev", get(monitoring::emmc_wear))
+        .route("/monitoring/tiles", get(monitoring::tiles))
+        // Logs (§4.6)
+        .route("/logs", get(logs::read))
+        .route("/logs/config", get(logs::get_config).put(logs::put_config))
+        .route("/logs/audit", get(logs::audit_log))
+        .route("/logs/download", get(logs::download))
+        // Alerts (§4.7)
+        .route("/alerts", get(alerts::get).put(alerts::put))
+        .route("/alerts/history", get(alerts::history))
+        // Security (§4.8)
+        .route("/security", get(security::get).put(security::put))
+        .route("/security/apply", post(security::apply))
+        .route("/security/wireguard/pubkey", get(security::wg_pubkey))
+        .route("/security/csr", post(security::generate_csr))
+        .route("/security/exposure", get(security::exposure))
+        .route("/security/trust", get(security::trust))
+        .route("/security/certs", get(security::certs))
+        // I/O (§4.9)
+        .route("/io", get(io::get).put(io::put))
+        .route("/io/can/apply", post(io::apply_can))
+        .route("/io/gpio/:name/toggle", post(io::toggle_gpio))
+        .route("/io/i2c/scan", post(io::i2c_scan))
+        .route("/io/mcu", get(io::mcu))
+        .route("/io/mcu/firmware", post(io::mcu_firmware))
+        .route("/io/platform-panel", get(io::platform_panel))
+        // SSE (§3/§4.6)
+        .route("/events", get(sse::events))
+        .layer(from_fn_with_state(state.clone(), csrf::csrf_guard))
+        .layer(from_fn_with_state(state.clone(), auth::require_auth));
+
+    let api = auth_routes.merge(protected);
+
+    // Static frontend: served by the daemon, no server-side rendering (spec §2).
+    let index = static_dir.join("index.html");
+    let static_svc = ServeDir::new(&static_dir).fallback(ServeFile::new(index));
+
+    Router::new()
+        .nest("/api/v1", api)
+        .fallback_service(static_svc)
+        .layer(session_layer)
+        // HTTP→HTTPS redirect is handled at the listener level in main.rs when
+        // both listeners run; the cookie policy above is shared.
+        .layer(from_fn(http_to_https_hint))
+        .with_state(state)
+}
+
+/// A no-op-by-default middleware that sets a `Strict-Transport-Security` hint
+/// on HTTPS requests (spec §4.8). On plain HTTP (first-boot opt-in) it is
+/// inert. The actual redirect lives in the listener wiring.
+async fn http_to_https_hint(req: axum::extract::Request, next: axum::middleware::Next) -> axum::response::Response {
+    use axum::http::header;
+    let mut resp = next.run(req).await;
+    // Strict-Transport-Security on all responses (spec §4.8). The actual
+    // HTTP→HTTPS redirect lives in the listener wiring in main.rs.
+    resp.headers_mut().insert(
+        header::STRICT_TRANSPORT_SECURITY,
+        axum::http::HeaderValue::from_static("max-age=31536000"),
+    );
+    resp
+}

@@ -1,0 +1,254 @@
+//! Web-UI user store (spec §4.1).
+//!
+//! Local user store at `/data/webconfig/users.json`, argon2 hashes, roles
+//! **admin / operator / viewer** (admin: everything; operator: app settings +
+//! service restart only; viewer: read-only). First boot has **no default
+//! password** — the API forces admin password creation on first access
+//! (spec §4.8, CRA/SB-327 compliance). Changing the Linux root password is a
+//! separate single action (`chpasswd`) handled by the HTTP layer, not here.
+//!
+//! No database — JSON file only (spec §2).
+
+use std::path::PathBuf;
+
+use argon2::password_hash::{PasswordHash, SaltString};
+use argon2::{Argon2, PasswordHasher, PasswordVerifier};
+use rand_core::OsRng;
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum UserError {
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("parse error: {0}")]
+    Parse(#[from] serde_json::Error),
+    #[error("hash error: {0}")]
+    Hash(String),
+    #[error("user not found: {0}")]
+    NotFound(String),
+    #[error("user already exists: {0}")]
+    Exists(String),
+    #[error("invalid credentials")]
+    InvalidCredentials,
+    #[error("last admin cannot be removed or demoted")]
+    LastAdmin,
+    #[error("invalid role: {0}")]
+    InvalidRole(String),
+}
+
+/// Authorization role (spec §4.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Role {
+    Admin,
+    Operator,
+    Viewer,
+}
+
+impl Role {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Role::Admin => "admin",
+            Role::Operator => "operator",
+            Role::Viewer => "viewer",
+        }
+    }
+
+    pub fn parse(s: &str) -> Result<Self, UserError> {
+        match s {
+            "admin" => Ok(Role::Admin),
+            "operator" => Ok(Role::Operator),
+            "viewer" => Ok(Role::Viewer),
+            other => Err(UserError::InvalidRole(other.into())),
+        }
+    }
+
+    /// Whether this role may perform mutating app-settings / service-restart
+    /// actions (spec §4.1: operator = app settings + service restart only).
+    pub fn can_mutate_apps(&self) -> bool {
+        matches!(self, Role::Admin | Role::Operator)
+    }
+
+    pub fn is_admin(&self) -> bool {
+        matches!(self, Role::Admin)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserRecord {
+    pub username: String,
+    /// argon2 PHC string.
+    pub password_hash: String,
+    pub role: Role,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UserStore {
+    pub users: Vec<UserRecord>,
+}
+
+impl UserStore {
+    pub fn load(path: &Path) -> Result<Self, UserError> {
+        if !path.exists() {
+            return Ok(Self::default());
+        }
+        let raw = std::fs::read_to_string(path)?;
+        Ok(serde_json::from_str(&raw)?)
+    }
+
+    pub fn save(&self, path: &Path) -> Result<(), UserError> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        // Atomic write.
+        let tmp = path.with_extension("json.tmp");
+        std::fs::write(&tmp, serde_json::to_vec_pretty(self)?)?;
+        std::fs::rename(&tmp, path)?;
+        Ok(())
+    }
+
+    /// First-boot probe: true when there are no users at all (spec §4.8 —
+    /// force admin password creation on first access).
+    pub fn needs_first_boot_admin(&self) -> bool {
+        self.users.is_empty()
+    }
+
+    pub fn find(&self, username: &str) -> Option<&UserRecord> {
+        self.users.iter().find(|u| u.username == username)
+    }
+
+    /// Verify credentials and return the user's role on success.
+    pub fn authenticate(&self, username: &str, password: &str) -> Result<Role, UserError> {
+        let user = self.find(username).ok_or(UserError::NotFound(username.into()))?;
+        let parsed = PasswordHash::new(&user.password_hash)
+            .map_err(|e| UserError::Hash(e.to_string()))?;
+        Argon2::default()
+            .verify_password(password.as_bytes(), &parsed)
+            .map_err(|_| UserError::InvalidCredentials)?;
+        Ok(user.role)
+    }
+
+    /// Create a user with an argon2 hash of `password`.
+    pub fn add(
+        &mut self,
+        username: &str,
+        password: &str,
+        role: Role,
+    ) -> Result<(), UserError> {
+        if self.find(username).is_some() {
+            return Err(UserError::Exists(username.into()));
+        }
+        let salt = SaltString::generate(&mut OsRng);
+        let hash = Argon2::default()
+            .hash_password(password.as_bytes(), &salt)
+            .map_err(|e| UserError::Hash(e.to_string()))?
+            .to_string();
+        self.users.push(UserRecord {
+            username: username.into(),
+            password_hash: hash,
+            role,
+        });
+        Ok(())
+    }
+
+    pub fn set_password(&mut self, username: &str, password: &str) -> Result<(), UserError> {
+        let user = self
+            .users
+            .iter_mut()
+            .find(|u| u.username == username)
+            .ok_or(UserError::NotFound(username.into()))?;
+        let salt = SaltString::generate(&mut OsRng);
+        let hash = Argon2::default()
+            .hash_password(password.as_bytes(), &salt)
+            .map_err(|e| UserError::Hash(e.to_string()))?
+            .to_string();
+        user.password_hash = hash;
+        Ok(())
+    }
+
+    pub fn set_role(&mut self, username: &str, role: Role) -> Result<(), UserError> {
+        let user = self
+            .users
+            .iter_mut()
+            .find(|u| u.username == username)
+            .ok_or(UserError::NotFound(username.into()))?;
+        // Guard: never demote/remove the last admin (spec §4.1).
+        if user.role == Role::Admin && role != Role::Admin && self.admin_count() <= 1 {
+            return Err(UserError::LastAdmin);
+        }
+        user.role = role;
+        Ok(())
+    }
+
+    pub fn remove(&mut self, username: &str) -> Result<(), UserError> {
+        let is_admin = self.find(username).map(|u| u.role == Role::Admin).unwrap_or(false);
+        if is_admin && self.admin_count() <= 1 {
+            return Err(UserError::LastAdmin);
+        }
+        self.users.retain(|u| u.username != username);
+        Ok(())
+    }
+
+    fn admin_count(&self) -> usize {
+        self.users.iter().filter(|u| u.role == Role::Admin).count()
+    }
+
+    /// Where the store lives on the data partition.
+    pub fn default_path(webconfig_dir: &Path) -> PathBuf {
+        webconfig_dir.join("users.json")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tmp() -> PathBuf {
+        let d = tempfile::tempdir().unwrap();
+        d.path().join("users.json")
+    }
+
+    #[test]
+    fn first_boot_when_empty() {
+        assert!(UserStore::default().needs_first_boot_admin());
+    }
+
+    #[test]
+    fn add_authenticate_roundtrip() {
+        let path = tmp();
+        let mut store = UserStore::default();
+        store.add("admin", "correct horse", Role::Admin).unwrap();
+        store.save(&path).unwrap();
+
+        let loaded = UserStore::load(&path).unwrap();
+        assert_eq!(loaded.authenticate("admin", "correct horse").unwrap(), Role::Admin);
+        assert!(loaded.authenticate("admin", "wrong").is_err());
+        assert!(loaded.authenticate("nobody", "x").is_err());
+    }
+
+    #[test]
+    fn cannot_remove_last_admin() {
+        let mut store = UserStore::default();
+        store.add("admin", "pw", Role::Admin).unwrap();
+        assert!(matches!(store.remove("admin"), Err(UserError::LastAdmin)));
+        assert!(matches!(
+            store.set_role("admin", Role::Viewer),
+            Err(UserError::LastAdmin)
+        ));
+    }
+
+    #[test]
+    fn duplicate_user_rejected() {
+        let mut store = UserStore::default();
+        store.add("u", "pw", Role::Viewer).unwrap();
+        assert!(matches!(store.add("u", "pw", Role::Viewer), Err(UserError::Exists(_))));
+    }
+
+    #[test]
+    fn role_permissions() {
+        assert!(Role::Admin.can_mutate_apps() && Role::Admin.is_admin());
+        assert!(Role::Operator.can_mutate_apps() && !Role::Operator.is_admin());
+        assert!(!Role::Viewer.can_mutate_apps() && !Role::Viewer.is_admin());
+    }
+}
