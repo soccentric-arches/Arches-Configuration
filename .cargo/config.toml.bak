@@ -1,0 +1,27 @@
+# Cross-compile configuration (spec §2): three targets, all crates must build
+# on all three. The linker for the ARM targets is chosen via the Yocto SDK
+# environment when present; falling back to the system cross-linkers named
+# below. Vendored crates (spec §2) live under `.cargo/vendor` and are pinned by
+# `.cargo/config.toml` so a build never requires crates.io at build time.
+
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "vendor"
+
+# The build never touches the network. `cargo vendor` regenerates `vendor/`.
+[net]
+offline = true
+
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"
+
+[target.armv7-unknown-linux-gnueabihf]
+linker = "arm-linux-gnueabihf-gcc"
+
+# Build dependencies for the *host* (jsonschema build scripts, proc-macro
+# crates) when cross-compiling — required because `panic = "abort"` + cross
+# builds need host toolchain for build-deps.
+[target.x86_64-unknown-linux-gnu]
+# Uses the default host linker.

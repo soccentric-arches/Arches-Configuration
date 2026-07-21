@@ -22,7 +22,7 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.85"
 license = "MIT"
 repository = "https://github.com/soccentric/Arches-Configuration"
 authors = ["SoCcentric IV&V"]

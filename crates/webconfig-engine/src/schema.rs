@@ -36,7 +36,7 @@ pub enum SchemaError {
 pub struct Schema {
     /// JSON Schema (draft-07) documents keyed by section name, e.g.
     /// "system", "network", or "app:my-app".
-    validators: Vec<(String, jsonschema::Validator)>,
+    validators: Vec<(String, jsonschema::JSONSchema)>,
     /// Raw field descriptors for the frontend renderer, keyed the same way.
     descriptors: Vec<(String, SchemaDescriptor)>,
     permissive: bool,
@@ -83,7 +83,7 @@ impl Schema {
             // present, else from the whole document.
             let descriptor: SchemaDescriptor = serde_json::from_value(value.clone())?;
             let schema_doc = descriptor.validate.clone().unwrap_or(value);
-            let validator = jsonschema::validator_for(&schema_doc)
+            let validator = jsonschema::JSONSchema::compile(&schema_doc)
                 .map_err(|e| SchemaError::Validation(format!("compile {stem}: {e}")))?;
             out.validators.push((stem.clone(), validator));
             out.descriptors.push((stem, descriptor));
@@ -107,11 +107,13 @@ impl Schema {
             if target.is_null() {
                 continue;
             }
-            if let Err(err) = validator.validate(&target) {
-                return Err(SchemaError::Validation(format!(
-                    "section {name}: {}",
-                    err
-                )));
+            if let Err(errs) = validator.validate(&target) {
+                let msg = errs
+                    .into_iter()
+                    .next()
+                    .map(|e| format!("{e}"))
+                    .unwrap_or_else(|| "validation failed".to_string());
+                return Err(SchemaError::Validation(format!("section {name}: {msg}")));
             }
         }
         Ok(())
