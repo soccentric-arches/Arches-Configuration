@@ -11,7 +11,7 @@
 
 use std::fs;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -32,6 +32,8 @@ pub enum StoreError {
     Io(#[from] std::io::Error),
     #[error("schema version mismatch: file={file} engine={engine}")]
     Version { file: u32, engine: u32 },
+    #[error("schema error: {0}")]
+    Schema(#[from] crate::schema::SchemaError),
 }
 
 /// The persisted wrapper: schema version + the tree itself.
@@ -171,9 +173,8 @@ impl ConfigStore {
     }
 
     /// Path on disk (for diagnostics / backup download).
-    pub fn file_path(&self) -> &Path {
-        // returns owned-backed path; cheap clone via as_path
-        self.path().as_path()
+    pub fn file_path(&self) -> PathBuf {
+        self.path()
     }
 }
 
@@ -397,7 +398,7 @@ pub mod monitoring {
     #[derive(Debug, Clone, Default, Serialize, Deserialize)]
     pub struct MonitoringConfig {
         /// Dashboard poll interval in seconds while the page is open (spec §4.5).
-        #[serde(default = "default_poll_interval")]
+        #[serde(default = "default_poll_interval_secs")]
         pub poll_interval_secs: u64,
     }
 

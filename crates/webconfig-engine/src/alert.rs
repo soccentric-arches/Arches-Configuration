@@ -225,7 +225,8 @@ impl AlertHistory {
         entries.drain(..drop);
         let mut s = String::new();
         for e in &entries {
-            let _ = writeln!(s, "{}", serde_json::to_string(e).unwrap());
+            s.push_str(&serde_json::to_string(e).unwrap());
+            s.push('\n');
         }
         std::fs::write(&self.path, s)?;
         Ok(())

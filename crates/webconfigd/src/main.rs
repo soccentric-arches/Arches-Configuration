@@ -148,12 +148,12 @@ fn load_or_seed_manifest(share: &std::path::Path) -> BoardManifest {
     }
     let platform = std::env::var("WEBCONFIG_PLATFORM").unwrap_or_else(|_| "arches".into());
     let raw = match platform.as_str() {
-        "acadia" => include_str!("../../board-manifests/acadia.json"),
-        "zion" => include_str!("../../board-manifests/zion.json"),
-        "pinnacle" => include_str!("../../board-manifests/pinnacle.json"),
-        "joshua" => include_str!("../../board-manifests/joshua.json"),
-        "sequoia" => include_str!("../../board-manifests/sequoia.json"),
-        _ => include_str!("../../board-manifests/arches.json"),
+        "acadia" => include_str!("../../../board-manifests/acadia.json"),
+        "zion" => include_str!("../../../board-manifests/zion.json"),
+        "pinnacle" => include_str!("../../../board-manifests/pinnacle.json"),
+        "joshua" => include_str!("../../../board-manifests/joshua.json"),
+        "sequoia" => include_str!("../../../board-manifests/sequoia.json"),
+        _ => include_str!("../../../board-manifests/arches.json"),
     };
     // Seed the file so the platform layer is consistent on subsequent boots.
     if let Ok(parent) = share.canonicalize() {

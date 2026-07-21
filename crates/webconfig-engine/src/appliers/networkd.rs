@@ -50,7 +50,7 @@ impl NetworkdApplier {
     fn render(iface: &crate::store::network::Interface) -> String {
         let mut s = String::new();
         s.push_str("[Match]\n");
-        s.push_str(&format!("Name={iface.name}\n\n"));
+        s.push_str(&format!("Name={}\n\n", iface.name));
         s.push_str("[Link]\n");
         s.push_str(&format!(
             "RequiredForOnline={}\n",

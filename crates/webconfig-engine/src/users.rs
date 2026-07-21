@@ -9,7 +9,7 @@
 //!
 //! No database — JSON file only (spec §2).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use argon2::password_hash::{PasswordHash, SaltString};
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
@@ -168,16 +168,18 @@ impl UserStore {
     }
 
     pub fn set_role(&mut self, username: &str, role: Role) -> Result<(), UserError> {
-        let user = self
+        let idx = self
             .users
-            .iter_mut()
-            .find(|u| u.username == username)
+            .iter()
+            .position(|u| u.username == username)
             .ok_or(UserError::NotFound(username.into()))?;
-        // Guard: never demote/remove the last admin (spec §4.1).
-        if user.role == Role::Admin && role != Role::Admin && self.admin_count() <= 1 {
+        // Guard: never demote/remove the last admin (spec §4.1). Compute the
+        // admin count via an index lookup so we don't hold a borrow over it.
+        let is_admin = self.users[idx].role == Role::Admin;
+        if is_admin && role != Role::Admin && self.admin_count() <= 1 {
             return Err(UserError::LastAdmin);
         }
-        user.role = role;
+        self.users[idx].role = role;
         Ok(())
     }
 

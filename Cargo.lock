@@ -2052,6 +2052,7 @@ dependencies = [
  "tower-layer",
  "tower-service",
  "tower-sessions-core",
+ "tower-sessions-memory-store",
  "tracing",
 ]
 
@@ -2073,6 +2074,18 @@ dependencies = [
  "time",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "tower-sessions-memory-store"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4d780288cc38a7f001b39a22392c29b1398bda163c846f07b1253713042bc549"
+dependencies = [
+ "async-trait",
+ "time",
+ "tokio",
+ "tower-sessions-core",
 ]
 
 [[package]]
@@ -2283,12 +2296,14 @@ dependencies = [
  "base64 0.22.1",
  "futures-util",
  "hex",
+ "http",
  "http-body-util",
  "rcgen",
  "rustls",
  "rustls-pemfile",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "thiserror",
  "time",

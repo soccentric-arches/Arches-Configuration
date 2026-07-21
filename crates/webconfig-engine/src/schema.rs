@@ -13,6 +13,7 @@
 //! (spec §2), so every input is re-validated server-side here.
 
 use std::path::Path;
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -35,8 +36,10 @@ pub enum SchemaError {
 #[derive(Debug, Clone)]
 pub struct Schema {
     /// JSON Schema (draft-07) documents keyed by section name, e.g.
-    /// "system", "network", or "app:my-app".
-    validators: Vec<(String, jsonschema::JSONSchema)>,
+    /// "system", "network", or "app:my-app". Wrapped in `Arc` because
+    /// `jsonschema::JSONSchema` is not `Clone`, but `Schema` is shared between
+    /// the config store and the daemon `AppState`.
+    validators: Vec<(String, Arc<jsonschema::JSONSchema>)>,
     /// Raw field descriptors for the frontend renderer, keyed the same way.
     descriptors: Vec<(String, SchemaDescriptor)>,
     permissive: bool,
@@ -85,7 +88,7 @@ impl Schema {
             let schema_doc = descriptor.validate.clone().unwrap_or(value);
             let validator = jsonschema::JSONSchema::compile(&schema_doc)
                 .map_err(|e| SchemaError::Validation(format!("compile {stem}: {e}")))?;
-            out.validators.push((stem.clone(), validator));
+            out.validators.push((stem.clone(), Arc::new(validator)));
             out.descriptors.push((stem, descriptor));
         }
         Ok(out)
@@ -107,13 +110,13 @@ impl Schema {
             if target.is_null() {
                 continue;
             }
-            if let Err(errs) = validator.validate(&target) {
-                let msg = errs
-                    .into_iter()
-                    .next()
-                    .map(|e| format!("{e}"))
-                    .unwrap_or_else(|| "validation failed".to_string());
-                return Err(SchemaError::Validation(format!("section {name}: {msg}")));
+            // `is_valid` returns a plain bool — `validate` returns an iterator
+            // that borrows `target`, and that borrow outlives the temporary,
+            // so `is_valid` avoids the lifetime entanglement here (spec §3).
+            if !validator.is_valid(&target) {
+                return Err(SchemaError::Validation(format!(
+                    "section {name}: validation failed"
+                )));
             }
         }
         Ok(())

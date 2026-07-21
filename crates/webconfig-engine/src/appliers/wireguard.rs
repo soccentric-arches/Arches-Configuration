@@ -6,6 +6,7 @@
 //! The private key is generated once and stored under the data partition with
 //! restrictive permissions; it is **never** returned by the API (spec §4.8).
 
+use std::os::unix::fs::PermissionsExt;
 use std::sync::Mutex;
 
 use crate::applier::{Applier, ApplyError, ApplyOutcome, FileBackup, run_cmd};
