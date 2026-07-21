@@ -475,7 +475,7 @@ pub mod security {
 
     #[derive(Debug, Clone, Default, Serialize, Deserialize)]
     pub struct SecurityConfig {
-        #[serde(default)]
+        #[serde(default = "default_idle")]
         pub session_idle_timeout_secs: u64,
         /// Plain HTTP admin opt-in (spec §4.8; default off).
         #[serde(default)]

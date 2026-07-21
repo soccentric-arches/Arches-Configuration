@@ -238,7 +238,6 @@ mod tests {
         )
         .unwrap();
         std::fs::create_dir_all(sys.root().join("sys-block-usage")).unwrap();
-        std::fs::write(sys.root().join("sys-block-usage"), "0\n").unwrap();
         std::fs::write(
             sys.root().join("sys-block-usage/_"),
             "1000000 400000\n",

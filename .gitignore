@@ -20,3 +20,4 @@
 *.pem
 *.key
 /data/
+vendor/
