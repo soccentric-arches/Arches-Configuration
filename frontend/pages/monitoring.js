@@ -39,7 +39,9 @@ export async function render(api, store) {
   const disk = metricTile('Disk (max)');
   const temp = metricTile('Hottest');
   const uptimeEl = el('div', { class: 'tile-value' }, '—');
-  const uptimeTile = el('div', { class: 'card' }, el('div', { class: 'card-body' }, el('h3', {}, 'Uptime'), el('div', { class: 'tile-sub' }, 'Time since last boot'), uptimeEl));
+  const bootCountEl = el('div', { class: 'tile-sub', style: 'margin-top:6px' }, 'Boots: —');
+  const bootReasonEl = el('div', { class: 'tile-sub' }, 'Last boot: —');
+  const uptimeTile = el('div', { class: 'card' }, el('div', { class: 'card-body' }, el('h3', {}, 'Uptime'), el('div', { class: 'tile-sub' }, 'Time since last boot'), uptimeEl, bootCountEl, bootReasonEl));
   const netTiles = new Map();
   const netHost = el('div', { class: 'card-grid' });
 
@@ -60,6 +62,8 @@ export async function render(api, store) {
     temp.update(Number.isFinite(maxTemp) ? `${maxTemp.toFixed(0)}°C` : '—', Number.isFinite(maxTemp) ? maxTemp : null);
 
     uptimeEl.textContent = v.uptime_secs ? `${Math.round(v.uptime_secs / 60)} min` : '—';
+    bootCountEl.textContent = `Boots: ${v.boot_count != null ? v.boot_count : '—'}`;
+    bootReasonEl.textContent = `Last boot: ${v.last_boot_reason || '—'}`;
 
     for (const n of v.net || []) {
       if (!netTiles.has(n.iface)) {

@@ -118,6 +118,15 @@ See `docs/webconfig-spec.md` for the full spec.
   state (the shared `network::enumerate_live(&Sysroot)`, reused by the network
   page so the two never drift) alongside config/slots/dmesg/alert_history/audit.
   `enumerate_live` is the single source for the `/sys/class/net` live snapshot.
+- §4.5 monitoring `Vitals` carries: load[3], `mem_available_kb` (NOT free),
+  mounts, `temperatures` (from `/sys/class/thermal/thermal_zone*` AND
+  `/sys/class/hwmon/hwmon*/temp*_input`, labeled `hwmonN:<chip>:tempK`), per-iface
+  net `rx_bytes`/`tx_bytes`, `uptime_secs`, `boot_count` (`journalctl
+  --list-boots` on real root, else None), `last_boot_reason` (from
+  `webconfig_dir/last-boot-reason` if an MCU/platform daemon wrote it, else
+  None). `TempZone.throttled` is READ, never hardcoded false: any
+  `thermal_zone*/cdev*/cur_state > 0` ⇒ throttled (fanless SoCs' cdev0 is the
+  freq clamp). `None`/false when not reported is correct behavior, not a stub.
 
 ## Don't
 

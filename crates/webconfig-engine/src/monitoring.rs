@@ -21,6 +21,12 @@ pub struct Vitals {
     pub temperatures: Vec<TempZone>,
     pub net: Vec<NetStats>,
     pub uptime_secs: u64,
+    /// Number of boots recorded by the journal (spec §4.5: "boot count").
+    /// `None` when not reported (fake sysroot / no journal).
+    pub boot_count: Option<u64>,
+    /// Why the last boot happened, where the platform/MCU reports it
+    /// (spec §4.5: "last boot reason"). `None` when no source reports it.
+    pub last_boot_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -49,6 +55,7 @@ pub struct NetStats {
 /// Read vitals from the sysroot. Missing files degrade gracefully to defaults
 /// (spec §4.5: warn when no data, never crash the dashboard).
 pub fn read_vitals(sysroot: &Sysroot) -> Vitals {
+    let (boot_count, last_boot_reason) = read_boot_info(sysroot);
     Vitals {
         load: read_loadavg(sysroot),
         mem_total_kb: read_meminfo_field(sysroot, "MemTotal:"),
@@ -59,6 +66,8 @@ pub fn read_vitals(sysroot: &Sysroot) -> Vitals {
         temperatures: read_thermal(sysroot),
         net: read_net_stats(sysroot),
         uptime_secs: read_uptime(sysroot),
+        boot_count,
+        last_boot_reason,
     }
 }
 
@@ -177,6 +186,18 @@ fn statvfs(sysroot: &Sysroot, target: &str) -> (u64, u64) {
 }
 
 fn read_thermal(sysroot: &Sysroot) -> Vec<TempZone> {
+    let mut out = read_thermal_zones(sysroot);
+    out.extend(read_hwmon_temps(sysroot));
+    out
+}
+
+/// `/sys/class/thermal/thermal_zone*` (spec §4.5). The throttle flag is read
+/// from the zone's cooling devices: if any `cdev*/cur_state` is > 0 the zone is
+/// being actively cooled/throttled. Assumption (per spec §7): on fanless SoCs
+/// the first cooling device is the CPU-frequency clamp, so `cur_state > 0`
+/// means frequency throttling — the Arches "thermal-throttle state". Degrades
+/// to `false` when no cooling devices are exposed.
+fn read_thermal_zones(sysroot: &Sysroot) -> Vec<TempZone> {
     let base = sysroot.join("/sys/class/thermal");
     let Ok(entries) = fs::read_dir(&base) else {
         return Vec::new();
@@ -188,17 +209,101 @@ fn read_thermal(sysroot: &Sysroot) -> Vec<TempZone> {
         if !name.starts_with("thermal_zone") {
             continue;
         }
-        let temp = fs::read_to_string(base.join(name.as_ref()).join("temp"))
+        let zone_dir = base.join(name.as_ref());
+        let temp = fs::read_to_string(zone_dir.join("temp"))
             .ok()
             .and_then(|s| s.trim().parse::<i64>().ok())
             .unwrap_or(0);
+        let throttled = zone_throttled(&zone_dir);
         out.push(TempZone {
             zone: name.into_owned(),
             temp_millideg_c: temp,
-            throttled: false,
+            throttled,
         });
     }
     out
+}
+
+/// True if any cooling device under this thermal zone has `cur_state > 0`.
+fn zone_throttled(zone_dir: &Path) -> bool {
+    let Ok(cdevs) = fs::read_dir(zone_dir) else {
+        return false;
+    };
+    for c in cdevs.flatten() {
+        let cname = c.file_name();
+        let cname = cname.to_string_lossy();
+        if !cname.starts_with("cdev") {
+            continue;
+        }
+        let cur = read_u64_file(&zone_dir.join(cname.as_ref()).join("cur_state"));
+        if cur > 0 {
+            return true;
+        }
+    }
+    false
+}
+
+/// `/sys/class/hwmon/hwmon*/temp*_input` (spec §4.5: temperature from
+/// `/sys/class/thermal` **+ hwmon**). Many SoCs (incl. Arches/Jetson) expose
+/// board temps only via hwmon. The zone label is `hwmonN:<chip name>:tempK` so
+/// the UI can tell the sources apart. `throttled` is not a hwmon concept →
+/// false here; throttle state lives in the thermal-zone path above.
+fn read_hwmon_temps(sysroot: &Sysroot) -> Vec<TempZone> {
+    let base = sysroot.join("/sys/class/hwmon");
+    let Ok(entries) = fs::read_dir(&base) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for e in entries.flatten() {
+        let dir = e.path();
+        let hwmon = e.file_name().to_string_lossy().to_string();
+        let chip = fs::read_to_string(dir.join("name"))
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default();
+        let Ok(temp_entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for t in temp_entries.flatten() {
+            let fname = t.file_name();
+            let fname = fname.to_string_lossy();
+            if !fname.starts_with("temp") || !fname.ends_with("_input") {
+                continue;
+            }
+            let temp = fs::read_to_string(t.path())
+                .ok()
+                .and_then(|s| s.trim().parse::<i64>().ok())
+                .unwrap_or(0);
+            out.push(TempZone {
+                zone: format!("{hwmon}:{chip}:{}", fname.trim_end_matches("_input")),
+                temp_millideg_c: temp,
+                throttled: false,
+            });
+        }
+    }
+    out
+}
+
+/// Boot count + last boot reason (spec §4.5: "where the platform/MCU reports
+/// it"). Boot count comes from `journalctl --list-boots` on the real root (one
+/// line per boot); the last-boot reason is read from a file an MCU/platform
+/// daemon writes into the webconfig dir. Both are `None` when not reported —
+/// never a silent stub (spec §7).
+fn read_boot_info(sysroot: &Sysroot) -> (Option<u64>, Option<String>) {
+    let boot_count = if sysroot.is_real_root() {
+        let boots = crate::applier::run_cmd("journalctl", &["--list-boots", "--no-pager"])
+            .map(|s| s.lines().filter(|l| !l.trim().is_empty()).count() as u64)
+            .ok();
+        // A single-line "No boots found." style error → no boots recorded.
+        boots.filter(|&n| n > 0)
+    } else {
+        None
+    };
+    let reason_path = sysroot.webconfig_dir().join("last-boot-reason");
+    let last_boot_reason = fs::read_to_string(&reason_path)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    (boot_count, last_boot_reason)
 }
 
 fn read_net_stats(sysroot: &Sysroot) -> Vec<NetStats> {
@@ -311,5 +416,71 @@ mod tests {
         std::fs::write(sys.root().join("fake-extcsd/mmcblk0"), "8\n").unwrap();
         assert_eq!(read_emmc_wear(&sys, "mmcblk0"), Some(8));
         assert_eq!(read_emmc_wear(&sys, "mmcblk9"), None);
+    }
+
+    #[test]
+    fn reads_hwmon_temps_alongside_thermal_zones() {
+        // Spec §4.5: temperature from /sys/class/thermal + hwmon. A SoC that
+        // exposes a board temp only via hwmon must still appear in vitals.
+        let (_d, sys) = fake_sys();
+        let hwmon = sys.join("/sys/class/hwmon/hwmon0");
+        std::fs::create_dir_all(&hwmon).unwrap();
+        std::fs::write(hwmon.join("name"), "jetson_thlm\n").unwrap();
+        std::fs::write(hwmon.join("temp1_input"), "47000\n").unwrap();
+        std::fs::write(hwmon.join("temp2_input"), "52000\n").unwrap();
+        let v = read_vitals(&sys);
+        let hwmon_zones: Vec<_> = v
+            .temperatures
+            .iter()
+            .filter(|z| z.zone.starts_with("hwmon0:"))
+            .collect();
+        assert_eq!(hwmon_zones.len(), 2);
+        assert!(hwmon_zones.iter().any(|z| z.zone.contains("jetson_thlm")));
+        assert!(hwmon_zones.iter().any(|z| z.temp_millideg_c == 52_000));
+        // The thermal_zone0 from fake_sys() is still present.
+        assert!(v.temperatures.iter().any(|z| z.zone == "thermal_zone0"));
+    }
+
+    #[test]
+    fn throttle_flag_set_when_cooling_device_active() {
+        // Spec §4.5/§7: thermal-throttle state is read, not hardcoded false.
+        // A cooling device with cur_state > 0 means the zone is throttled.
+        let (_d, sys) = fake_sys();
+        let zone = sys.join("/sys/class/thermal/thermal_zone0");
+        std::fs::create_dir_all(zone.join("cdev0")).unwrap();
+        std::fs::write(zone.join("cdev0/cur_state"), "3\n").unwrap();
+        let v = read_vitals(&sys);
+        let z0 = v
+            .temperatures
+            .iter()
+            .find(|z| z.zone == "thermal_zone0")
+            .unwrap();
+        assert!(z0.throttled, "active cooling device → throttled");
+
+        // cur_state 0 → not throttled.
+        std::fs::write(zone.join("cdev0/cur_state"), "0\n").unwrap();
+        let v = read_vitals(&sys);
+        let z0 = v
+            .temperatures
+            .iter()
+            .find(|z| z.zone == "thermal_zone0")
+            .unwrap();
+        assert!(!z0.throttled);
+    }
+
+    #[test]
+    fn boot_info_optional_on_fake_sysroot() {
+        // Fake sysroot has no journal → boot_count None; last-boot reason is
+        // read from the webconfig dir only if an MCU daemon wrote it.
+        let (_d, sys) = fake_sys();
+        let v = read_vitals(&sys);
+        assert_eq!(v.boot_count, None);
+        assert_eq!(v.last_boot_reason, None);
+
+        // When the platform reports a reason, it surfaces.
+        std::fs::create_dir_all(sys.webconfig_dir()).unwrap();
+        std::fs::write(sys.webconfig_dir().join("last-boot-reason"), "watchdog\n").unwrap();
+        let v = read_vitals(&sys);
+        assert_eq!(v.last_boot_reason.as_deref(), Some("watchdog"));
     }
 }
