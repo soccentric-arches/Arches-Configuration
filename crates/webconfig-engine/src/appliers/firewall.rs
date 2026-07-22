@@ -32,6 +32,7 @@ pub fn service_port(id: &str) -> Option<(u16, &'static str)> {
         .map(|(_, _, p, proto)| (*p, *proto))
 }
 
+#[derive(Debug)]
 pub struct FirewallApplier {
     backup: Mutex<Option<FileBackup>>,
 }

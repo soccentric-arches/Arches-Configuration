@@ -15,6 +15,7 @@ use crate::store::io::CanInterface;
 use crate::store::Config;
 use crate::sysroot::Sysroot;
 
+#[derive(Debug)]
 pub struct CanApplier {
     backups: Mutex<Vec<FileBackup>>,
 }

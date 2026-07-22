@@ -2299,6 +2299,8 @@ dependencies = [
  "hex",
  "http",
  "http-body-util",
+ "hyper",
+ "hyper-util",
  "rcgen",
  "rustls",
  "rustls-pemfile",

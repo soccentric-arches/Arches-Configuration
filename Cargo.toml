@@ -32,6 +32,11 @@ authors = ["SoCcentric IV&V"]
 axum = { version = "0.7", default-features = false, features = ["http1", "http2", "json", "original-uri", "query", "macros", "tokio"] }
 tokio = { version = "1.36", default-features = false, features = ["rt", "macros", "net", "signal", "sync", "time", "io-util", "fs"] }
 tower = { version = "0.4", default-features = false, features = ["util"] }
+# Low-level TLS connection serving (spec §4.8: manual TlsAcceptor loop feeding
+# accepted streams to the axum router, since `axum::serve` only takes a bare
+# TcpListener). Mirrors axum's own internal `serve()` implementation.
+hyper = { version = "1", default-features = false }
+hyper-util = { version = "0.1", default-features = false, features = ["server-auto", "tokio", "service"] }
 tower-http = { version = "0.5", default-features = false, features = ["fs", "trace", "compression-gzip", "cors"] }
 tower-sessions = { version = "0.10", default-features = false, features = ["axum-core"] }
 

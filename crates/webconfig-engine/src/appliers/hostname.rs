@@ -15,6 +15,7 @@ use crate::applier::{run_cmd, Applier, ApplyError, ApplyOutcome, FileBackup};
 use crate::store::Config;
 use crate::sysroot::Sysroot;
 
+#[derive(Debug)]
 pub struct HostnameApplier {
     last_backup: Mutex<Option<FileBackup>>,
     last_hostname: Mutex<Option<String>>,

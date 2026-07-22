@@ -24,8 +24,12 @@ mod tests;
 
 use std::sync::Arc;
 
+use hyper_util::rt::{TokioExecutor, TokioIo};
+use hyper_util::server::conn::auto::Builder as ConnBuilder;
+use hyper_util::service::TowerToHyperService;
 use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
+use tower::ServiceExt as _;
 use tracing_subscriber::EnvFilter;
 use webconfig_engine::alert::{AlertEngine, AlertHistory};
 use webconfig_engine::audit::AuditLog;
@@ -122,9 +126,22 @@ async fn main() -> anyhow::Result<()> {
         let acceptor = acceptor.clone();
         let app = app.clone();
         tokio::spawn(async move {
-            if let Ok(tls) = acceptor.accept(stream).await {
-                let _ = axum::serve(tls, app).await;
-            }
+            let Ok(tls) = acceptor.accept(stream).await else {
+                return;
+            };
+            // `axum::serve` only accepts a bare `TcpListener`; since the TLS
+            // handshake already happened above, we drive this one connection
+            // through hyper directly (same glue axum's own serve() uses).
+            let io = TokioIo::new(tls);
+            let tower_service = app
+                .clone()
+                .map_request(|req: http::Request<hyper::body::Incoming>| {
+                    req.map(axum::body::Body::new)
+                });
+            let hyper_service = TowerToHyperService::new(tower_service);
+            let _ = ConnBuilder::new(TokioExecutor::new())
+                .serve_connection_with_upgrades(io, hyper_service)
+                .await;
         });
     }
 }

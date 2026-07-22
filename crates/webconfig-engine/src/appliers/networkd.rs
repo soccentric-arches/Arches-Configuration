@@ -22,6 +22,7 @@ use crate::applier::{Applier, ApplyError, ApplyOutcome, FileBackup};
 use crate::store::Config;
 use crate::sysroot::Sysroot;
 
+#[derive(Debug)]
 pub struct NetworkdApplier {
     /// Per-interface file backups, so rollback restores the prior `.network`
     /// files (and removes ones we created fresh).

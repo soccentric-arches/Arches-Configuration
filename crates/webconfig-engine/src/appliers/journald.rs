@@ -12,6 +12,7 @@ use crate::applier::{run_cmd, Applier, ApplyError, ApplyOutcome, FileBackup};
 use crate::store::Config;
 use crate::sysroot::Sysroot;
 
+#[derive(Debug)]
 pub struct JournaldApplier {
     backup: Mutex<Option<FileBackup>>,
 }
@@ -142,11 +143,13 @@ mod tests {
     fn rejects_bad_storage() {
         let a = JournaldApplier::new();
         let sys = Sysroot::at("/tmp/never");
-        let mut c = Config::default();
-        c.logs = LogsConfig {
-            storage: "ramdisk".into(),
-            max_size_bytes: 0,
-            remote_syslog: None,
+        let c = Config {
+            logs: LogsConfig {
+                storage: "ramdisk".into(),
+                max_size_bytes: 0,
+                remote_syslog: None,
+            },
+            ..Default::default()
         };
         assert!(a.validate(&sys, &c).is_err());
     }

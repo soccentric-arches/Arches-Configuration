@@ -182,6 +182,7 @@ fn ts_from_secs(secs: u64) -> String {
 }
 
 /// A bounded ring-buffer history file (spec §4.7).
+#[derive(Debug)]
 pub struct AlertHistory {
     path: std::path::PathBuf,
     max_entries: usize,

@@ -5,6 +5,7 @@
 //!   - `timedatectl set-ntp true|false`
 //!   - `timedatectl set-time 'YYYY-MM-DD HH:MM:SS'` (air-gapped sites; only
 //!     when NTP is off)
+//!
 //! After a manual set, where an RTC is present, `timedatectl` syncs the RTC
 //! automatically; the manifest `has_rtc` flag drives the UI warning banner
 //! when no RTC and NTP is unreachable (spec §4.1).
@@ -19,11 +20,12 @@ use crate::applier::{run_cmd, Applier, ApplyError, ApplyOutcome};
 use crate::store::Config;
 use crate::sysroot::Sysroot;
 
+#[derive(Debug)]
 pub struct TimeApplier {
     last: Mutex<Option<TimeSnapshot>>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct TimeSnapshot {
     timezone: Option<String>,
     ntp: Option<bool>,
