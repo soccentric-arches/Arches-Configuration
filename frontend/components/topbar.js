@@ -19,14 +19,15 @@ export function Topbar({ onToggleSidebar, onOpenPalette }) {
   mobileToggle.classList.add('sidebar-mobile-toggle');
 
   const searchTrigger = el('button', {
-    type: 'button', class: 'btn btn-outline btn-sm search-trigger', onclick: onOpenPalette,
-  }, el('span', { class: 'row' }, icon('search', { size: 14 }), el('span', { class: 'search-trigger-label' }, 'Search…')),
-    el('span', { class: 'cmdk-hint-kbd' }, '⌘K'));
+    type: 'button', class: 'btn btn-outline search-trigger', onclick: onOpenPalette,
+    'aria-label': 'Search pages and actions',
+  }, el('span', { class: 'search-trigger-copy' }, icon('search', { size: 15 }), el('span', { class: 'search-trigger-label' }, 'Search pages and actions')),
+    el('kbd', { class: 'cmdk-hint-kbd' }, 'Ctrl K'));
 
   const element = el('div', { class: 'topbar' },
     desktopToggle,
     mobileToggle,
-    title,
+    el('div', { class: 'topbar-heading' }, title),
     badge,
     el('div', { class: 'spacer' }),
     searchTrigger,

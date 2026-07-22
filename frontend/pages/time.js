@@ -1,11 +1,10 @@
 // Base clock settings page: timezone and manual time for air-gapped systems.
-// The NTP *server list* lives on the dedicated NTP page; this page owns the
-// timezone, the manual datetime, and the PTP / GPS sync-source toggles.
+// NTP, PTP, and GPS/GNSS have dedicated pages; this page owns the timezone and
+// manual datetime used for air-gapped systems.
 
 import { el } from '../core/dom.js';
 import { Card } from '../components/card.js';
 import { Field } from '../components/field.js';
-import { Toggle } from '../components/toggle.js';
 import { Button } from '../components/button.js';
 import { ActionList, ActionRow } from '../components/action-row.js';
 
@@ -57,13 +56,6 @@ export async function render(api, store) {
         options: timezoneOptions,
         help: 'Choose a US timezone for displayed times and scheduled operations.',
     });
-    const ntpEnabled = Toggle({ label: 'NTP enabled', checked: !!t.ntp_enabled });
-    const ptpEnabled = Toggle({ label: 'PTP enabled (mutually exclusive with NTP)', checked: !!t.ptp_enabled });
-    const gpsEnabled = Toggle({ label: 'GPS/GNSS lock (gpsd/chrony)', checked: !!t.gps_enabled });
-    const ptpInterface = Field({ label: 'PTP interface', value: t.ptp_interface, placeholder: 'e.g. eth0', help: 'The network interface carrying PTP traffic.' });
-    const ptpDomain = Field({ label: 'PTP domain', type: 'number', value: t.ptp_domain, min: 0, max: 127, help: 'PTP domain number (0–127).' });
-    const gpsDevice = Field({ label: 'GPS device', value: t.gps_device, placeholder: 'e.g. /dev/ttyACM0', help: 'Serial device exposing the GPS/GNSS receiver.' });
-    const gpsPpsDevice = Field({ label: 'GPS PPS device', value: t.gps_pps_device, placeholder: 'e.g. /dev/pps0', help: 'PPS device for the GPS pulse-per-second lock.' });
     const manualDt = Field({
         label: 'Manual datetime (air-gapped)',
         value: t.manual_datetime,
@@ -71,21 +63,14 @@ export async function render(api, store) {
     });
 
     async function save() {
-        const domain = ptpDomain.get();
         await api.put('/api/v1/system', {
             hostname: cfg.hostname,
             asset_tag: cfg.asset_tag,
             hardware_revision: cfg.hardware_revision,
             serial_number: cfg.serial_number,
             time: {
+                ...t,
                 timezone: timezone.get() || null,
-                ntp_enabled: ntpEnabled.get(),
-                ptp_enabled: ptpEnabled.get(),
-                ptp_interface: ptpInterface.get() || null,
-                ptp_domain: domain === '' ? null : Number(domain),
-                gps_enabled: gpsEnabled.get(),
-                gps_device: gpsDevice.get() || null,
-                gps_pps_device: gpsPpsDevice.get() || null,
                 manual_datetime: manualDt.get() || null,
             },
             ssh: cfg.ssh,
@@ -101,22 +86,15 @@ export async function render(api, store) {
 
     const timeCard = Card({
         title: 'Time and synchronization',
-        subtitle: 'Keep the device clock accurate with NTP, PTP, or a GPS/GNSS lock.',
+        subtitle: 'Set the timezone or adjust the clock manually for air-gapped systems.',
         footer: ActionList(
             ActionRow('Apply to device', 'Apply the timezone and clock synchronization settings now.', Button({ variant: 'outline', onClick: apply }, 'Apply')),
             ActionRow('Save settings', 'Store the time and synchronization settings for the next apply.', Button({ onClick: save }, 'Save'))),
-    }, el('div', { class: 'form-grid' },
-        timezone.wrap,
-        el('div', { class: 'toggle-stack' }, ntpEnabled.wrap, ptpEnabled.wrap, gpsEnabled.wrap),
-        ptpInterface.wrap,
-        ptpDomain.wrap,
-        gpsDevice.wrap,
-        gpsPpsDevice.wrap,
-        manualDt.wrap));
+    }, el('div', { class: 'form-grid' }, timezone.wrap, manualDt.wrap));
 
     return el('div', { class: 'time-page' },
         el('div', { class: 'page-header' },
             el('h1', {}, 'Clock'),
-            el('p', {}, 'Configure the timezone and set the clock manually for air-gapped systems.')),
+            el('p', {}, 'Configure the timezone and manual clock value. NTP, PTP, and GPS/GNSS have dedicated pages.')),
         timeCard);
 }

@@ -4,6 +4,7 @@
 import { el } from '../core/dom.js';
 import { Card } from '../components/card.js';
 import { Badge } from '../components/badge.js';
+import { Table } from '../components/table.js';
 
 function fmtBytes(bytes) {
     if (!bytes) return '0 B';
@@ -58,25 +59,45 @@ function renderInterfaces(network) {
     const live = network.live || [];
     if (!live.length) return el('div', { class: 'muted' }, 'No network interfaces reported.');
 
-    return el('div', { class: 'stack' }, ...live.map((iface) => {
+    const rows = live.map((iface) => {
         const config = configured.find(item => item.name === iface.name);
         const addresses = (iface.addresses && iface.addresses.length)
             ? iface.addresses
             : (config && config.address ? [`${config.address}${config.prefix ? `/${config.prefix}` : ''}`] : []);
-        return el('div', { class: 'field-row' },
-            el('div', {}, el('div', { class: 'field-label' }, iface.name), el('div', { class: 'field-help' }, 'Interface name and current link state.'), statusBadge(iface.operstate)),
-            el('div', {}, el('div', { class: 'field-label' }, 'IP addresses'), el('div', { class: 'field-help' }, 'Addresses assigned for network communication.'), el('div', {}, addresses.length ? addresses.join(', ') : '—')),
-            el('div', {}, el('div', { class: 'field-label' }, 'MAC'), el('div', { class: 'field-help' }, 'Hardware address used on the local network.'), el('div', {}, iface.mac || '—')),
-        );
-    }));
+        return [
+            el('strong', {}, iface.name),
+            statusBadge(iface.operstate),
+            addresses.length ? addresses.join(', ') : '—',
+            el('code', {}, iface.mac || '—'),
+        ];
+    });
+    return Table({ columns: ['Interface', 'State', 'IP addresses', 'MAC address'] }, rows).element;
+}
+
+function renderPhysicalDevices(usb, pci) {
+    const devices = [];
+    if (usb && usb.available === true) {
+        (usb.devices || []).forEach(device => devices.push([
+            'USB', el('code', {}, `${device.bus}:${device.device}`), el('code', {}, `${device.vendor_id}:${device.product_id}`), device.description || '—',
+        ]));
+    }
+    if (pci && pci.available === true) {
+        (pci.devices || []).forEach(device => devices.push([
+            'PCI', el('code', {}, device.address), el('code', {}, `${device.vendor_id}:${device.product_id}`), device.description || device.class || '—',
+        ]));
+    }
+    if (!devices.length) return el('div', { class: 'muted' }, 'No physical USB or PCI hardware reported.');
+    return Table({ columns: ['Bus', 'Address', 'Vendor / product', 'Hardware'] }, devices).element;
 }
 
 export async function render(api, store) {
-    const [config, info, vitals, network] = await Promise.all([
+    const [config, info, vitals, network, usb, pci] = await Promise.all([
         api.get('/api/v1/system'),
         api.get('/api/v1/system/info').catch(() => null),
         api.get('/api/v1/monitoring/vitals').catch(() => ({})),
         api.get('/api/v1/network').catch(() => ({ live: [], config: {} })),
+        api.get('/api/v1/io/usb').catch(() => null),
+        api.get('/api/v1/io/pci').catch(() => null),
     ]);
 
     const cpu = metric('CPU load (1m)', 'Average runnable work over the last minute; higher means more CPU demand.');
@@ -151,5 +172,6 @@ export async function render(api, store) {
         el('div', { class: 'card-grid overview-info-grid' }, identity, software),
         Card({ title: 'Storage status', subtitle: 'Mounted filesystems, capacity, and current usage.' }, renderStorage(vitals)),
         Card({ title: 'Network interfaces', subtitle: 'Live link state, addresses, and hardware identifiers.' }, renderInterfaces(network)),
+        Card({ title: 'Physical hardware', subtitle: 'Only devices returned by live USB and PCI discovery are shown.' }, renderPhysicalDevices(usb, pci)),
     );
 }

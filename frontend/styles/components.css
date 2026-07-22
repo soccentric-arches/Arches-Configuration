@@ -839,12 +839,37 @@ textarea.input {
   border: 1px solid var(--border);
   font-size: 11px;
   color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  white-space: nowrap;
 }
 
 .search-trigger {
-  width: 200px;
+  width: 248px;
+  height: 38px;
+  padding: 0 var(--space-3);
+  background: color-mix(in srgb, var(--card) 92%, var(--muted));
   color: var(--muted-foreground);
   justify-content: space-between;
+  box-shadow: var(--shadow-xs);
+  transition: background var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease), box-shadow var(--duration-fast) var(--ease), transform var(--duration-fast) var(--ease);
+}
+
+.search-trigger:hover {
+  background: var(--card);
+  border-color: var(--zinc-300);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
+}
+
+.search-trigger-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.search-trigger-copy svg {
+  flex: 0 0 auto;
 }
 
 @media (max-width: 880px) {
@@ -855,6 +880,15 @@ textarea.input {
   .search-trigger .search-trigger-label,
   .search-trigger .cmdk-hint-kbd {
     display: none;
+  }
+
+  .search-trigger {
+    width: 38px;
+    padding: 0;
+  }
+
+  .search-trigger-copy {
+    margin: 0 auto;
   }
 }
 
