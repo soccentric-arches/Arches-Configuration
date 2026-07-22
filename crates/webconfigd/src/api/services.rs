@@ -161,7 +161,7 @@ pub async fn put_mqtt(
 ) -> ApiResult<Json<MqttConfig>> {
     role.require_mutate_apps("services.mqtt.put")?;
     let user = username(&session).await;
-    let cfg = app.engine.update(|c| {
+    let cfg = app.engine.update(move |c| {
         c.services.mqtt = req.clone();
         Ok(())
     })?;
@@ -230,8 +230,10 @@ pub async fn put_app_settings(
 ) -> ApiResult<Json<serde_json::Value>> {
     role.require_mutate_apps("apps.settings.put")?;
     let user = username(&session).await;
-    app.engine.update(|c| {
-        c.app_settings.insert(id.clone(), req.clone());
+    let id_for_update = id.clone();
+    let req_for_update = req.clone();
+    app.engine.update(move |c| {
+        c.app_settings.insert(id_for_update, req_for_update);
         Ok(())
     })?;
     audit(&app, &user, "apps.settings.put", Some(id.clone()));

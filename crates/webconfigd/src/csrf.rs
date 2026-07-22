@@ -10,7 +10,7 @@
 use axum::extract::Request;
 use axum::http::Method;
 use axum::middleware::Next;
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use tower_sessions::Session;
 
 use crate::auth::csrf_token_from_session;

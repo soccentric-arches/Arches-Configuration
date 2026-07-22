@@ -26,7 +26,7 @@ pub async fn put(
 ) -> ApiResult<Json<SecurityConfig>> {
     role.require_admin("security.put")?;
     let user = username(&session).await;
-    let cfg = app.engine.update(|c| {
+    let cfg = app.engine.update(move |c| {
         c.security = req.clone();
         Ok(())
     })?;

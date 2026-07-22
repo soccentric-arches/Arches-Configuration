@@ -5,7 +5,8 @@ use axum::middleware::{from_fn, from_fn_with_state};
 use axum::routing::{delete, get, post, put};
 use axum::Router;
 use tower_http::services::{ServeDir, ServeFile};
-use tower_sessions::{MemoryStore, SameSite, SessionManagerLayer};
+use tower_sessions::cookie::SameSite;
+use tower_sessions::{MemoryStore, SessionManagerLayer};
 
 use crate::api::{
     alerts, io, logs, meta, monitoring, network, security, services, system, updates,

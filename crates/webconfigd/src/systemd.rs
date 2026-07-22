@@ -149,6 +149,7 @@ impl SystemdClient for ZbusSystemd {
             .await
             .map_err(|e| SystemdError::Dbus(e.to_string()))?;
         mgr.start_unit(unit, "replace")
+            .await
             .map_err(|e| SystemdError::Dbus(e.to_string()))?;
         Ok(())
     }
@@ -157,6 +158,7 @@ impl SystemdClient for ZbusSystemd {
             .await
             .map_err(|e| SystemdError::Dbus(e.to_string()))?;
         mgr.stop_unit(unit, "replace")
+            .await
             .map_err(|e| SystemdError::Dbus(e.to_string()))?;
         Ok(())
     }
@@ -165,6 +167,7 @@ impl SystemdClient for ZbusSystemd {
             .await
             .map_err(|e| SystemdError::Dbus(e.to_string()))?;
         mgr.restart_unit(unit, "replace")
+            .await
             .map_err(|e| SystemdError::Dbus(e.to_string()))?;
         Ok(())
     }

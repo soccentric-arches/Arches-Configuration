@@ -49,15 +49,15 @@ pub fn ensure_self_signed(
         p.distinguished_name = rcgen::DistinguishedName::new();
         p.distinguished_name
             .push(rcgen::DnType::CommonName, hostname.unwrap_or("webconfig"));
-        p.self_signed = true;
-        p.alg = &rcgen::PKCS_ECDSA_P256_SHA256;
         p
     };
+    let key_pair = rcgen::KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256)
+        .map_err(|e| TlsError::Rcgen(e.to_string()))?;
     let cert = params
-        .self_signed()
+        .self_signed(&key_pair)
         .map_err(|e| TlsError::Rcgen(e.to_string()))?;
     std::fs::write(cert_path, cert.pem())?;
-    std::fs::write(key_path, cert.serialize_private_key_pem())?;
+    std::fs::write(key_path, key_pair.serialize_pem())?;
     tracing::info!("generated self-signed TLS cert at {}", cert_path.display());
     Ok(())
 }
@@ -99,14 +99,14 @@ pub fn generate_csr(cn: &str) -> Result<(String, String), TlsError> {
     params
         .distinguished_name
         .push(rcgen::DnType::CommonName, cn);
-    params.alg = &rcgen::PKCS_ECDSA_P256_SHA256;
-    let cert = params
-        .self_signed()
+    let key_pair = rcgen::KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256)
         .map_err(|e| TlsError::Rcgen(e.to_string()))?;
-    let csr = cert
-        .serialize_request_pem()
+    let csr = params
+        .serialize_request(&key_pair)
+        .map_err(|e| TlsError::Rcgen(e.to_string()))?
+        .pem()
         .map_err(|e| TlsError::Rcgen(e.to_string()))?;
-    let key = cert.serialize_private_key_pem();
+    let key = key_pair.serialize_pem();
     Ok((csr, key))
 }
 

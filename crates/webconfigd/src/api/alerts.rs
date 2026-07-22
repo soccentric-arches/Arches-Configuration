@@ -41,7 +41,7 @@ pub async fn put(
         validate_rule(r)?;
     }
     let user = username(&session).await;
-    let cfg = app.engine.update(|c| {
+    let cfg = app.engine.update(move |c| {
         c.alerts = req.clone();
         Ok(())
     })?;

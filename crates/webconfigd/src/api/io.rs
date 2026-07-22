@@ -59,7 +59,7 @@ pub async fn put(
         }
     }
     let user = username(&session).await;
-    let cfg = app.engine.update(|c| {
+    let cfg = app.engine.update(move |c| {
         c.io = req.clone();
         Ok(())
     })?;

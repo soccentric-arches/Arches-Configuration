@@ -97,8 +97,8 @@ pub async fn login(
     match users.authenticate(&req.username, &req.password) {
         Ok(role) => {
             throttle.record_success(&req.username).await;
-            session.insert(SK_USER, &req.username).ok();
-            session.insert(SK_ROLE, role.as_str()).ok();
+            session.insert(SK_USER, &req.username).await.ok();
+            session.insert(SK_ROLE, role.as_str()).await.ok();
             // CSRF token is minted by the csrf layer on the next GET /auth/whoami.
             Ok(Json(LoginResponse {
                 username: req.username,
@@ -114,14 +114,14 @@ pub async fn login(
 
 /// `POST /api/v1/auth/logout` (spec §4.1).
 pub async fn logout(session: Session) -> ApiResult<impl IntoResponse> {
-    session.clear().ok();
+    session.clear().await;
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
 /// `GET /api/v1/auth/whoami` — current user + role + CSRF token (spec §4.8).
 pub async fn whoami(State(app): State<AppState>, session: Session) -> ApiResult<impl IntoResponse> {
-    let username: Option<String> = session.get(SK_USER).ok().flatten();
-    let role: Option<String> = session.get(SK_ROLE).ok().flatten();
+    let username: Option<String> = session.get(SK_USER).await.ok().flatten();
+    let role: Option<String> = session.get(SK_ROLE).await.ok().flatten();
     let csrf = csrf_token_from_session(&session).await;
     let first_boot = app
         .load_users()
@@ -163,8 +163,8 @@ pub async fn first_boot(
         .map_err(|e| ApiError::BadRequest(e.to_string()))?;
     app.save_users(&users).map_err(|_| ApiError::Internal)?;
 
-    session.insert(SK_USER, &req.username).ok();
-    session.insert(SK_ROLE, Role::Admin.as_str()).ok();
+    session.insert(SK_USER, &req.username).await.ok();
+    session.insert(SK_ROLE, Role::Admin.as_str()).await.ok();
 
     app.audit
         .append(&webconfig_engine::audit::AuditEntry {
@@ -194,8 +194,8 @@ pub async fn require_auth(
     // First-boot gate: if no admin exists yet, only /auth/first-boot and
     // /auth/whoami are usable. The router mounts this middleware on the
     // protected sub-router only, so first-boot is reachable.
-    let username: Option<String> = session.get(SK_USER).ok().flatten();
-    let role: Option<String> = session.get(SK_ROLE).ok().flatten();
+    let username: Option<String> = session.get(SK_USER).await.ok().flatten();
+    let role: Option<String> = session.get(SK_ROLE).await.ok().flatten();
 
     if username.is_none() {
         return ApiError::Unauthorized.into_response();
@@ -205,15 +205,15 @@ pub async fn require_auth(
     // expiry via the session store TTL; idle timeout is enforced here by
     // checking the last-seen extension and refreshing it.
     let idle = idle_timeout_secs(&app);
-    let last_seen: Option<u64> = session.get("last_seen").ok().flatten();
+    let last_seen: Option<u64> = session.get("last_seen").await.ok().flatten();
     let now = now_secs();
     if let Some(ls) = last_seen {
         if now.saturating_sub(ls) > idle {
-            session.clear().ok();
+            session.clear().await;
             return ApiError::Unauthorized.into_response();
         }
     }
-    session.insert("last_seen", now).ok();
+    session.insert("last_seen", now).await.ok();
 
     if let Some(r) = role {
         if let Ok(role) = webconfig_engine::users::Role::parse(&r) {
@@ -285,24 +285,10 @@ fn now_iso() -> String {
 /// CSRF token derivation from the session id (spec §4.8). tower-sessions
 /// exposes a stable session id we hash into a token; the csrf middleware
 /// compares the `X-CSRF-Token` header against this value on mutating routes.
-async fn csrf_token_from_session(session: &Session) -> String {
-    let id = session.get_session_id();
+pub(crate) async fn csrf_token_from_session(session: &Session) -> String {
+    let id = session.id().unwrap_or_default();
     use sha2::Digest;
     let mut h = sha2::Sha256::default();
     h.update(id.to_string().as_bytes());
     hex::encode(h.finalize())
-}
-
-// tower-sessions Session::get_session_id exists in 0.10 as a method returning
-// SessionId; if the exact accessor differs, the trait import below keeps the
-// call site compatible.
-use tower_sessions::SessionId;
-trait SessionIdAccess {
-    fn get_session_id(&self) -> SessionId;
-}
-impl SessionIdAccess for Session {
-    fn get_session_id(&self) -> SessionId {
-        // `Session::id()` is the stable accessor across tower-sessions 0.10.
-        self.id()
-    }
 }

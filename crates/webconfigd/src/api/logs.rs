@@ -79,7 +79,7 @@ pub async fn put_config(
 ) -> ApiResult<Json<LogsConfig>> {
     role.require_admin("logs.put")?;
     let user = username(&session).await;
-    let cfg = app.engine.update(|c| {
+    let cfg = app.engine.update(move |c| {
         c.logs = req.clone();
         Ok(())
     })?;

@@ -28,7 +28,7 @@ pub async fn put(
 ) -> ApiResult<Json<serde_json::Value>> {
     role.require_admin("system.put")?;
     let user = username(&session).await;
-    let cfg = app.engine.update(|c| {
+    let cfg = app.engine.update(move |c| {
         c.system = req.clone();
         Ok(())
     })?;
