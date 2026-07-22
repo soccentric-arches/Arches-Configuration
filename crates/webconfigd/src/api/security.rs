@@ -89,7 +89,7 @@ pub async fn generate_csr(
     role.require_admin("security.csr")?;
     let (csr, key) =
         crate::tls::generate_csr(&req.cn).map_err(|e| ApiError::BadRequest(e.to_string()))?;
-    audit(&app, &"", "security.csr", Some(req.cn.clone()));
+    audit(&app, "", "security.csr", Some(req.cn.clone()));
     Ok(Json(serde_json::json!({ "csr": csr, "private_key": key })))
 }
 

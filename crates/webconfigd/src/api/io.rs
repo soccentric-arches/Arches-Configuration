@@ -36,13 +36,11 @@ pub async fn put(
     // the same non-unassigned owner when the owner is a singleton like console.
     let mut owners = std::collections::HashSet::new();
     for s in &req.serial {
-        if s.owner != "unassigned" {
-            if !owners.insert(s.owner.clone()) {
-                return Err(ApiError::Conflict(format!(
-                    "serial owner {} claimed twice",
-                    s.owner
-                )));
-            }
+        if s.owner != "unassigned" && !owners.insert(s.owner.clone()) {
+            return Err(ApiError::Conflict(format!(
+                "serial owner {} claimed twice",
+                s.owner
+            )));
         }
         // Reject ports not in the manifest.
         if !app.manifest.has(&s.device.replace("/dev/", ""))

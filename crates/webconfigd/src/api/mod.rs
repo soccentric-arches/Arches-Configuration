@@ -16,10 +16,8 @@ pub mod services;
 pub mod system;
 pub mod updates;
 
-use axum::extract::State;
 use webconfig_engine::audit::AuditEntry;
 
-use crate::auth::AuthRole;
 use crate::error::ApiResult;
 use crate::state::AppState;
 
@@ -46,13 +44,6 @@ pub async fn username(session: &tower_sessions::Session) -> String {
         .ok()
         .flatten()
         .unwrap_or_else(|| "unknown".to_string())
-}
-
-/// Reusable "admin required" gate for handlers that take a role + session.
-pub fn require_admin(role: &AuthRole, app: &AppState, user: &str, action: &str) -> ApiResult<()> {
-    role.require_admin(action)?;
-    audit(app, user, action, None);
-    Ok(())
 }
 
 fn now_iso() -> String {

@@ -12,7 +12,6 @@ use std::sync::Arc;
 
 use axum::extract::Request;
 use axum::extract::State;
-use axum::http::StatusCode;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
@@ -20,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tower_sessions::Session;
 
-use webconfig_engine::users::{Role, UserStore};
+use webconfig_engine::users::Role;
 
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;

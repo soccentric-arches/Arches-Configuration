@@ -13,6 +13,7 @@ use crate::applier::{run_cmd, Applier, ApplyError, ApplyOutcome, FileBackup};
 use crate::store::Config;
 use crate::sysroot::Sysroot;
 
+#[derive(Debug)]
 pub struct WireGuardApplier {
     backup: Mutex<Option<FileBackup>>,
 }

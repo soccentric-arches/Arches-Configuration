@@ -6,7 +6,7 @@ use axum::Json;
 use tower_sessions::Session;
 use webconfig_engine::store::logs::LogsConfig;
 
-use crate::api::{apply_and_audit, audit, username};
+use crate::api::{apply_and_audit, username};
 use crate::auth::AuthRole;
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;

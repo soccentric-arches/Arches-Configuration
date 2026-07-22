@@ -133,11 +133,11 @@ async fn main() -> anyhow::Result<()> {
             // handshake already happened above, we drive this one connection
             // through hyper directly (same glue axum's own serve() uses).
             let io = TokioIo::new(tls);
-            let tower_service = app
-                .clone()
-                .map_request(|req: http::Request<hyper::body::Incoming>| {
-                    req.map(axum::body::Body::new)
-                });
+            let tower_service =
+                app.clone()
+                    .map_request(|req: http::Request<hyper::body::Incoming>| {
+                        req.map(axum::body::Body::new)
+                    });
             let hyper_service = TowerToHyperService::new(tower_service);
             let _ = ConnBuilder::new(TokioExecutor::new())
                 .serve_connection_with_upgrades(io, hyper_service)

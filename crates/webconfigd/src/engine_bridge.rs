@@ -12,7 +12,7 @@
 use std::sync::Arc;
 
 use tokio::sync::Mutex;
-use tokio::time::{timeout, Duration};
+use tokio::time::Duration;
 
 use webconfig_engine::appliers;
 use webconfig_engine::{Applier, ApplyOutcome, Config, ConfigStore, Sysroot};
@@ -106,7 +106,7 @@ impl EngineBridge {
             let a = appliers
                 .iter()
                 .find(|x| x.id() == applier_id)
-                .ok_or_else(|| ApiError::NotFound)?;
+                .ok_or(ApiError::NotFound)?;
             a.validate(&sys, &cfg).map_err(Into::into)
         })
         .await
@@ -126,7 +126,7 @@ impl EngineBridge {
             let a = appliers
                 .iter()
                 .find(|x| x.id() == applier_id_for_task)
-                .ok_or_else(|| ApiError::NotFound)?;
+                .ok_or(ApiError::NotFound)?;
             a.apply(&sys, &cfg).map_err(Into::into)
         })
         .await
@@ -156,7 +156,7 @@ impl EngineBridge {
             let a = appliers
                 .iter()
                 .find(|x| x.id() == applier_id)
-                .ok_or_else(|| ApiError::NotFound)?;
+                .ok_or(ApiError::NotFound)?;
             a.rollback(&sys).map_err(Into::into)
         })
         .await

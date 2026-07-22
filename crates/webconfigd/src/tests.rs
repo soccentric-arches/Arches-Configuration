@@ -67,7 +67,7 @@ async fn build_app() -> (axum::Router, tempfile::TempDir) {
     };
 
     // Static dir: a tempdir is fine; API routes don't depend on it.
-    let static_dir = tempfile::tempdir().unwrap().into_path();
+    let static_dir = tempfile::tempdir().unwrap().keep();
     let router = crate::routes::build_router(state, static_dir);
     (router, dir)
 }
@@ -109,7 +109,7 @@ async fn send(
         .headers()
         .get("set-cookie")
         .and_then(|v| v.to_str().ok())
-        .map(|s| session_cookie(s));
+        .map(session_cookie);
     let text = body_text(resp.into_body()).await;
     (status, set_cookie, text)
 }

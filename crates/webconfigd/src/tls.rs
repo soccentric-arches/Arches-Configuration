@@ -69,18 +69,15 @@ pub fn server_config(cert_path: &Path, key_path: &Path) -> Result<ServerConfig, 
 
     let certs: Vec<CertificateDer<'static>> = rustls_pemfile::certs(&mut cert_pem.as_slice())
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| TlsError::Pem(e.to_string()))?
-        .into_iter()
-        .map(CertificateDer::from)
-        .collect();
+        .map_err(|e| TlsError::Pem(e.to_string()))?;
 
-    let key = rustls_pemfile::private_key(&mut key_pem.as_slice())
+    let key: PrivateKeyDer<'static> = rustls_pemfile::private_key(&mut key_pem.as_slice())
         .map_err(|e| TlsError::Pem(e.to_string()))?
         .ok_or_else(|| TlsError::Pem("no private key in pem".into()))?;
 
     let cfg = ServerConfig::builder()
         .with_no_client_auth()
-        .with_single_cert(certs, PrivateKeyDer::from(key))
+        .with_single_cert(certs, key)
         .map_err(|e| TlsError::Pem(e.to_string()))?;
     Ok(cfg)
 }
