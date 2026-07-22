@@ -90,7 +90,7 @@ export async function render(api, store) {
                 }
             }, 'Test connection')),
         ),
-    }, serverUrl.wrap, remoteEnabled.wrap, backupEnabled.wrap, restoreEnabled.wrap, connectionStatus);
+    }, serverUrl.wrap, el('div', { class: 'toggle-stack' }, remoteEnabled.wrap, backupEnabled.wrap, restoreEnabled.wrap), connectionStatus);
 
     return el('div', {},
         el('div', { class: 'page-header' }, el('h1', {}, 'Backup & Restore'), el('p', {}, 'Protect, inspect, and restore the device configuration.')),

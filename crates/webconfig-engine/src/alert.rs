@@ -269,6 +269,7 @@ mod tests {
     fn rule(id: &str, metric: &str, op: &str, thr: f64, dur: u64) -> AlertRule {
         AlertRule {
             id: id.into(),
+            enabled: true,
             metric: metric.into(),
             comparison: op.into(),
             threshold: thr,

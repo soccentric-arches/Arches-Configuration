@@ -16,12 +16,17 @@ export async function render(api, store) {
 
   const tableHost = el('div');
   function renderRules() {
-    const rows = rules.map((r, idx) => [
-      r.id, r.metric, r.comparison, String(r.threshold), String(r.duration_secs || 0), (r.actions || []).join(', '),
-      Button({ variant: 'link', size: 'sm', title: 'Remove this alert rule from the unsaved list', onClick: () => { rules.splice(idx, 1); renderRules(); } }, 'Delete'),
-    ]);
+    const rows = rules.map((r, idx) => {
+      const ruleEnabled = Toggle({ label: 'Enabled', checked: r.enabled !== false });
+      ruleEnabled.input.addEventListener('change', () => { r.enabled = ruleEnabled.get(); });
+      return [
+        r.id, r.metric, r.comparison, String(r.threshold), String(r.duration_secs || 0), (r.actions || []).join(', '),
+        ruleEnabled.wrap,
+        Button({ variant: 'link', size: 'sm', title: 'Remove this alert rule from the unsaved list', onClick: () => { rules.splice(idx, 1); renderRules(); } }, 'Delete'),
+      ];
+    });
     const content = rows.length
-      ? Table({ columns: ['ID', 'Metric', 'Op', 'Threshold', 'Hold (s)', 'Actions', ''] }, rows).element
+      ? Table({ columns: ['ID', 'Metric', 'Op', 'Threshold', 'Hold (s)', 'Actions', 'Enabled', ''] }, rows).element
       : EmptyState({ title: 'No alert rules yet' });
     tableHost.replaceChildren(content);
   }
@@ -39,7 +44,7 @@ export async function render(api, store) {
       variant: 'outline',
       onClick: () => {
         if (!id.get()) { store.toast('ID is required', 'error'); return; }
-        rules.push({ id: id.get(), metric: metric.get(), comparison: op.get(), threshold: Number(thr.get()), duration_secs: Number(dur.get()) || 0, actions: ['ui'] });
+        rules.push({ id: id.get(), enabled: true, metric: metric.get(), comparison: op.get(), threshold: Number(thr.get()), duration_secs: Number(dur.get()) || 0, actions: ['ui'] });
         renderRules();
         id.set(''); thr.set('85'); dur.set('60');
       },

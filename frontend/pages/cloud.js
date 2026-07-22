@@ -44,7 +44,7 @@ export async function render(api, store) {
                     store.toast('Cloud settings saved', 'success');
                 },
             }, 'Save settings'))),
-    }, el('div', { class: 'form-grid' }, enabled.wrap, host.wrap, port.wrap, user.wrap, pass.wrap, topic.wrap, tls.wrap));
+    }, el('div', { class: 'form-grid' }, el('div', { class: 'toggle-stack' }, enabled.wrap, tls.wrap), host.wrap, port.wrap, user.wrap, pass.wrap, topic.wrap));
 
     return el('div', {},
         el('div', { class: 'page-header' },

@@ -66,6 +66,6 @@ export async function render(api, store) {
         policyCard,
         appCard,
         legendCard,
-        rows.length ? rows.map(row => Card({ title: row.peripheral.human_name || row.peripheral.id, subtitle: row.peripheral.device }, row.enabled.wrap, row.initial.wrap, Button({ variant: 'outline', size: 'sm', onClick: async () => { const result = await api.post(`/api/v1/io/gpio/${encodeURIComponent(row.peripheral.id)}/toggle`, {}); store.toast(`${row.peripheral.id} → ${result.value}`, 'success'); } }, 'Toggle now'))) : EmptyState({ title: 'No board LEDs reported by this board' }),
+        rows.length ? rows.map(row => Card({ title: row.peripheral.human_name || row.peripheral.id, subtitle: row.peripheral.device }, el('div', { class: 'toggle-stack' }, row.enabled.wrap, row.initial.wrap), Button({ variant: 'outline', size: 'sm', onClick: async () => { const result = await api.post(`/api/v1/io/gpio/${encodeURIComponent(row.peripheral.id)}/toggle`, {}); store.toast(`${row.peripheral.id} → ${result.value}`, 'success'); } }, 'Toggle now'))) : EmptyState({ title: 'No board LEDs reported by this board' }),
         rows.length ? Card({ title: 'LED actions' }, ActionList(ActionRow('Save settings', 'Persist the startup state for each board LED.', Button({ onClick: save }, 'Save settings')))) : null);
 }

@@ -50,7 +50,7 @@ export async function render(api, store) {
           store.toast('Security config saved', 'success');
         },
       }, 'Save'))),
-  }, idle.wrap, plainHttp.wrap, wgEn.wrap, wgPort.wrap,
+  }, idle.wrap, plainHttp.wrap, el('div', { class: 'toggle-stack' }, wgEn.wrap), wgPort.wrap,
     el('div', { class: 'row' }, el('span', { class: 'muted', style: 'font-size:13px' }, 'WireGuard public key:'),
       wg.public_key ? el('code', { class: 'mono' }, wg.public_key) : Badge(wg.has_private_key ? 'key present, no peer' : 'not generated yet', 'neutral')));
 

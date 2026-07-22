@@ -1,5 +1,5 @@
 /* Design tokens — shadcn/ui-inspired light theme. Zinc neutral scale +
-   indigo accent. Every color/spacing/radius value used elsewhere in the
+  blue accent. Every color/spacing/radius value used elsewhere in the
    stylesheet is defined here so the whole theme can be retuned in one file. */
 
 :root {
@@ -26,12 +26,13 @@
   --popover-foreground: var(--zinc-900);
   --border: var(--zinc-200);
   --input: var(--zinc-200);
-  --ring: #6366f1;
+  --ring: #93c5fd;
 
-  /* Accent (indigo) */
-  --primary: #4f46e5;
+  /* Accent (blue) */
+  --primary: #2563eb;
   --primary-foreground: #ffffff;
-  --primary-hover: #4338ca;
+  --primary-hover: #1d4ed8;
+  --primary-light: #60a5fa;
   --secondary: var(--zinc-100);
   --secondary-foreground: var(--zinc-900);
   --secondary-hover: var(--zinc-200);
@@ -58,7 +59,7 @@
   --sidebar-border: var(--zinc-200);
   --sidebar-foreground: var(--zinc-700);
   --sidebar-muted: var(--zinc-500);
-  --sidebar-active-bg: #eef2ff;
+  --sidebar-active-bg: #eff6ff;
   --sidebar-active-foreground: var(--primary);
   --sidebar-hover-bg: var(--zinc-100);
 

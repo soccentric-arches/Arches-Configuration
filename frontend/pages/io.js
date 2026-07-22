@@ -18,6 +18,10 @@ export async function render(api, store) {
   const data = await api.get('/api/v1/io');
   const peripherals = (data.manifest || []).filter(p => p.kind !== 'mcu' && p.kind !== 'camera');
   const cfg = data.config || {};
+  const serialEnabled = Toggle({ label: 'Enable serial subsystem', checked: cfg.serial_enabled !== false });
+  const canEnabled = Toggle({ label: 'Enable CAN subsystem', checked: cfg.can_enabled !== false });
+  const gpioEnabled = Toggle({ label: 'Enable GPIO subsystem', checked: cfg.gpio_enabled !== false });
+  const camerasEnabled = Toggle({ label: 'Enable camera subsystem', checked: cfg.cameras_enabled !== false });
 
   // ---------- Overview grid ----------
   const overview = peripherals.length
@@ -55,7 +59,7 @@ export async function render(api, store) {
     const upOnBoot = Toggle({ label: 'Up on boot', checked: existing.up_on_boot !== false });
     canRows[p.device] = { enabled, bitrate, fd, dataBitrate, listenOnly, upOnBoot };
     return el('div', { class: 'card' }, el('div', { class: 'card-header' }, el('div', {}, el('h4', {}, p.human_name || p.device), el('div', { class: 'card-header-sub' }, 'CAN bus speed, mode, and startup settings.'))),
-      el('div', { class: 'card-body' }, enabled.wrap, bitrate.wrap, fd.wrap, dataBitrate.wrap, listenOnly.wrap, upOnBoot.wrap));
+      el('div', { class: 'card-body' }, el('div', { class: 'toggle-stack' }, enabled.wrap, fd.wrap, listenOnly.wrap, upOnBoot.wrap), bitrate.wrap, dataBitrate.wrap));
   })) : EmptyState({ title: 'No CAN interfaces on this board' });
   const canFooter = canPeripherals.length ? ActionList(ActionRow('Apply CAN', 'Apply the configured CAN bitrate, mode, and startup settings to the interfaces.', Button({
     variant: 'outline',
@@ -117,16 +121,17 @@ export async function render(api, store) {
       name: p.id, enabled: gpioRows[p.id].enabled.get(), direction: gpioRows[p.id].direction, active_low: gpioRows[p.id].activeLow,
       initial_state: gpioRows[p.id].direction === 'out' ? gpioRows[p.id].initial.get() : null,
     }));
-    await api.put('/api/v1/io', { serial, can, gpio, mcu: cfg.mcu || null, board_leds: cfg.board_leds || {} });
+    await api.put('/api/v1/io', { serial, serial_enabled: serialEnabled.get(), can, can_enabled: canEnabled.get(), gpio, gpio_enabled: gpioEnabled.get(), cameras: cfg.cameras || [], cameras_enabled: camerasEnabled.get(), mcu: cfg.mcu || null, board_leds: cfg.board_leds || {} });
     store.toast('Hardware configuration saved', 'success');
   }
 
   return el('div', {},
     el('div', { class: 'page-header' }, el('h1', {}, 'Hardware'), el('p', {}, 'Configure serial, CAN, GPIO, and I2C hardware from the board manifest.')),
     Card({ title: 'Board peripherals', subtitle: 'Manifest inventory for configurable serial, CAN, GPIO, and I2C hardware.' }, overview),
-    Card({ title: 'Serial', subtitle: 'Configure port speed, protocol mode, and ownership.' }, serialSection),
-    Card({ title: 'CAN', subtitle: 'Configure CAN bitrate, FD mode, listen-only behavior, and startup.', footer: canFooter }, canSection),
-    Card({ title: 'GPIO', subtitle: 'Configure output startup state and toggle output pins when supported.' }, gpioSection),
+    Card({ title: 'Serial', subtitle: 'Configure port speed, protocol mode, and ownership.' }, serialEnabled.wrap, serialSection),
+    Card({ title: 'CAN', subtitle: 'Configure CAN bitrate, FD mode, listen-only behavior, and startup.', footer: canFooter }, canEnabled.wrap, canSection),
+    Card({ title: 'GPIO', subtitle: 'Configure output startup state and toggle output pins when supported.' }, gpioEnabled.wrap, gpioSection),
+    Card({ title: 'Cameras', subtitle: 'Enable the camera subsystem before configuring individual cameras.' }, camerasEnabled.wrap),
     Card({ title: 'I2C', subtitle: 'Inspect buses and scan for connected device addresses.' }, i2cSection),
     panelSection,
     Card({ title: 'Hardware actions', subtitle: 'Save the edited hardware configuration as one device configuration.', },

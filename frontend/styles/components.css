@@ -15,6 +15,7 @@
   cursor: pointer;
   transition: background var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease), opacity var(--duration-fast) var(--ease);
   white-space: nowrap;
+  min-width: 112px;
   user-select: none;
 }
 
@@ -32,6 +33,7 @@
   height: 28px;
   padding: 0 var(--space-3);
   font-size: var(--text-xs);
+  min-width: 88px;
 }
 
 .btn-primary {
@@ -77,6 +79,7 @@
   color: var(--primary);
   height: auto;
   padding: 0;
+  min-width: 0;
 }
 
 .btn-link:hover:not(:disabled) {
@@ -106,12 +109,14 @@
   width: 34px;
   height: 34px;
   padding: 0;
+  min-width: 34px;
   border-radius: var(--radius-md);
 }
 
 .btn-icon.btn-sm {
   width: 28px;
   height: 28px;
+  min-width: 28px;
 }
 
 /* ---------- Card ---------- */
@@ -270,6 +275,12 @@ textarea.input {
 .form-grid>.field,
 .form-grid>.switch {
   min-width: 0;
+}
+
+.toggle-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }
 
 .form-actions {

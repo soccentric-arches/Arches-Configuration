@@ -274,6 +274,10 @@ pub mod network {
         pub bridges: Vec<serde_json::Value>,
         #[serde(default)]
         pub cellular: Vec<serde_json::Value>,
+        /// Optional 5G modem profile. Kept separate from the legacy cellular
+        /// schema slot so older persisted configurations remain readable.
+        #[serde(default)]
+        pub cellular_5g: FiveGConfig,
     }
 
     fn default_confirm_window() -> u64 {
@@ -320,6 +324,30 @@ pub mod network {
         pub priority: i32,
         #[serde(default)]
         pub hidden: bool,
+    }
+
+    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+    pub struct FiveGConfig {
+        #[serde(default)]
+        pub enabled: bool,
+        #[serde(default)]
+        pub modem: Option<String>,
+        #[serde(default)]
+        pub apn: Option<String>,
+        #[serde(default)]
+        pub pin: Option<String>,
+        #[serde(default)]
+        pub username: Option<String>,
+        #[serde(default)]
+        pub password: Option<String>,
+        #[serde(default)]
+        pub roaming: bool,
+        #[serde(default = "default_cellular_auto_connect")]
+        pub auto_connect: bool,
+    }
+
+    fn default_cellular_auto_connect() -> bool {
+        true
     }
 
     #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -509,6 +537,10 @@ pub mod logs {
 pub mod alerts {
     use serde::{Deserialize, Serialize};
 
+    fn default_enabled() -> bool {
+        true
+    }
+
     #[derive(Debug, Clone, Default, Serialize, Deserialize)]
     pub struct AlertsConfig {
         #[serde(default)]
@@ -526,6 +558,8 @@ pub mod alerts {
     #[derive(Debug, Clone, Default, Serialize, Deserialize)]
     pub struct AlertRule {
         pub id: String,
+        #[serde(default = "default_enabled")]
+        pub enabled: bool,
         pub metric: String,
         /// `>`, `<`, `==`, `!=`.
         pub comparison: String,
@@ -612,10 +646,20 @@ pub mod io {
     pub struct IoConfig {
         #[serde(default)]
         pub serial: Vec<SerialPort>,
+        #[serde(default = "default_enabled")]
+        pub serial_enabled: bool,
         #[serde(default)]
         pub can: Vec<CanInterface>,
+        #[serde(default = "default_enabled")]
+        pub can_enabled: bool,
         #[serde(default)]
         pub gpio: Vec<GpioPin>,
+        #[serde(default = "default_enabled")]
+        pub gpio_enabled: bool,
+        #[serde(default)]
+        pub cameras: Vec<CameraConfig>,
+        #[serde(default = "default_enabled")]
+        pub cameras_enabled: bool,
         #[serde(default)]
         pub mcu: Option<McuConfig>,
         #[serde(default)]
@@ -698,6 +742,13 @@ pub mod io {
         pub active_low: bool,
         #[serde(default)]
         pub initial_state: Option<bool>,
+    }
+
+    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+    pub struct CameraConfig {
+        pub name: String,
+        #[serde(default = "default_enabled")]
+        pub enabled: bool,
     }
 
     #[derive(Debug, Clone, Default, Serialize, Deserialize)]

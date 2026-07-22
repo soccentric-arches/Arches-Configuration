@@ -135,7 +135,7 @@ export async function render(api, store) {
         footer: ActionList(
             ActionRow('Apply to device', 'Apply the timezone and clock synchronization settings now.', Button({ variant: 'outline', onClick: apply }, 'Apply')),
             ActionRow('Save settings', 'Store the time and NTP settings for the next apply.', Button({ onClick: save }, 'Save'))),
-    }, el('div', { class: 'form-grid' }, timezone.wrap, ntpEnabled.wrap, ptpEnabled.wrap, ptpInterface.wrap, ptpDomain.wrap, gpsEnabled.wrap, gpsDevice.wrap, gpsPpsDevice.wrap, manualDt.wrap, ntpServers.wrap));
+    }, el('div', { class: 'form-grid' }, timezone.wrap, el('div', { class: 'toggle-stack' }, ntpEnabled.wrap, ptpEnabled.wrap, gpsEnabled.wrap), ptpInterface.wrap, ptpDomain.wrap, gpsDevice.wrap, gpsPpsDevice.wrap, manualDt.wrap, ntpServers.wrap));
 
     return el('div', { class: 'time-page' },
         el('div', { class: 'page-header' },

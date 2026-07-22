@@ -62,7 +62,7 @@ Base URL: `https://<device>:8443/api/v1`. All responses are JSON.
 | Method | Path | Role | Notes |
 |---|---|---|---|
 | GET | `/network` | any | `{config: NetworkConfig, live: [{name, mac, operstate}]}`. Interface config may include `mac_address` (`AA:BB:CC:DD:EE:FF`) to assign a persistent MAC through systemd-networkd. |
-| PUT | `/network` | **[admin]** | `NetworkConfig` → saved section (does not apply). |
+| PUT | `/network` | **[admin]** | `NetworkConfig` → saved section (does not apply). Wired links are in `interfaces`; Wi-Fi networks are in `wifi`; the optional 5G profile is in `cellular_5g` with `enabled`, modem, APN, SIM, credential, roaming, and auto-connect fields. |
 | POST | `/network/apply` | **[admin]** | apply networkd + firewall → `{provisional: bool, confirm_window_secs}`. Provisional ⇒ confirm or auto-rollback. |
 | POST | `/network/confirm` | **[admin]** | confirm the provisional change → `{confirmed}`. |
 | POST | `/network/rollback` | **[admin]** | roll back the provisional change. |
@@ -151,7 +151,7 @@ Base URL: `https://<device>:8443/api/v1`. All responses are JSON.
 | Method | Path | Role | Notes |
 |---|---|---|---|
 | GET | `/io` | any | `{manifest, config, tiles}`. `config.board_leds` contains system, OS, hardware, and optional application LED assignments. |
-| PUT | `/io` | **[admin]** | `IoConfig` (rejects serial not in manifest; owner-conflict guard). `board_leds` controls the automatic status policy. |
+| PUT | `/io` | **[admin]** | `IoConfig` (rejects serial not in manifest; owner-conflict guard). `serial_enabled`, `can_enabled`, `gpio_enabled`, and `cameras_enabled` gate their subsystem detail settings. Each serial, CAN, GPIO, and camera entry also has an `enabled` field. `board_leds` controls the automatic status policy. |
 | POST | `/io/can/apply` | **[admin]** | apply CAN. |
 | POST | `/io/gpio/:name/toggle` | **[op+]** | manifest-named pins only. |
 | POST | `/io/i2c/scan?bus=` | **[admin]** | `{bus, addresses}`. |
@@ -160,7 +160,8 @@ Base URL: `https://<device>:8443/api/v1`. All responses are JSON.
 | GET | `/io/platform-panel` | any | Zion FPGA / Joshua PRU / Arches cameras. |
 
 Feature configuration endpoints expose an explicit `enabled` field before their
-detail settings are applied. This includes MQTT cloud connectivity, alerting,
+detail settings are applied. Alert rules also carry their own `enabled` field.
+This includes MQTT cloud connectivity, alerting,
 firewall policy, OTA updates, and remote syslog. Existing firewall
 configurations default to enabled; the optional services default to disabled
 when no explicit state was previously stored.

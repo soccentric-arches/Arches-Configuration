@@ -45,12 +45,12 @@ export async function render(api, store) {
                 store.toast('Firmware staged', 'success');
             },
         }, 'Flash firmware'))),
-    }, enabled.wrap, settings, el('div', { class: 'field-row' }, version.wrap, signed.wrap));
+    }, el('div', { class: 'toggle-stack' }, enabled.wrap, signed.wrap), settings, version.wrap);
 
     const saveSettings = async () => {
         const config = data.config || {};
         await api.put('/api/v1/io', {
-            serial: config.serial || [], can: config.can || [], gpio: config.gpio || [],
+            serial: config.serial || [], can: config.can || [], gpio: config.gpio || [], cameras: config.cameras || [],
             mcu: { kind: mcuCfg.kind || 'stm32', enabled: enabled.get(), firmware_version: mcuCfg.firmware_version, settings: schemaForm ? schemaForm.getValue() : mcuCfg.settings || {} },
             board_leds: config.board_leds || {},
         });

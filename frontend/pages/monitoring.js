@@ -120,7 +120,7 @@ export async function render(api, store) {
         store.toast('Telemetry settings saved', 'success');
       }
     }, 'Save settings'))),
-  }, el('div', { class: 'form-grid' }, telemetryEnabled.wrap, telemetryInterval.wrap, telemetryDiagnostics.wrap));
+  }, el('div', { class: 'form-grid' }, el('div', { class: 'toggle-stack' }, telemetryEnabled.wrap, telemetryDiagnostics.wrap), telemetryInterval.wrap));
 
   return el('div', {},
     el('div', { class: 'page-header row', style: 'justify-content:space-between' },

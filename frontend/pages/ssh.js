@@ -26,5 +26,5 @@ export async function render(api, store) {
                         store.toast('SSH settings saved', 'success');
                     }
                 }, 'Save'))),
-        }, el('div', { class: 'form-grid' }, sshd.wrap, getty.wrap, authKeys.wrap)));
+        }, el('div', { class: 'form-grid' }, el('div', { class: 'toggle-stack' }, sshd.wrap, getty.wrap), authKeys.wrap)));
 }

@@ -20,7 +20,9 @@ export const NAV = [
   { id: 'power', label: 'Power', icon: 'power', category: 'System', key: 'p', loader: () => import('./power.js') },
 
   // Connectivity: network links and connected services.
-  { id: 'network', label: 'Networking', icon: 'network', category: 'Connectivity', key: 'n', loader: () => import('./network.js') },
+  { id: 'wired', label: 'Wired', icon: 'network', category: 'Connectivity', key: 'n', loader: () => import('./wired.js') },
+  { id: 'wireless', label: 'Wireless', icon: 'network', category: 'Connectivity', key: 'h', loader: () => import('./wireless.js') },
+  { id: '5g', label: '5G', icon: 'network', category: 'Connectivity', key: '5', loader: () => import('./fiveg.js') },
   { id: 'services', label: 'Services', icon: 'services', category: 'Connectivity', key: 'v', loader: () => import('./services.js') },
   { id: 'cloud', label: 'Cloud', icon: 'cloud', category: 'Connectivity', key: 'c', loader: () => import('./cloud.js') },
 
