@@ -43,8 +43,41 @@ export async function render(api, store) {
       }, 'Install bundle'))),
   }, path.wrap);
 
+  // ---------- Confirm + Diagnostics (spec §4.4) ----------
+  // A freshly booted image must be confirmed (health-check or manual) or the
+  // bootloader rolls it back after N failed boots. The diagnostics bundle is a
+  // tarball-ready snapshot: journal excerpt, redacted config, slots, dmesg,
+  // network state, alert history, audit log.
+  const confirmCard = Card({
+    title: 'Confirm & diagnose',
+    subtitle: 'Mark the booted image good (cancel rollback), or collect a diagnostics bundle.',
+    footer: ActionList(
+      ActionRow('Confirm booted image', 'Mark the running slot good so the bootloader does not roll it back after failed boots.', Button({
+        variant: 'outline',
+        onClick: async () => {
+          if (!await confirmDialog({ title: 'Confirm booted image?', description: 'Marks the running slot good (RAUC mark-good). Rollback is cancelled.' })) return;
+          await api.post('/api/v1/updates/confirm', {});
+          store.toast('Booted image confirmed (mark-good).', 'success');
+        },
+      }, 'Confirm image')),
+      ActionRow('Download diagnostics bundle', 'Collects journal excerpt, redacted config, slot status, dmesg, network state, alert history, and audit log.', Button({
+        onClick: async () => {
+          const d = await api.get('/api/v1/updates/diagnostics');
+          const blob = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `webconfig-diagnostics-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+          a.click();
+          URL.revokeObjectURL(url);
+          store.toast('Diagnostics bundle downloaded.', 'success');
+        },
+      }, 'Download diagnostics'))),
+  });
+
   return el('div', {},
     el('div', { class: 'page-header' }, el('h1', {}, 'Updates'), el('p', {}, 'Manage local A/B slots and install signed bundles.')),
     Card({ title: 'A/B slots', subtitle: 'The active and inactive update slots, versions, and confirmation state.' }, slotsTable),
-    installCard);
+    installCard,
+    confirmCard);
 }

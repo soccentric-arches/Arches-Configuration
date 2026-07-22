@@ -97,6 +97,14 @@ pub trait UpdateBackend: Send + Sync {
 
     /// Reboot into the just-installed inactive slot (spec §4.4 "reboot to apply").
     fn reboot_to_apply(&self) -> Result<(), UpdateError>;
+
+    /// Mark the currently-booted slot `good` (spec §4.4: "New images require
+    /// confirmation (health-check or manual) or the bootloader rolls back after N
+    /// failed boots"). This is the *manual* confirmation a user performs after a
+    /// fresh boot proves healthy — it tells the bootloader/RAUC the new image is
+    /// accepted, so the failed-boot rollback counter is reset. On RAUC this is
+    /// `rauc status mark-good`; the mock records the call.
+    fn mark_good(&self) -> Result<(), UpdateError>;
 }
 
 /// A compatibility check reusable by both backends (spec §4.4).
@@ -117,6 +125,8 @@ pub struct MockUpdateBackend {
     pub slots: Vec<SlotStatus>,
     pub installs: std::sync::Mutex<Vec<String>>,
     pub rebooted: std::sync::Mutex<bool>,
+    /// Recorded manual confirmations of the booted slot (spec §4.4 mark-good).
+    pub marked_good: std::sync::Mutex<bool>,
 }
 
 impl MockUpdateBackend {
@@ -125,6 +135,7 @@ impl MockUpdateBackend {
             slots,
             installs: std::sync::Mutex::new(Vec::new()),
             rebooted: std::sync::Mutex::new(false),
+            marked_good: std::sync::Mutex::new(false),
         }
     }
 }
@@ -167,6 +178,11 @@ impl UpdateBackend for MockUpdateBackend {
 
     fn reboot_to_apply(&self) -> Result<(), UpdateError> {
         *self.rebooted.lock().unwrap() = true;
+        Ok(())
+    }
+
+    fn mark_good(&self) -> Result<(), UpdateError> {
+        *self.marked_good.lock().unwrap() = true;
         Ok(())
     }
 }
@@ -234,6 +250,15 @@ impl UpdateBackend for RaucUpdateBackend {
 
     fn reboot_to_apply(&self) -> Result<(), UpdateError> {
         crate::applier::run_cmd("systemctl", &["reboot"])
+            .map_err(|e| UpdateError::Other(e.to_string()))?;
+        Ok(())
+    }
+
+    fn mark_good(&self) -> Result<(), UpdateError> {
+        // RAUC's manual confirmation that the booted image is healthy (spec
+        // §4.4): resets the bootloader's failed-boot rollback counter so a good
+        // boot is not reverted. Best-effort on the real root.
+        crate::applier::run_cmd("rauc", &["status", "mark-good"])
             .map_err(|e| UpdateError::Other(e.to_string()))?;
         Ok(())
     }
@@ -340,6 +365,16 @@ mod tests {
 
         b.reboot_to_apply().unwrap();
         assert!(*b.rebooted.lock().unwrap());
+    }
+
+    #[test]
+    fn mock_mark_good_records_manual_confirmation() {
+        // Spec §4.4: a healthy boot is manually confirmed (mark-good) so the
+        // bootloader does not roll the new image back after N failed boots.
+        let b = MockUpdateBackend::new(vec![status("A", true, false)]);
+        assert!(!*b.marked_good.lock().unwrap());
+        b.mark_good().unwrap();
+        assert!(*b.marked_good.lock().unwrap());
     }
 
     #[test]

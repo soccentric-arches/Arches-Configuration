@@ -110,6 +110,14 @@ See `docs/webconfig-spec.md` for the full spec.
   are looked up by schema file **stem** (the URL `:id`), deduped across fields,
   target-charset-validated, best-effort (a failed verb is recorded + skipped,
   never failing the save), and the side effect is appended to the audit entry.
+- §4.4 updates: `UpdateBackend` has `mark_good()` (RAUC `rauc status mark-good`)
+  for the manual "confirm booted image" (cancels the bootloader's failed-boot
+  rollback), exposed at `POST /api/v1/updates/confirm` (admin only, audited).
+  The `diagnostics` bundle (`GET /api/v1/updates/diagnostics`) must carry
+  **journal** (`journalctl -n 200 --no-pager`, real root only) AND **network**
+  state (the shared `network::enumerate_live(&Sysroot)`, reused by the network
+  page so the two never drift) alongside config/slots/dmesg/alert_history/audit.
+  `enumerate_live` is the single source for the `/sys/class/net` live snapshot.
 
 ## Don't
 

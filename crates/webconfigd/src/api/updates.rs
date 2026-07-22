@@ -376,28 +376,62 @@ pub async fn diagnostics(
     redact_secrets(&mut cfg);
     let slots = app.update_backend.slots().unwrap_or_default();
     let audit = app.audit.read_all().unwrap_or_default();
-    let dmesg = if app.engine.sysroot.is_real_root() {
+    let sys = &app.engine.sysroot;
+    let dmesg = if sys.is_real_root() {
         webconfig_engine::applier::run_cmd("dmesg", &["--ctime"]).unwrap_or_default()
     } else {
         String::new()
     };
-    let history = webconfig_engine::alert::AlertHistory::new(
-        app.engine.sysroot.webconfig_dir().join("config.db"),
-        1000,
-    )
-    .read_all()
-    .unwrap_or_default();
+    // Journal excerpt (spec §4.4): a bounded tail of the system journal. Real
+    // root only — empty on the fake sysroot so tests stay hardware-free. The
+    // `--no-pager` + `-n` bound keeps the excerpt finite even on a chatty box.
+    let journal = if sys.is_real_root() {
+        webconfig_engine::applier::run_cmd(
+            "journalctl",
+            &["-n", "200", "--no-pager", "--no-hostname"],
+        )
+        .unwrap_or_default()
+    } else {
+        String::new()
+    };
+    // Network state (spec §4.4): the live interface snapshot shared with the
+    // network page, so the diagnostics bundle reports what the box is actually
+    // wired as, not just the configured intent.
+    let network = crate::api::network::enumerate_live(sys);
+    let history =
+        webconfig_engine::alert::AlertHistory::new(sys.webconfig_dir().join("config.db"), 1000)
+            .read_all()
+            .unwrap_or_default();
     Ok(Json(serde_json::json!({
         "config": cfg,
         "slots": slots,
         "audit": audit,
         "dmesg": dmesg,
+        "journal": journal,
+        "network": network,
         "alert_history": history,
         "versions": {
             "platform": app.manifest.platform,
             "model": app.manifest.model,
         },
     })))
+}
+
+/// `POST /api/v1/updates/confirm` — manual confirmation that the just-booted
+/// image is healthy (spec §4.4: "New images require confirmation (health-check
+/// or manual) or the bootloader rolls back after N failed boots"). Admin only;
+/// delegates to the update backend's mark-good, which resets the bootloader's
+/// rollback counter (RAUC `rauc status mark-good`).
+pub async fn confirm(
+    State(app): State<AppState>,
+    role: AuthRole,
+    session: Session,
+) -> ApiResult<Json<serde_json::Value>> {
+    role.require_admin("updates.confirm")?;
+    let user = username(&session).await;
+    app.update_backend.mark_good().map_err(map_upd)?;
+    audit(&app, &user, "updates.confirm", Some("mark-good".into()));
+    Ok(Json(serde_json::json!({ "confirmed": true })))
 }
 
 /// `POST /api/v1/updates/factory-reset` — duplicated here (same action as

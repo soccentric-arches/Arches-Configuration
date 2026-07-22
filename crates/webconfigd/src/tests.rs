@@ -433,3 +433,81 @@ async fn app_settings_put_fires_schema_apply_hook() {
         "audit should record the apply_hook: {audit}"
     );
 }
+
+/// Bootstrap the first admin and return (cookie, csrf) for an authenticated
+/// admin session — the common preamble for the mutation tests below.
+async fn boot_admin(app: &axum::Router) -> (String, String) {
+    let (_, ck, _) = send(
+        app,
+        "POST",
+        "/api/v1/auth/first-boot",
+        None,
+        None,
+        Some(r#"{"username":"admin","password":"password1"}"#),
+    )
+    .await;
+    let cookie = ck.unwrap();
+    let (_, _, text) = send(app, "GET", "/api/v1/auth/whoami", Some(&cookie), None, None).await;
+    let csrf = serde_json::from_str::<serde_json::Value>(&text).unwrap()["csrf"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    (cookie, csrf)
+}
+
+#[tokio::test]
+async fn updates_confirm_marks_good_and_audits() {
+    // Spec §4.4: a freshly booted image is manually confirmed (mark-good) so
+    // the bootloader does not roll it back. POST /updates/confirm is admin-only
+    // and records an audit entry.
+    let (app, _dir) = build_app().await;
+    let (cookie, csrf) = boot_admin(&app).await;
+
+    let (st, _, body) = send(
+        &app,
+        "POST",
+        "/api/v1/updates/confirm",
+        Some(&cookie),
+        Some(&csrf),
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(body, r#"{"confirmed":true}"#);
+
+    let (st, _, audit) = send(&app, "GET", "/api/v1/logs/audit", Some(&cookie), None, None).await;
+    assert_eq!(st, StatusCode::OK);
+    assert!(
+        audit.contains("updates.confirm"),
+        "audit should record the mark-good: {audit}"
+    );
+}
+
+#[tokio::test]
+async fn updates_diagnostics_bundle_carries_journal_and_network_state() {
+    // Spec §4.4 diagnostics bundle must include a journal excerpt and the live
+    // network state (alongside config/slots/dmesg/alert history/audit).
+    let (app, _dir) = build_app().await;
+    let (cookie, _csrf) = boot_admin(&app).await;
+
+    let (st, _, body) = send(
+        &app,
+        "GET",
+        "/api/v1/updates/diagnostics",
+        Some(&cookie),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert!(v.get("journal").is_some(), "diagnostics must carry journal");
+    assert!(
+        v.get("network").is_some(),
+        "diagnostics must carry network state"
+    );
+    assert!(v.get("slots").is_some());
+    assert!(v.get("dmesg").is_some());
+    assert!(v.get("alert_history").is_some());
+    assert!(v.get("audit").is_some());
+}

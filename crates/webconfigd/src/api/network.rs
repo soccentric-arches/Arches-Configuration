@@ -20,9 +20,18 @@ use crate::state::AppState;
 /// `GET /api/v1/network` — the network section + enumerated live interfaces.
 pub async fn get(State(app): State<AppState>) -> ApiResult<Json<serde_json::Value>> {
     let cfg = app.engine.load()?;
-    // Live interface enumeration from /sys/class/net (spec §4.2: never
-    // hardcoded; Pinnacle/Sequoia have multiple MACs).
-    let netdir = app.engine.sysroot.join("/sys/class/net");
+    let live = enumerate_live(&app.engine.sysroot);
+    Ok(Json(serde_json::json!({
+        "config": cfg.network,
+        "live": live,
+    })))
+}
+
+/// Enumerate live interfaces from `/sys/class/net` (spec §4.2: never hardcoded;
+/// Pinnacle/Sequoia have multiple MACs). Shared by the network page and the
+/// diagnostics bundle (spec §4.4 "network state"), so the two never drift.
+pub fn enumerate_live(sysroot: &webconfig_engine::Sysroot) -> Vec<serde_json::Value> {
+    let netdir = sysroot.join("/sys/class/net");
     let mut live = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&netdir) {
         for e in entries.flatten() {
@@ -36,16 +45,16 @@ pub async fn get(State(app): State<AppState>) -> ApiResult<Json<serde_json::Valu
             let operstate = std::fs::read_to_string(netdir.join(&name).join("operstate"))
                 .map(|s| s.trim().to_string())
                 .unwrap_or_else(|_| "unknown".into());
-            let addresses = live_addresses(&app.engine.sysroot, &name);
-            live.push(
-                serde_json::json!({ "name": name, "mac": mac, "operstate": operstate, "addresses": addresses }),
-            );
+            let addresses = live_addresses(sysroot, &name);
+            live.push(serde_json::json!({
+                "name": name,
+                "mac": mac,
+                "operstate": operstate,
+                "addresses": addresses,
+            }));
         }
     }
-    Ok(Json(serde_json::json!({
-        "config": cfg.network,
-        "live": live,
-    })))
+    live
 }
 
 fn live_addresses(sysroot: &webconfig_engine::Sysroot, iface: &str) -> Vec<String> {
