@@ -107,6 +107,13 @@ pub struct BoardManifest {
     /// Subsequent edits are stored in SQLite and do not mutate this file.
     #[serde(default)]
     pub config_defaults: Option<crate::store::Config>,
+    /// Per-platform default alert rule packs shipped as manifest data (spec
+    /// §4.7: "Per-platform default rule packs shipped as schema files
+    /// (Arches: throttling; all: disk-full, watchdog-reset)"). The engine
+    /// merges these with the user-configured rules at evaluation time; an
+    /// operator can override or disable a default by id.
+    #[serde(default)]
+    pub default_alert_rules: Vec<crate::store::alerts::AlertRule>,
 }
 
 impl BoardManifest {

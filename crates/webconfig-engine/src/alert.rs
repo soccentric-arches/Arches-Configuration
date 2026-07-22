@@ -153,7 +153,51 @@ fn resolve_metric(metric: &str, vitals: &Vitals) -> Option<f64> {
         let used = vitals.mem_total_kb.saturating_sub(vitals.mem_available_kb);
         return Some(used as f64 * 100.0 / vitals.mem_total_kb as f64);
     }
+    // `temp.throttled` — 1.0 if any thermal zone is actively throttling (a
+    // cooling device has cur_state > 0), else 0.0. Backs the per-platform
+    // throttling default pack (spec §4.7, Arches).
+    if metric == "temp.throttled" {
+        return Some(
+            vitals
+                .temperatures
+                .iter()
+                .any(|z| z.throttled) as u8 as f64,
+        );
+    }
+    // `boot.watchdog` — 1.0 if the last boot reason indicates a hardware/
+    // watchdog reset, else 0.0. Backs the watchdog-reset default pack
+    // (spec §4.7, all platforms). Returns 0.0 (not None) when no reason is
+    // recorded — the absence of a reset is a definite "not throttled".
+    if metric == "boot.watchdog" {
+        let reason = vitals.last_boot_reason.as_deref().unwrap_or("");
+        let hit = reason
+            .to_ascii_lowercase()
+            .contains("watchdog")
+            || reason.to_ascii_lowercase().contains("hardware");
+        return Some(hit as u8 as f64);
+    }
+    // `service.<unit>` and `mcu.heartbeat` are spec §4.7 metrics but are not
+    // carried by `Vitals`; they resolve to None when absent (the engine skips
+    // the rule that tick), so a rule using them simply never fires until the
+    // data source is wired.
     None
+}
+
+/// Merge per-platform default rule packs with the user-configured rules
+/// (spec §4.7: "Per-platform default rule packs shipped as schema files").
+/// User rules take precedence by id — an operator can override a default's
+/// threshold/duration/actions, or disable it by setting `enabled = false`.
+/// Defaults without a matching user rule are appended, so the shipped pack
+/// always contributes unless explicitly replaced.
+pub fn merge_defaults(defaults: &[AlertRule], user: &[AlertRule]) -> Vec<AlertRule> {
+    let mut out: Vec<AlertRule> = user.to_vec();
+    let user_ids: std::collections::HashSet<&str> = user.iter().map(|r| r.id.as_str()).collect();
+    for d in defaults {
+        if !user_ids.contains(d.id.as_str()) {
+            out.push(d.clone());
+        }
+    }
+    out
 }
 
 fn used_pct(m: &crate::monitoring::Mount) -> f64 {
@@ -441,5 +485,46 @@ mod tests {
         let events = history.read_all().unwrap();
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].value, 1.0);
+    }
+
+    #[test]
+    fn throttled_metric_reflects_zone_throttle_flag() {
+        let mut v = vitals(40.0);
+        v.temperatures[0].throttled = true;
+        assert_eq!(resolve_metric("temp.throttled", &v), Some(1.0));
+        v.temperatures[0].throttled = false;
+        assert_eq!(resolve_metric("temp.throttled", &v), Some(0.0));
+    }
+
+    #[test]
+    fn watchdog_metric_detects_reset_reason() {
+        let mut v = Vitals::default();
+        assert_eq!(resolve_metric("boot.watchdog", &v), Some(0.0));
+        v.last_boot_reason = Some("Power-on reset".into());
+        assert_eq!(resolve_metric("boot.watchdog", &v), Some(0.0));
+        v.last_boot_reason = Some("Watchdog timeout".into());
+        assert_eq!(resolve_metric("boot.watchdog", &v), Some(1.0));
+        v.last_boot_reason = Some("hardware reset".into());
+        assert_eq!(resolve_metric("boot.watchdog", &v), Some(1.0));
+    }
+
+    #[test]
+    fn merge_defaults_appends_unless_user_overrides() {
+        let defaults = vec![
+            rule("disk-full", "disk.pct", ">", 90.0, 60),
+            rule("watchdog-reset", "boot.watchdog", ">", 0.0, 0),
+        ];
+        let user = vec![
+            rule("disk-full", "disk.pct", ">", 95.0, 30),
+            rule("custom", "temp", ">", 80.0, 10),
+        ];
+        let merged = merge_defaults(&defaults, &user);
+        // user disk-full wins (threshold 95), custom kept, watchdog-reset appended.
+        let by_id: HashMap<String, AlertRule> =
+            merged.iter().cloned().map(|r| (r.id.clone(), r)).collect();
+        assert_eq!(by_id.len(), 3);
+        assert_eq!(by_id["disk-full"].threshold, 95.0);
+        assert!(by_id.contains_key("watchdog-reset"));
+        assert!(by_id.contains_key("custom"));
     }
 }

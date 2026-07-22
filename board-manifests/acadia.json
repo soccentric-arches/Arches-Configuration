@@ -33,5 +33,9 @@
     { "id": "mcu", "title": "Pico W heartbeat", "metrics": ["mcu.heartbeat", "mcu.fw_version"], "render": "state" },
     { "id": "thermal", "title": "SoC temperature", "metrics": ["thermal.temp"], "render": "sparkline" },
     { "id": "memory", "title": "Memory (1 GB SKU watch)", "metrics": ["mem.available", "mem.total"], "render": "bar" }
+  ],
+  "default_alert_rules": [
+    { "id": "disk-full", "enabled": true, "metric": "disk.pct", "comparison": ">", "threshold": 90, "duration_secs": 60, "actions": ["ui"] },
+    { "id": "watchdog-reset", "enabled": true, "metric": "boot.watchdog", "comparison": ">", "threshold": 0, "duration_secs": 0, "actions": ["ui"] }
   ]
 }
