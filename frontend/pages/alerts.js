@@ -60,6 +60,6 @@ export async function render(api, store) {
       : EmptyState({ title: 'No events recorded yet' }));
 
   return el('div', {},
-    el('div', { class: 'page-header' }, el('h1', {}, 'Alerts'), el('p', {}, 'Threshold rules and firing history.')),
+    el('div', { class: 'page-header' }, el('h1', {}, 'Alarms'), el('p', {}, 'Threshold rules and alarm firing history.')),
     rulesCard, addCard, historyCard);
 }
