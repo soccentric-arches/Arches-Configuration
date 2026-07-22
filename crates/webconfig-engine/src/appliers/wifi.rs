@@ -263,11 +263,15 @@ mod tests {
         let sys = Sysroot::at(dir.path());
         let a = WifiApplier::new();
         let mut c = Config::default();
-        c.network.wifi.push(net("Home", Some("passphrase-8"), 1, false));
+        c.network
+            .wifi
+            .push(net("Home", Some("passphrase-8"), 1, false));
         a.apply(&sys, &c).unwrap();
         let f = sys.join("/etc/wpa_supplicant/wpa_supplicant.conf");
         assert!(f.exists());
-        assert!(std::fs::read_to_string(&f).unwrap().contains("ssid=\"Home\""));
+        assert!(std::fs::read_to_string(&f)
+            .unwrap()
+            .contains("ssid=\"Home\""));
 
         a.rollback(&sys).unwrap();
         assert!(!f.exists());

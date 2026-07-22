@@ -88,6 +88,22 @@ See `docs/webconfig-spec.md` for the full spec.
 - `/system/info` returns per-interface MACs under `macs` (interface→address),
   read from `<sysroot>/sys/class/net/<iface>/address` (loopback skipped), plus
   `uptime_secs` (spec §4.1: "uptime, MACs").
+- `network.apply` runs four appliers: `networkd`, `firewall`, `wifi`, `ap` (spec
+  §4.2). Each must be validated + applied explicitly here; `network.rollback`
+  rolls all four back. Provisional/confirm-window logic keys off the `networkd`
+  outcome only (the severing heuristic lives there).
+- `config.network.wifi` (remembered SSIDs) and `regulatory_domain` are applied
+  by `appliers/wifi.rs` → `/etc/wpa_supplicant/wpa_supplicant.conf` (priority
+  sort, `scan_ssid=1` for hidden, 64-hex raw key unquoted, open nets
+  `key_mgmt=NONE`) + `iw reg set`. `config.network.ap_mode` is applied by
+  `appliers/ap.rs` → hostapd.conf + dnsmasq.d + a static `20-ap.network`
+  (192.168.4.1/24, DHCPServer) and enable/disable of `hostapd`/`dnsmasq`.
+- Global DNS `config.network.dns_servers` is applied by the networkd applier to
+  `/etc/systemd/resolved.conf.d/webconfig.conf` (`[Resolve]\nDNS=…`), validated
+  as IP addresses; per-interface DNS stays in each `.network` file.
+  `connectivity_test` pings the configured gateway (first interface with one),
+  then a public IP, then resolves via the configured DNS — not hardcoded
+  192.168.1.1/1.1.1.1.
 
 ## Don't
 

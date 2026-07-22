@@ -47,9 +47,9 @@ impl NetworkdApplier {
         Self::network_dir(sysroot).join(format!("10-{iface}.network"))
     }
 
-    /// Global DNS drop-in for systemd-resolved (spec §4.2: "DNS servers (global
-    /// + per-interface via resolved)"). Per-interface DNS lives in each
-    /// `.network` file; the global list lives here.
+    /// Global DNS drop-in for systemd-resolved (spec §4.2: "DNS servers
+    /// (global + per-interface via resolved)"). Per-interface DNS lives in
+    /// each `.network` file; the global list lives here.
     fn resolved_dropin(sysroot: &Sysroot) -> std::path::PathBuf {
         sysroot.join("/etc/systemd/resolved.conf.d/webconfig.conf")
     }
@@ -243,7 +243,10 @@ impl Applier for NetworkdApplier {
             std::fs::create_dir_all(parent)?;
         }
         backups.push(FileBackup::capture(resolved.clone())?);
-        std::fs::write(&resolved, Self::render_resolved(&config.network.dns_servers))?;
+        std::fs::write(
+            &resolved,
+            Self::render_resolved(&config.network.dns_servers),
+        )?;
 
         if sysroot.is_real_root() {
             // Real system verbs. `networkctl reload` picks up the new units.
@@ -474,7 +477,9 @@ mod tests {
         let sys = Sysroot::at(dir.path());
         let a = NetworkdApplier::new();
         let mut c = Config::default();
-        c.network.interfaces.push(iface("eth0", true, None, None, None));
+        c.network
+            .interfaces
+            .push(iface("eth0", true, None, None, None));
         c.network.dns_servers = vec!["1.1.1.1".into(), "2606:4700:4700::1111".into()];
         a.apply(&sys, &c).unwrap();
         let written =

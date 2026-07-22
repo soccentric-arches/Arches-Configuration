@@ -169,8 +169,11 @@ impl Applier for ApApplier {
         } else {
             // Disabled: remove our configs (backups remember prior content so
             // rollback can restore), and stop+disable the units on real root.
-            for path in [Self::hostapd_path(sysroot), Self::dnsmasq_path(sysroot), Self::networkd_path(sysroot)]
-            {
+            for path in [
+                Self::hostapd_path(sysroot),
+                Self::dnsmasq_path(sysroot),
+                Self::networkd_path(sysroot),
+            ] {
                 backups.push(FileBackup::capture(path.clone())?);
                 if path.exists() {
                     std::fs::remove_file(&path)?;
