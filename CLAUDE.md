@@ -41,23 +41,34 @@ See `docs/webconfig-spec.md` for the full spec.
   (Vitals/UnitState/NetworkConfig/SystemConfig/AlertRule/SlotStatus/Peripheral
   shapes — see `docs/api-reference.md`).
 
+- Frontend is native ES modules (`<script type="module" src="/core/app.js">`),
+  not classic `defer` scripts — one file per component/page under
+  `frontend/{core,components,pages}/`, wired with real `import`/`export`, no
+  bundler (browsers resolve the graph directly from static files). Add a page
+  by dropping a module in `frontend/pages/` and one line in
+  `frontend/pages/registry.js`; add a widget under `frontend/components/`.
+  Styles are split under `frontend/styles/*.css`, composed by `main.css` via
+  plain `@import` (no preprocessor).
+- Never let a component class set `display` unconditionally — `base.css` has
+  a global `[hidden] { display: none !important; }` specifically so no
+  component can ever re-break the hidden-attribute-vs-class-display bug that
+  hit the old `.overlay`/`.banner` rules.
+- Native dialogs (`confirm()`/`prompt()`) are banned in the frontend — they
+  block the main thread and look dated. Use `confirmDialog`/`promptDialog`/
+  `formDialog` from `frontend/components/modal.js` instead.
+
 ## Don't
 
-- Don't use top-level `await` in classic scripts. `frontend/*.js` load with
-  `defer` (not `type="module"`); wrap async boot logic in an IIFE or call a
-  non-async entry directly. (`bootstrap()` is a sync call that does its own
-  async work internally.)
 - Don't expect the CSRF guard to return 403. Missing/invalid `X-CSRF-Token` on
   a mutating protected route returns **400 BadRequest** (`csrf.rs`). Tests must
   assert `StatusCode::BAD_REQUEST`, not `FORBIDDEN`.
 - Don't assume `ApiError::NotFound` takes a message — it is a unit variant.
   Use `ApiError::NotFound` directly.
-- Don't compile-verify on this host without checking first — no host cargo
-  toolchain was available when this code was written, so it was authored
-  carefully against the real handler contracts but NOT compile-verified here.
-  The gate is `make build && make test && make lint` in CI. Run that before any
-  push (global §9 step 6).
-- Don't add node/build steps to the frontend. Vanilla JS, <500 KB, no build
-  step, no node at build time (spec §2).
+- Host cargo toolchain IS available (`~/.cargo/bin` on PATH via rustup,
+  channel pinned by `rust-toolchain.toml`) — `make build && make test &&
+  make lint` runs and passes locally; no need to skip compile-verification.
+- Don't add node/build steps to the frontend. Vanilla JS (native ES modules
+  are fine — browsers run them with no bundler), <500 KB, no build step, no
+  node at build time (spec §2).
 - Don't hardcode I/O or per-platform behavior in code — it lives in the board
   manifest (`board-manifests/<platform>.json`) as data (spec §4.9, §3).
