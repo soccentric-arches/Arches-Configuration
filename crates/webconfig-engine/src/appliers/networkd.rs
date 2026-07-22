@@ -299,6 +299,7 @@ mod tests {
             mtu: None,
             dns: Vec::new(),
             open_services: Vec::new(),
+            open_ports: Vec::new(),
         }
     }
 

@@ -62,7 +62,7 @@ Base URL: `https://<device>:8443/api/v1`. All responses are JSON.
 | Method | Path | Role | Notes |
 |---|---|---|---|
 | GET | `/network` | any | `{config: NetworkConfig, live: [{name, mac, operstate}]}`. Interface config may include `mac_address` (`AA:BB:CC:DD:EE:FF`) to assign a persistent MAC through systemd-networkd. |
-| PUT | `/network` | **[admin]** | `NetworkConfig` → saved section (does not apply). Wired links are in `interfaces`; Wi-Fi networks are in `wifi`; the optional 5G profile is in `cellular_5g` with `enabled`, modem, APN, SIM, credential, roaming, and auto-connect fields. |
+| PUT | `/network` | **[admin]** | `NetworkConfig` → saved section (does not apply). Wired links are in `interfaces`; Wi-Fi networks are in `wifi`; the optional 5G profile is in `cellular_5g` with `enabled`, modem, APN, SIM, credential, roaming, and auto-connect fields. Firewall `default_open_ports` and interface `open_ports` accept `{port, protocol}` entries for custom TCP/UDP ports. |
 | POST | `/network/apply` | **[admin]** | apply networkd + firewall → `{provisional: bool, confirm_window_secs}`. Provisional ⇒ confirm or auto-rollback. |
 | POST | `/network/confirm` | **[admin]** | confirm the provisional change → `{confirmed}`. |
 | POST | `/network/rollback` | **[admin]** | roll back the provisional change. |
@@ -111,14 +111,15 @@ Base URL: `https://<device>:8443/api/v1`. All responses are JSON.
 | GET | `/monitoring/vitals` | any | `Vitals` (load, mem, mounts, temperatures, net, uptime). |
 | GET | `/monitoring/emmc/:dev` | any | `{dev, life_time_estimate}`. |
 | GET | `/monitoring/tiles` | any | manifest-declared dashboard tiles. |
-| GET | `/monitoring/telemetry` | any | Read `{enabled, publish_interval_secs, include_diagnostics}`. |
-| PUT | `/monitoring/telemetry` | **[admin]** | Save telemetry publishing settings. |
+| GET | `/monitoring/telemetry` | any | Read `{enabled, server_url, username, password, publish_interval_secs, include_diagnostics}`. |
+| PUT | `/monitoring/telemetry` | **[admin]** | Save telemetry publishing settings and the telemetry server credentials. |
 
 ## Logs (§4.6)
 
 | Method | Path | Role | Notes |
 |---|---|---|---|
 | GET | `/logs?unit=&priority=&since=&until=&limit=` | any | `{lines: [...]}`. |
+| GET | `/logs/sources` | any | Available local sources: system journal, kernel, syslog, audit, and WebConfig daemon. |
 | GET | `/logs/config` | any | `LogsConfig`. |
 | PUT | `/logs/config` | **[admin]** | `LogsConfig` (applies journald). |
 | GET | `/logs/audit` | any | `[{ts, user, action, detail}]`. |

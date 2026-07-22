@@ -52,15 +52,16 @@
 
 .sidebar-nav {
   flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   padding: var(--space-3);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 6px;
 }
 
 .sidebar-section-label {
-  padding: var(--space-4) var(--space-2) var(--space-1);
+  padding: var(--space-5) var(--space-2) var(--space-2);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: .06em;
@@ -73,7 +74,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: 8px var(--space-3);
+  padding: 10px var(--space-3);
   border-radius: var(--radius-md);
   color: var(--sidebar-foreground);
   font-size: var(--text-sm);
@@ -109,6 +110,7 @@
 }
 
 .sidebar-footer {
+  flex: 0 0 auto;
   border-top: 1px solid var(--sidebar-border);
   padding: var(--space-3);
 }

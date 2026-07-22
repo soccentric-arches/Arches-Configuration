@@ -5,7 +5,6 @@
 import { el } from '../core/dom.js';
 import { Card } from '../components/card.js';
 import { Field } from '../components/field.js';
-import { Toggle } from '../components/toggle.js';
 import { Button } from '../components/button.js';
 import { ActionList, ActionRow } from '../components/action-row.js';
 import { Sparkline } from '../components/sparkline.js';
@@ -35,7 +34,6 @@ function metricTile(label) {
 }
 
 export async function render(api, store) {
-  const telemetry = await api.get('/api/v1/monitoring/telemetry');
   const cpu = metricTile('CPU load (1m)');
   const mem = metricTile('Memory');
   const disk = metricTile('Disk (max)');
@@ -99,35 +97,11 @@ export async function render(api, store) {
     }, 'Check wear'))),
   }, dev.wrap, wearResult);
 
-  const telemetryEnabled = Toggle({ label: 'Enable telemetry publishing', checked: telemetry.enabled });
-  const telemetryDiagnostics = Toggle({ label: 'Include diagnostics', checked: telemetry.include_diagnostics });
-  const telemetryInterval = Field({ label: 'Publish interval (seconds)', type: 'number', value: telemetry.publish_interval_secs || 30, help: 'How often the telemetry service publishes device metrics.' });
-  const telemetryCard = Card({
-    title: 'Telemetry publishing',
-    subtitle: 'Control whether device metrics are published to the configured cloud service.',
-    footer: ActionList(ActionRow('Save telemetry settings', 'Store the telemetry publishing policy.', Button({
-      onClick: async () => {
-        const interval = Number(telemetryInterval.get());
-        if (!Number.isFinite(interval) || interval < 5) {
-          store.toast('Publish interval must be at least 5 seconds', 'error');
-          return;
-        }
-        await api.put('/api/v1/monitoring/telemetry', {
-          enabled: telemetryEnabled.get(),
-          publish_interval_secs: interval,
-          include_diagnostics: telemetryDiagnostics.get(),
-        });
-        store.toast('Telemetry settings saved', 'success');
-      }
-    }, 'Save settings'))),
-  }, el('div', { class: 'form-grid' }, el('div', { class: 'toggle-stack' }, telemetryEnabled.wrap, telemetryDiagnostics.wrap), telemetryInterval.wrap));
-
   return el('div', {},
     el('div', { class: 'page-header row', style: 'justify-content:space-between' },
       el('div', {}, el('h1', {}, 'Monitoring'), el('p', {}, 'Live vitals, pushed over SSE.')),
       el('div', { class: 'row' }, liveDot, liveLabel)),
     Card({ title: 'Vitals', subtitle: 'Live CPU, memory, disk, temperature, and uptime readings.' }, el('div', { class: 'card-grid' }, cpu.node, mem.node, disk.node, uptimeTile, temp.node)),
     Card({ title: 'Network throughput', subtitle: 'Per-interface receive throughput from the live telemetry stream.' }, netHost),
-    telemetryCard,
     emmcCard);
 }

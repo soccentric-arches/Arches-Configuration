@@ -6,9 +6,9 @@
 import { el, mount } from './dom.js';
 import { api } from './api.js';
 import { Store } from './store.js';
-import { isDirty, watchForEdits } from './dirty-guard.js';
+import { isDirty, watchForEdits, setSaveHandler, saveDirtyPage } from './dirty-guard.js';
 import { startProgress, finishProgress } from '../components/progress-bar.js';
-import { confirmDialog } from '../components/modal.js';
+import { choiceDialog } from '../components/modal.js';
 import { PageSkeleton } from '../components/skeleton.js';
 import { EmptyState } from '../components/empty-state.js';
 import { NAV, ROUTE_IDS, routeMeta } from '../pages/registry.js';
@@ -31,11 +31,26 @@ function parse() {
 /** Programmatic navigation (sidebar, command palette). Guards unsaved edits. */
 export async function go(route) {
   if (route === current) { renderCurrent(); return; }
-  if (isDirty() && !await confirmDialog({
-    title: 'Discard unsaved changes?',
-    description: 'You have edits on this page that haven’t been saved.',
-    confirmLabel: 'Discard', variant: 'destructive',
-  })) return;
+  if (isDirty()) {
+    const choice = await choiceDialog({
+      title: 'Discard unsaved changes?',
+      description: 'You have edits on this page that haven’t been saved.',
+      choices: [
+        { value: 'cancel', label: 'Cancel', variant: 'outline' },
+        { value: 'discard', label: 'Discard', variant: 'destructive' },
+        { value: 'save', label: 'Save and continue' },
+      ],
+    });
+    if (choice === 'cancel' || choice == null) return;
+    if (choice === 'save') {
+      try {
+        await saveDirtyPage();
+      } catch (e) {
+        console.error('[WebConfig] unable to save before navigation', e);
+        return;
+      }
+    }
+  }
   location.hash = `/${route}`;
 }
 
@@ -71,6 +86,8 @@ export async function renderCurrent() {
     void view.offsetWidth; // restart the animation on every navigation
     view.classList.add('page-enter');
     watchForEdits(view);
+    const saveButton = [...view.querySelectorAll('button')].find(button => /^save(?:\b|\s)/i.test(button.textContent.trim()) || /^apply settings$/i.test(button.textContent.trim()));
+    if (saveButton && saveButton.run) setSaveHandler(() => saveButton.run());
     // Move focus to the new page for screen-reader/keyboard users — a bare
     // hash change otherwise leaves focus stranded on the sidebar link.
     view.setAttribute('tabindex', '-1');

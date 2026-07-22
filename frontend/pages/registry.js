@@ -10,14 +10,19 @@ export const NAV = [
   // Dashboard: understand the current state before changing anything.
   { id: 'overview', label: 'Overview', icon: 'home', category: 'Dashboard', key: 'o', loader: () => import('./overview.js') },
   { id: 'monitoring', label: 'Monitoring', icon: 'activity', category: 'Dashboard', key: 'm', loader: () => import('./monitoring.js') },
+  { id: 'telemetry', label: 'Telemetry', icon: 'signal', category: 'Dashboard', key: '4', loader: () => import('./telemetry.js') },
   { id: 'faults', label: 'Faults', icon: 'alerts', category: 'Dashboard', key: '2', loader: () => import('./faults.js') },
   { id: 'alerts', label: 'Alarms', icon: 'alerts', category: 'Dashboard', key: 'a', loader: () => import('./alerts.js') },
   { id: 'logs', label: 'Logs', icon: 'logs', category: 'Dashboard', key: 'l', loader: () => import('./logs.js') },
 
-  // System: local identity, time, and lifecycle controls.
+  // System: local identity and lifecycle controls.
   { id: 'system', label: 'System settings', icon: 'settings', category: 'System', key: 's', loader: () => import('./system.js') },
-  { id: 'time', label: 'Time & NTP', icon: 'clock', category: 'System', key: 't', loader: () => import('./time.js') },
+  { id: 'time', label: 'Clock', icon: 'clock', category: 'Time & Sync', key: 't', loader: () => import('./time.js') },
+  { id: 'ntp', label: 'NTP', icon: 'clock', category: 'Time & Sync', key: '8', loader: () => import('./ntp.js') },
+  { id: 'ptp', label: 'PTP', icon: 'activity', category: 'Time & Sync', key: '9', loader: () => import('./ptp.js') },
+  { id: 'gps', label: 'GPS / GNSS', icon: 'signal', category: 'Time & Sync', key: '6', loader: () => import('./gps.js') },
   { id: 'power', label: 'Power', icon: 'power', category: 'System', key: 'p', loader: () => import('./power.js') },
+  { id: 'system-control', label: 'System Control', icon: 'settings', category: 'System', key: '0', loader: () => import('./system-control.js'), adminOnly: true },
 
   // Connectivity: network links and connected services.
   { id: 'wired', label: 'Wired', icon: 'ethernet', category: 'Connectivity', key: 'n', loader: () => import('./wired.js') },
@@ -28,6 +33,7 @@ export const NAV = [
 
   // Maintenance: updates and configuration recovery.
   { id: 'updates', label: 'Updates', icon: 'updates', category: 'Maintenance', key: 'u', loader: () => import('./updates.js') },
+  { id: 'remote-updates', label: 'Remote Updates', icon: 'cloud', category: 'Maintenance', key: '7', loader: () => import('./remote-updates.js'), adminOnly: true },
   { id: 'backup', label: 'Backup & Restore', icon: 'archive', category: 'Maintenance', key: 'b', loader: () => import('./backup.js'), adminOnly: true },
 
   // Security: access, exposure, trust, and user administration.

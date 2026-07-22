@@ -114,6 +114,7 @@ pub fn build_router(state: AppState, static_dir: std::path::PathBuf) -> Router {
         )
         // Logs (§4.6)
         .route("/logs", get(logs::read))
+        .route("/logs/sources", get(logs::sources))
         .route("/logs/config", get(logs::get_config).put(logs::put_config))
         .route(
             "/logs/audit",

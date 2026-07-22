@@ -364,6 +364,25 @@ pub mod network {
         /// firewall). Values are service ids from the allowlist.
         #[serde(default)]
         pub open_services: Vec<String>,
+        /// Additional explicitly opened ports for this interface.
+        #[serde(default)]
+        pub open_ports: Vec<OpenPort>,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct OpenPort {
+        pub port: u16,
+        /// `tcp` or `udp`.
+        pub protocol: String,
+    }
+
+    impl Default for OpenPort {
+        fn default() -> Self {
+            Self {
+                port: 0,
+                protocol: "tcp".into(),
+            }
+        }
     }
 
     fn default_dhcp() -> bool {
@@ -412,6 +431,9 @@ pub mod network {
         /// Services globally open regardless of interface binding.
         #[serde(default)]
         pub default_open: Vec<String>,
+        /// Additional explicitly opened ports on every enabled interface.
+        #[serde(default)]
+        pub default_open_ports: Vec<OpenPort>,
     }
 
     fn default_firewall_enabled() -> bool {
@@ -541,6 +563,12 @@ pub mod monitoring {
     pub struct TelemetryConfig {
         #[serde(default)]
         pub enabled: bool,
+        #[serde(default)]
+        pub server_url: String,
+        #[serde(default)]
+        pub username: String,
+        #[serde(default)]
+        pub password: String,
         #[serde(default = "default_publish_interval_secs")]
         pub publish_interval_secs: u64,
         #[serde(default)]
@@ -567,6 +595,9 @@ pub mod logs {
         /// Max journal size in bytes when persistent (eMMC wear, spec §4.6).
         #[serde(default = "default_max_size")]
         pub max_size_bytes: u64,
+        /// Maximum retention duration in days. Zero leaves journald's default.
+        #[serde(default = "default_retention_days")]
+        pub retention_days: u32,
         #[serde(default)]
         pub remote_syslog: Option<RemoteSyslog>,
     }
@@ -576,6 +607,9 @@ pub mod logs {
     }
     fn default_max_size() -> u64 {
         64 * 1024 * 1024
+    }
+    fn default_retention_days() -> u32 {
+        30
     }
 
     #[derive(Debug, Clone, Default, Serialize, Deserialize)]

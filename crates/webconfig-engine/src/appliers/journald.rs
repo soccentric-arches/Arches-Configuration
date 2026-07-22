@@ -43,6 +43,10 @@ impl JournaldApplier {
         if l.storage == "persistent" {
             // Max retention in bytes — eMMC wear protection (spec §4.6).
             s.push_str(&format!("SystemMaxUse={}\n", l.max_size_bytes));
+            s.push_str(&format!("SystemMaxFileSize={}\n", l.max_size_bytes));
+        }
+        if l.retention_days > 0 {
+            s.push_str(&format!("MaxRetentionSec={}d\n", l.retention_days));
         }
         s
     }
@@ -134,9 +138,12 @@ mod tests {
         let mut c = Config::default();
         c.logs.storage = "persistent".into();
         c.logs.max_size_bytes = 128 * 1024 * 1024;
+        c.logs.retention_days = 30;
         let r = JournaldApplier::render(&c);
         assert!(r.contains("Storage=persistent"));
         assert!(r.contains("SystemMaxUse=134217728"));
+        assert!(r.contains("SystemMaxFileSize=134217728"));
+        assert!(r.contains("MaxRetentionSec=30d"));
     }
 
     #[test]
@@ -147,6 +154,7 @@ mod tests {
             logs: LogsConfig {
                 storage: "ramdisk".into(),
                 max_size_bytes: 0,
+                retention_days: 0,
                 remote_syslog: None,
             },
             ..Default::default()

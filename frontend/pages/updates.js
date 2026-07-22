@@ -1,10 +1,8 @@
-// Updates page (spec §4.4): RAUC A/B slots, install, reboot-to-apply, OTA
-// check, and config backup/restore.
+// Local Updates page (spec §4.4): RAUC A/B slots and staged bundle install.
 
 import { el } from '../core/dom.js';
 import { Card } from '../components/card.js';
 import { Field } from '../components/field.js';
-import { Toggle } from '../components/toggle.js';
 import { Button } from '../components/button.js';
 import { Table } from '../components/table.js';
 import { StatusDot } from '../components/badge.js';
@@ -12,11 +10,7 @@ import { confirmDialog } from '../components/modal.js';
 import { ActionList, ActionRow } from '../components/action-row.js';
 
 export async function render(api, store) {
-  const [slots, otaConfig, ota] = await Promise.all([
-    api.get('/api/v1/updates/slots'),
-    api.get('/api/v1/updates/ota'),
-    api.get('/api/v1/updates/ota/check'),
-  ]);
+  const slots = await api.get('/api/v1/updates/slots');
 
   const slotRows = (slots || []).map(s => [
     s.slot, s.version,
@@ -49,36 +43,8 @@ export async function render(api, store) {
       }, 'Install bundle'))),
   }, path.wrap);
 
-  // ---------- OTA ----------
-  const otaServer = Field({
-    label: 'Remote update server URL',
-    value: otaConfig.server_url,
-    placeholder: 'https://updates.example.com/check',
-    help: 'The server should return JSON with update_available, and optionally version and platform.',
-  });
-  const otaEnabled = Toggle({ label: 'Enable remote updates', checked: otaConfig.enabled === true });
-  const otaStatus = el('div', { class: 'field-help' });
-  const checkOta = async () => {
-    const result = await api.get('/api/v1/updates/ota/check');
-    otaStatus.textContent = result.checked
-      ? (result.update_available ? `Update available${result.version ? `: ${result.version}` : ''}.` : 'No update is currently available.')
-      : (result.reason || 'No update server configured.');
-  };
-  const otaCard = Card({
-    title: 'Remote updates',
-    subtitle: 'Connect to an update server and check whether a compatible update is available.',
-    footer: ActionList(
-      ActionRow('Save server', 'Store the remote update server URL on the device.', Button({
-        onClick: async () => {
-          await api.put('/api/v1/updates/ota', { ...otaConfig, enabled: otaEnabled.get(), server_url: otaServer.get() || null });
-          store.toast('Update server saved', 'success');
-        }
-      }, 'Save')),
-      ActionRow('Check for updates', 'Ask the configured server for the latest update status.', Button({ variant: 'outline', onClick: checkOta }, 'Check now'))),
-  }, otaEnabled.wrap, otaServer.wrap, otaStatus);
-
   return el('div', {},
-    el('div', { class: 'page-header' }, el('h1', {}, 'Updates'), el('p', {}, 'A/B slot management, OTA, and config backup.')),
+    el('div', { class: 'page-header' }, el('h1', {}, 'Updates'), el('p', {}, 'Manage local A/B slots and install signed bundles.')),
     Card({ title: 'A/B slots', subtitle: 'The active and inactive update slots, versions, and confirmation state.' }, slotsTable),
-    el('div', { class: 'card-grid' }, installCard, otaCard));
+    installCard);
 }

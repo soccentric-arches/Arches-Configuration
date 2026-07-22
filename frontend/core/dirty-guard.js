@@ -4,13 +4,20 @@
 // dirty prompts for confirmation instead of silently discarding edits.
 
 let dirty = false;
+let saveHandler = null;
 
 export function markDirty() { dirty = true; }
 export function clearDirty() { dirty = false; }
 export function isDirty() { return dirty; }
+export function setSaveHandler(handler) { saveHandler = handler; }
+export async function saveDirtyPage() {
+  if (!saveHandler) throw new Error('This page does not provide a save action');
+  await saveHandler();
+}
 
 export function watchForEdits(container) {
   clearDirty();
+  saveHandler = null;
   container.addEventListener('input', markDirty);
   container.addEventListener('change', markDirty);
 }

@@ -28,11 +28,12 @@ export function Button(opts = {}, label) {
   const ariaLabel = !label && iconName ? title : null;
   const btn = el('button', { type, class: cls.join(' '), disabled, title, 'aria-label': ariaLabel }, ...children);
   if (onClick) {
+    btn.run = (...args) => onClick(...args);
     btn.addEventListener('click', async (e) => {
       if (btn.disabled) return;
       btn.disabled = true;
       try {
-        await onClick(e);
+        await btn.run(e);
       } catch (err) {
         toast(err && err.message ? err.message : 'Something went wrong', 'error');
       } finally {

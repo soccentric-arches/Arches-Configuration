@@ -10,7 +10,29 @@ import { confirmDialog } from '../components/modal.js';
 import { ActionList, ActionRow } from '../components/action-row.js';
 
 export async function render(api, store) {
-  const cfg = await api.get('/api/v1/logs/config');
+  let cfg;
+  try {
+    cfg = await api.get('/api/v1/logs/config');
+  } catch (e) {
+    cfg = { storage: 'volatile', max_size_bytes: 64 * 1024 * 1024, retention_days: 30, remote_syslog: null };
+    store.toast(`Could not load log configuration: ${e.message}`, 'error');
+  }
+  let sources = [];
+  try {
+    sources = await api.get('/api/v1/logs/sources');
+  } catch (e) {
+    store.toast(`Could not load log sources: ${e.message}`, 'error');
+  }
+
+  const sourceList = el('div', { class: 'list-stack' }, ...(Array.isArray(sources) ? sources : []).map(source => el('div', { class: 'row list-row' },
+    el('div', {},
+      el('strong', {}, source.label),
+      el('div', { class: 'muted' }, source.description)),
+    el('span', { class: source.available ? 'status-badge status-ok' : 'status-badge' }, source.available ? 'Available' : 'Unavailable'))));
+  const sourcesCard = Card({
+    title: 'Available log sources',
+    subtitle: 'Sources exposed by this Linux image and the WebConfig daemon.',
+  }, sourceList);
 
   // ---------- Journal viewer ----------
   const unit = Field({ label: 'Unit', placeholder: 'e.g. webconfigd.service' });
@@ -45,32 +67,39 @@ export async function render(api, store) {
     options: [{ value: 'volatile', label: 'Volatile (ramdisk)' }, { value: 'persistent', label: 'Persistent (eMMC)' }],
   });
   const maxSize = Field({ label: 'Max size when persistent (bytes)', type: 'number', value: cfg.max_size_bytes });
+  const retentionDays = Field({ label: 'Retention length (days)', type: 'number', value: cfg.retention_days || 30, help: 'Journald removes entries older than this limit. Use 0 for the system default.' });
   const syslogEnabled = Toggle({ label: 'Enable remote syslog', checked: !!cfg.remote_syslog && cfg.remote_syslog.enabled === true });
   const syslogHost = Field({ label: 'Host', value: cfg.remote_syslog && cfg.remote_syslog.host });
   const syslogPort = Field({ label: 'Port', type: 'number', value: (cfg.remote_syslog && cfg.remote_syslog.port) || 514 });
   const syslogProto = Field({ label: 'Protocol', type: 'select', value: (cfg.remote_syslog && cfg.remote_syslog.protocol) || 'udp', options: [{ value: 'udp', label: 'UDP' }, { value: 'tcp', label: 'TCP' }] });
 
   const configCard = Card({
-    title: 'Journald configuration',
-    subtitle: 'Choose log persistence and optional remote syslog forwarding.',
+    title: 'Log rotation and remote delivery',
+    subtitle: 'Set retention by age and size, then optionally forward logs to a remote syslog server.',
     footer: ActionList(ActionRow('Save and apply', 'Apply the journald storage and remote syslog settings.', Button({
       onClick: async () => {
         await api.put('/api/v1/logs/config', {
           storage: storage.get(),
           max_size_bytes: Number(maxSize.get()) || 0,
+          retention_days: Number(retentionDays.get()) || 0,
           remote_syslog: syslogEnabled.get() ? { enabled: true, host: syslogHost.get(), port: Number(syslogPort.get()) || 514, protocol: syslogProto.get() } : null,
         });
         store.toast('Logging config applied', 'success');
       },
     }, 'Save & apply'))),
-  }, storage.wrap, maxSize.wrap, syslogEnabled.wrap,
+  }, storage.wrap, maxSize.wrap, retentionDays.wrap, syslogEnabled.wrap,
     el('div', { class: 'field-row' }, syslogHost.wrap, syslogPort.wrap, syslogProto.wrap));
 
   // ---------- Audit log ----------
   const auditPre = el('pre', { class: 'log-viewer' });
   async function loadAudit() {
-    const entries = await api.get('/api/v1/logs/audit');
-    auditPre.textContent = (entries || []).map(e => `${e.ts}  ${e.user}  ${e.action}${e.detail ? '  ' + e.detail : ''}`).join('\n');
+    try {
+      const entries = await api.get('/api/v1/logs/audit');
+      auditPre.textContent = (entries || []).map(e => `${e.ts}  ${e.user}  ${e.action}${e.detail ? '  ' + e.detail : ''}`).join('\n');
+    } catch (e) {
+      auditPre.textContent = `Unable to load audit log: ${e.message}`;
+      store.toast(`Could not load audit log: ${e.message}`, 'error');
+    }
   }
   await loadAudit();
   const auditCard = Card({
@@ -90,7 +119,7 @@ export async function render(api, store) {
 
   return el('div', {},
     el('div', { class: 'page-header' }, el('h1', {}, 'Logs'), el('p', {}, 'Journal viewer, storage policy, and the audit trail.')),
-    viewerCard, configCard, auditCard);
+    sourcesCard, viewerCard, configCard, auditCard);
 }
 
 function downloadText(name, text) {

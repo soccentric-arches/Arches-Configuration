@@ -8,6 +8,7 @@
 use std::sync::Mutex;
 
 use crate::applier::{run_cmd, Applier, ApplyError, ApplyOutcome, FileBackup};
+use crate::store::network::OpenPort;
 use crate::store::Config;
 use crate::sysroot::Sysroot;
 
@@ -86,11 +87,23 @@ impl FirewallApplier {
                     ));
                 }
             }
+            for open_port in &iface.open_ports {
+                s.push_str(&format!(
+                    "    iifname \"{}\" {} dport {} accept\n",
+                    iface.name, open_port.protocol, open_port.port
+                ));
+            }
         }
         for svc in &config.network.firewall.default_open {
             if let Some((port, proto)) = service_port(svc) {
                 s.push_str(&format!("    {proto} dport {port} accept\n"));
             }
+        }
+        for open_port in &config.network.firewall.default_open_ports {
+            s.push_str(&format!(
+                "    {} dport {} accept\n",
+                open_port.protocol, open_port.port
+            ));
         }
         s.push_str("  }\n");
         s.push_str("}\n");
@@ -119,6 +132,12 @@ impl Applier for FirewallApplier {
                     });
                 }
             }
+            for open_port in &iface.open_ports {
+                validate_open_port(open_port, &format!(" on iface {}", iface.name))?;
+            }
+        }
+        for open_port in &config.network.firewall.default_open_ports {
+            validate_open_port(open_port, "")?;
         }
         Ok(())
     }
@@ -156,6 +175,19 @@ impl Applier for FirewallApplier {
     }
 }
 
+fn validate_open_port(open_port: &OpenPort, context: &str) -> Result<(), ApplyError> {
+    if open_port.port == 0 || !matches!(open_port.protocol.as_str(), "tcp" | "udp") {
+        return Err(ApplyError::Validation {
+            stage: crate::applier::ApplyStage::Validate,
+            message: format!(
+                "open port must use a valid port and tcp|udp protocol{}",
+                context
+            ),
+        });
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,6 +220,29 @@ mod tests {
         let r = FirewallApplier::render(&c);
         assert!(r.contains("iifname \"eth0\" tcp dport 22 accept"));
         assert!(r.contains("iifname \"eth0\" tcp dport 1883 accept"));
+    }
+
+    #[test]
+    fn opens_custom_port() {
+        let mut c = Config::default();
+        c.network.firewall.default_open_ports = vec![OpenPort {
+            port: 9000,
+            protocol: "tcp".into(),
+        }];
+        let r = FirewallApplier::render(&c);
+        assert!(r.contains("tcp dport 9000 accept"));
+    }
+
+    #[test]
+    fn rejects_invalid_custom_port() {
+        let a = FirewallApplier::new();
+        let sys = Sysroot::at("/tmp/never");
+        let mut c = Config::default();
+        c.network.firewall.default_open_ports = vec![OpenPort {
+            port: 9000,
+            protocol: "icmp".into(),
+        }];
+        assert!(a.validate(&sys, &c).is_err());
     }
 
     #[test]

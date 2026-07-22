@@ -69,6 +69,46 @@ pub async fn get_config(
     Ok(Json(app.engine.load()?.logs))
 }
 
+/// `GET /api/v1/logs/sources` — available local log sources.
+pub async fn sources(
+    State(app): State<AppState>,
+    _role: AuthRole,
+) -> ApiResult<Json<Vec<serde_json::Value>>> {
+    let real_root = app.engine.sysroot.is_real_root();
+    Ok(Json(vec![
+        serde_json::json!({
+            "id": "system-journal",
+            "label": "System journal",
+            "description": "Service and system messages collected by systemd-journald.",
+            "available": real_root,
+        }),
+        serde_json::json!({
+            "id": "kernel",
+            "label": "Kernel log",
+            "description": "Kernel messages from the journal and kernel ring buffer.",
+            "available": real_root,
+        }),
+        serde_json::json!({
+            "id": "syslog",
+            "label": "Syslog",
+            "description": "Traditional syslog-compatible messages, when provided by the image.",
+            "available": app.engine.sysroot.join("/var/log/syslog").exists(),
+        }),
+        serde_json::json!({
+            "id": "audit",
+            "label": "WebConfig audit log",
+            "description": "Administrative actions recorded by WebConfig.",
+            "available": true,
+        }),
+        serde_json::json!({
+            "id": "webconfigd",
+            "label": "WebConfig daemon",
+            "description": "Messages emitted by webconfigd.service.",
+            "available": real_root,
+        }),
+    ]))
+}
+
 /// `PUT /api/v1/logs/config` — apply journald config (admin only; writes via
 /// the journald applier, spec §4.6).
 pub async fn put_config(

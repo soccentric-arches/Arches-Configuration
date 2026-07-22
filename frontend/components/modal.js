@@ -66,6 +66,25 @@ export function confirmDialog({ title = 'Are you sure?', description, confirmLab
 }
 
 /**
+ * choiceDialog({ title, description, choices }) -> Promise<string|null>.
+ * Each choice is { value, label, variant }. Closing the dialog returns null.
+ */
+export function choiceDialog({ title, description, choices = [] } = {}) {
+  return new Promise((resolve) => {
+    let modal;
+    const finish = (value) => { modal.close(); resolve(value); };
+    modal = openModal({
+      title,
+      body: description ? el('p', { class: 'muted' }, description) : null,
+      footer: choices.map(choice => Button({
+        variant: choice.variant || 'primary',
+        onClick: () => finish(choice.value),
+      }, choice.label)),
+    });
+  });
+}
+
+/**
  * promptDialog({ title, label, placeholder, type, confirmLabel })
  * -> Promise<string|null>. Replaces the native `prompt()`.
  */
