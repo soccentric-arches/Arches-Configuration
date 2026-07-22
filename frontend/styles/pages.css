@@ -67,7 +67,7 @@
 .overview-hero-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr));
-  gap: var(--space-6);
+  gap: var(--space-5);
   align-items: center;
 }
 
@@ -95,7 +95,7 @@
 .overview-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--space-4);
+  gap: var(--space-5);
 }
 
 .overview-metric {
@@ -113,7 +113,7 @@
 .overview-detail-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-5) var(--space-6);
+  gap: var(--space-5);
 }
 
 .overview-info-grid {

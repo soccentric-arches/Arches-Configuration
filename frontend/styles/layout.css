@@ -169,6 +169,19 @@
   margin: 0 auto;
 }
 
+.page-surface {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.page-surface>.page-header,
+.page-surface>.card,
+.page-surface>.card-grid,
+.page-surface>.empty-state {
+  margin-bottom: 0;
+}
+
 /* Mobile: sidebar becomes an off-canvas drawer. */
 .sidebar-scrim {
   display: none;

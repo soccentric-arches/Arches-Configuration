@@ -65,6 +65,7 @@ export async function renderCurrent() {
   try {
     const mod = await meta.loader();
     const node = await mod.render(api, Store);
+    node.classList.add('page-surface');
     mount(view, node);
     view.classList.remove('page-enter');
     void view.offsetWidth; // restart the animation on every navigation
