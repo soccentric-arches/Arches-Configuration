@@ -13,7 +13,7 @@
   font-size: var(--text-sm);
   font-weight: 500;
   cursor: pointer;
-  transition: background var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease), opacity var(--duration-fast) var(--ease);
+  transition: background var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease), box-shadow var(--duration-fast) var(--ease), opacity var(--duration-fast) var(--ease);
   white-space: nowrap;
   min-width: 112px;
   user-select: none;
@@ -22,6 +22,10 @@
 .btn:disabled {
   opacity: .5;
   cursor: not-allowed;
+}
+
+.btn:hover:not(:disabled) {
+  box-shadow: var(--shadow-xs);
 }
 
 .btn svg {
@@ -39,20 +43,24 @@
 .btn-primary {
   background: var(--primary);
   color: var(--primary-foreground);
+  box-shadow: var(--shadow-xs);
 }
 
 .btn-primary:hover:not(:disabled) {
   background: var(--primary-hover);
+  box-shadow: var(--shadow-sm);
 }
 
 .btn-secondary {
   background: var(--secondary);
   color: var(--secondary-foreground);
   border-color: var(--border);
+  box-shadow: var(--shadow-xs);
 }
 
 .btn-secondary:hover:not(:disabled) {
   background: var(--secondary-hover);
+  box-shadow: var(--shadow-sm);
 }
 
 .btn-outline {
@@ -123,15 +131,20 @@
 .card {
   background: var(--card);
   color: var(--card-foreground);
-  border: 1px solid var(--zinc-300);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-xs);
-  margin-bottom: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: var(--space-6);
   overflow: hidden;
+  transition: box-shadow var(--duration-normal) var(--ease), transform var(--duration-normal) var(--ease);
+}
+
+.card:hover {
+  box-shadow: var(--shadow-md);
 }
 
 .card-header {
-  padding: var(--space-4) var(--space-5);
+  padding: var(--space-5) var(--space-6);
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
@@ -150,7 +163,7 @@
 }
 
 .card-body {
-  padding: var(--space-5);
+  padding: var(--space-6);
 }
 
 .card-body>*+* {
@@ -163,7 +176,7 @@
 }
 
 .card-footer {
-  padding: var(--space-3) var(--space-5);
+  padding: var(--space-4) var(--space-6);
   border-top: 1px solid var(--border);
   background: var(--card);
   display: flex;
@@ -175,7 +188,7 @@
 .card-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-4);
+  gap: var(--space-5);
 }
 
 .card-grid>.card {
@@ -242,6 +255,7 @@ textarea.input {
   font-size: var(--text-sm);
   color: var(--foreground);
   width: 100%;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, .04);
   transition: border-color var(--duration-fast) var(--ease);
 }
 
@@ -349,6 +363,7 @@ textarea.input {
 /* ---------- Table ---------- */
 .table-wrap {
   overflow-x: auto;
+  border-radius: var(--radius-md);
 }
 
 .table {

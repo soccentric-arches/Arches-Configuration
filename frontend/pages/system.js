@@ -36,12 +36,12 @@ export async function render(api, store) {
   const identityCard = Card({
     title: 'Identity',
     subtitle: 'Set the name and asset tag used to identify this device.',
+    footer: ActionList(
+      ActionRow('Apply to device', 'Apply the hostname settings to the running device.', Button({ variant: 'outline', onClick: apply }, 'Apply')),
+      ActionRow('Save settings', 'Store identity settings for the next apply.', Button({ onClick: save }, 'Save'))),
   }, identity);
 
   return el('div', {},
     el('div', { class: 'page-header' }, el('h1', {}, 'System settings'), el('p', {}, 'Manage device identity and hostname settings.')),
-    identityCard,
-    ActionList(
-      ActionRow('Apply to device', 'Apply the hostname settings to the running device.', Button({ variant: 'outline', onClick: apply }, 'Apply')),
-      ActionRow('Save settings', 'Store identity settings for the next apply.', Button({ onClick: save }, 'Save'))));
+    identityCard);
 }
