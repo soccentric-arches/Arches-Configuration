@@ -220,7 +220,10 @@ pub async fn get_app_settings(
 
 /// `PUT /api/v1/apps/:id/settings` — write a schema-driven app settings slice
 /// (operator+). Validation is performed by the store's schema validator on
-/// commit (spec §3: server-side re-validation).
+/// commit (spec §3: server-side re-validation). After commit, the schema's
+/// declared `apply_hook`s fire (spec §3/§4.3): `restart unit X`, `reload unit
+/// X`, or `sighup` the process named X — so a saved setting takes effect
+/// without a manual service restart.
 pub async fn put_app_settings(
     State(app): State<AppState>,
     role: AuthRole,
@@ -236,8 +239,91 @@ pub async fn put_app_settings(
         c.app_settings.insert(id_for_update, req_for_update);
         Ok(())
     })?;
-    audit(&app, &user, "apps.settings.put", Some(id.clone()));
+    let hooks = run_apply_hooks(&app, &id).await;
+    audit(
+        &app,
+        &user,
+        "apps.settings.put",
+        Some(if hooks.is_empty() {
+            id.clone()
+        } else {
+            format!("{id} → {}", hooks.join(","))
+        }),
+    );
     Ok(Json(req))
+}
+
+/// Execute the `apply_hook`s declared by the app schema for `id` (the schema
+/// file stem, e.g. `app-example`). Returns the human-readable side effects that
+/// actually ran, for the audit trail. Hooks are best-effort: a bad target name
+/// or a failed verb is recorded and skipped, never failing the settings save
+/// (the config is already committed).
+async fn run_apply_hooks(app: &AppState, id: &str) -> Vec<String> {
+    use webconfig_engine::schema::ApplyHook;
+    // Find this app's descriptor (keyed by stem). Only app schemas declare
+    // apply_hooks; top-level sections don't.
+    let descriptor = app
+        .schema
+        .descriptors()
+        .iter()
+        .find(|(stem, d)| *stem == id && d.id.starts_with("app:"))
+        .map(|(_, d)| d.clone());
+    let Some(descriptor) = descriptor else {
+        return Vec::new();
+    };
+
+    // Collect (kind, target) pairs across every field, deduped, target-validated.
+    let mut pairs: Vec<(String, String)> = Vec::new();
+    for group in &descriptor.groups {
+        for field in &group.fields {
+            if let Some(ApplyHook { kind, target }) = &field.apply_hook {
+                if valid_hook_target(target) {
+                    let pair = (kind.clone(), target.clone());
+                    if !pairs.contains(&pair) {
+                        pairs.push(pair);
+                    }
+                }
+            }
+        }
+    }
+
+    let mut ran = Vec::new();
+    for (kind, target) in pairs {
+        let outcome = match kind.as_str() {
+            "restart" => app.systemd.restart(&target).await.ok().is_some().to_string(),
+            "reload" => {
+                if app.engine.sysroot.is_real_root() {
+                    webconfig_engine::applier::run_cmd("systemctl", &["reload", &target])
+                        .map(|_| "ok".into())
+                        .unwrap_or_else(|e| format!("err:{e}"))
+                } else {
+                    "skipped (fake sysroot)".into()
+                }
+            }
+            "sighup" => {
+                if app.engine.sysroot.is_real_root() {
+                    webconfig_engine::applier::run_cmd("pkill", &["-HUP", "-x", &target])
+                        .map(|_| "ok".into())
+                        .unwrap_or_else(|e| format!("err:{e}"))
+                } else {
+                    "skipped (fake sysroot)".into()
+                }
+            }
+            other => format!("unknown hook kind {other}"),
+        };
+        ran.push(format!("{kind} {target}: {outcome}"));
+    }
+    ran
+}
+
+/// Hook targets are unit names or process names — confine to a safe charset so
+/// a malformed schema can never inject shell arguments.
+fn valid_hook_target(target: &str) -> bool {
+    !target.is_empty()
+        && target.len() <= 128
+        && target
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'_' || b == b'-' || b == b'@')
 }
 
 // Re-export the SystemdClient trait so handlers that take it via FromRef can
