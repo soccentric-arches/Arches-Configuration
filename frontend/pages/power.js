@@ -72,10 +72,15 @@ export function render(api, store) {
 
     const powerCard = Card({
         title: 'Power controls',
-        subtitle: 'Each action is isolated below. Read the description before proceeding.',
+        subtitle: 'Restart or power off the device.',
     }, ActionList(
         ActionRow('Reboot', 'Restart the operating system without changing configuration.', reboot),
-        ActionRow('Shutdown', 'Power off the device. A person must start it again.', shutdown),
+        ActionRow('Shutdown', 'Power off the device. A person must start it again.', shutdown)));
+
+    const resetCard = Card({
+        title: 'System controls',
+        subtitle: 'Reset device settings or return the device to its installed defaults.',
+    }, ActionList(
         ActionRow('System reset', 'Return configuration to default mode while preserving user accounts.', systemReset),
         ActionRow('Factory reset', 'Erase configuration and user accounts. This cannot be undone.', factoryReset)));
 
@@ -83,5 +88,6 @@ export function render(api, store) {
         el('div', { class: 'page-header' },
             el('h1', {}, 'Power'),
             el('p', {}, 'Safely reboot, shut down, or reset the device.')),
-        powerCard);
+        powerCard,
+        resetCard);
 }

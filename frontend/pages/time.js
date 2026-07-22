@@ -7,14 +7,52 @@ import { Toggle } from '../components/toggle.js';
 import { Button } from '../components/button.js';
 import { ActionList, ActionRow } from '../components/action-row.js';
 
+const US_TIMEZONES = [
+    ['America/Adak', 'Adak, Alaska'],
+    ['America/Anchorage', 'Anchorage, Alaska'],
+    ['America/Boise', 'Boise, Idaho'],
+    ['America/Chicago', 'Central Time'],
+    ['America/Denver', 'Mountain Time'],
+    ['America/Detroit', 'Detroit, Michigan'],
+    ['America/Indiana/Indianapolis', 'Indianapolis, Indiana'],
+    ['America/Indiana/Knox', 'Knox, Indiana'],
+    ['America/Indiana/Marengo', 'Marengo, Indiana'],
+    ['America/Indiana/Petersburg', 'Petersburg, Indiana'],
+    ['America/Indiana/Tell_City', 'Tell City, Indiana'],
+    ['America/Indiana/Vevay', 'Vevay, Indiana'],
+    ['America/Indiana/Vincennes', 'Vincennes, Indiana'],
+    ['America/Indiana/Winamac', 'Winamac, Indiana'],
+    ['America/Juneau', 'Juneau, Alaska'],
+    ['America/Kentucky/Louisville', 'Louisville, Kentucky'],
+    ['America/Kentucky/Monticello', 'Monticello, Kentucky'],
+    ['America/Los_Angeles', 'Pacific Time'],
+    ['America/Menominee', 'Menominee, Michigan'],
+    ['America/Metlakatla', 'Metlakatla, Alaska'],
+    ['America/New_York', 'Eastern Time'],
+    ['America/Nome', 'Nome, Alaska'],
+    ['America/North_Dakota/Beulah', 'Beulah, North Dakota'],
+    ['America/North_Dakota/Center', 'Center, North Dakota'],
+    ['America/North_Dakota/New_Salem', 'New Salem, North Dakota'],
+    ['America/Phoenix', 'Phoenix, Arizona'],
+    ['America/Sitka', 'Sitka, Alaska'],
+    ['America/Yakutat', 'Yakutat, Alaska'],
+    ['Pacific/Honolulu', 'Honolulu, Hawaii'],
+];
+
 export async function render(api, store) {
     const cfg = await api.get('/api/v1/system');
+    const currentTimezone = cfg.time && cfg.time.timezone;
+    const timezoneOptions = US_TIMEZONES.map(([value, label]) => ({ value, label }));
+    if (currentTimezone && !timezoneOptions.some(option => option.value === currentTimezone)) {
+        timezoneOptions.unshift({ value: currentTimezone, label: `${currentTimezone} (current)` });
+    }
 
     const timezone = Field({
         label: 'Timezone',
-        value: cfg.time && cfg.time.timezone,
-        placeholder: 'e.g. UTC, America/Denver',
-        help: 'The local timezone used for displayed times and scheduled operations.',
+        type: 'select',
+        value: currentTimezone,
+        options: timezoneOptions,
+        help: 'Choose a US timezone for displayed times and scheduled operations.',
     });
     const ntpEnabled = Toggle({
         label: 'NTP enabled',

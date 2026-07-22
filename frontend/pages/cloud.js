@@ -41,7 +41,7 @@ export async function render(api, store) {
                     });
                     store.toast('Cloud settings saved', 'success');
                 },
-            }, 'Save settings')),
+            }, 'Save settings'))),
     }, el('div', { class: 'form-grid' }, host.wrap, port.wrap, user.wrap, pass.wrap, topic.wrap, tls.wrap));
 
     return el('div', {},

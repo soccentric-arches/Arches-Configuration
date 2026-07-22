@@ -136,7 +136,7 @@ export async function render(api, store) {
                         await api.del(`/api/v1/system/groups/${encodeURIComponent(group.name)}`);
                         refresh();
                     },
-                }, 'Delete group')),
+                }, 'Delete group'))),
         }, members, el('div', { class: 'field-row' }, memberPicker.wrap));
     });
 

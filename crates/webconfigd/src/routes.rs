@@ -93,6 +93,7 @@ pub fn build_router(state: AppState, static_dir: std::path::PathBuf) -> Router {
         .route("/updates/slots", get(updates::slots))
         .route("/updates/install", post(updates::install))
         .route("/updates/reboot-to-apply", post(updates::reboot_to_apply))
+        .route("/updates/ota", get(updates::get_ota).put(updates::put_ota))
         .route("/updates/ota/check", get(updates::ota_check))
         .route("/updates/backup", get(updates::backup))
         .route("/updates/restore", post(updates::restore))

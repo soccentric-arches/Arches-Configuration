@@ -93,7 +93,9 @@ Base URL: `https://<device>:8443/api/v1`. All responses are JSON.
 | GET | `/updates/slots` | any | `[{slot, version, running, confirmed, state}]`. |
 | POST | `/updates/install` | **[admin]** | `{bundle_path}` → signature verify + compat check + write inactive slot → `{manifest, stages, reboot_to_apply}`. |
 | POST | `/updates/reboot-to-apply` | **[admin]** | boot into the newly written slot. |
-| GET | `/updates/ota/check` | any | notify-only in v1. |
+| GET | `/updates/ota` | any | Read OTA server configuration. |
+| PUT | `/updates/ota` | **[admin]** | Save OTA server configuration. |
+| GET | `/updates/ota/check` | any | Query the configured server for `{update_available, version, platform}` JSON. |
 | GET | `/updates/backup?include_secrets=false` | any | config store (secrets redacted by default). |
 | POST | `/updates/restore` | **[admin]** | restore a backup (tolerates version skew). |
 | GET | `/updates/diagnostics` | any | journal excerpt + config + slots + audit + dmesg + alert history. |

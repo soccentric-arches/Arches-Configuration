@@ -82,6 +82,36 @@ pub async fn reboot_to_apply(
     Ok(Json(serde_json::json!({ "rebooting": true })))
 }
 
+/// `GET /api/v1/updates/ota` — read OTA server configuration.
+pub async fn get_ota(
+    State(app): State<AppState>,
+    _role: AuthRole,
+) -> ApiResult<Json<webconfig_engine::store::updates::OtaConfig>> {
+    Ok(Json(app.engine.load()?.updates.ota))
+}
+
+/// `PUT /api/v1/updates/ota` — save OTA server configuration (admin only).
+pub async fn put_ota(
+    State(app): State<AppState>,
+    role: AuthRole,
+    session: Session,
+    Json(req): Json<webconfig_engine::store::updates::OtaConfig>,
+) -> ApiResult<Json<webconfig_engine::store::updates::OtaConfig>> {
+    role.require_admin("updates.ota.put")?;
+    let user = username(&session).await;
+    let cfg = app.engine.update(move |c| {
+        c.updates.ota = req.clone();
+        Ok(())
+    })?;
+    audit(
+        &app,
+        &user,
+        "updates.ota.put",
+        cfg.updates.ota.server_url.clone(),
+    );
+    Ok(Json(cfg.updates.ota))
+}
+
 /// `GET /api/v1/updates/ota/check` — notify-only in v1 (spec §4.4). [v2]
 /// auto-apply + maintenance windows.
 pub async fn ota_check(
@@ -95,11 +125,40 @@ pub async fn ota_check(
             serde_json::json!({ "checked": false, "reason": "no server url" }),
         ));
     }
-    // v1: notify-only — we do not download/apply. Real check would query the
-    // RAUC HawKD server; here we report the configured URL (spec §4.4).
-    Ok(Json(
-        serde_json::json!({ "checked": true, "server_url": url, "update_available": null }),
-    ))
+    if !app.engine.sysroot.is_real_root() {
+        return Ok(Json(serde_json::json!({
+            "checked": true,
+            "server_url": url,
+            "update_available": null,
+            "reason": "remote checks are disabled in the fake sysroot",
+        })));
+    }
+
+    let output = webconfig_engine::applier::run_cmd(
+        "curl",
+        &[
+            "--fail",
+            "--silent",
+            "--show-error",
+            "--max-time",
+            "10",
+            &url,
+        ],
+    )
+    .map_err(ApiError::from)?;
+    let remote: serde_json::Value = serde_json::from_str(&output)
+        .map_err(|e| ApiError::BadRequest(format!("OTA server returned invalid JSON: {e}")))?;
+    let update_available = remote
+        .get("update_available")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    Ok(Json(serde_json::json!({
+        "checked": true,
+        "server_url": url,
+        "update_available": update_available,
+        "version": remote.get("version"),
+        "platform": remote.get("platform"),
+    })))
 }
 
 /// `GET /api/v1/updates/backup` — download the config store as a file (spec

@@ -175,7 +175,7 @@
 }
 
 .sidebar-mobile-toggle {
-  display: none;
+  display: none !important;
 }
 
 @media (max-width: 880px) {
@@ -201,16 +201,16 @@
   }
 
   .sidebar-desktop-toggle {
-    display: none;
+    display: none !important;
   }
 
   .sidebar-mobile-toggle {
-    display: inline-flex;
+    display: inline-flex !important;
   }
 }
 
 @media (min-width: 881px) {
   .sidebar-mobile-toggle {
-    display: none;
+    display: none !important;
   }
 }

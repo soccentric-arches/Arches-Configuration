@@ -27,20 +27,19 @@ export async function render(api, store) {
       const addr = Field({ label: 'Static address', value: iface.address, placeholder: '192.168.1.50' });
       const prefix = Field({ label: 'Prefix', type: 'number', value: iface.prefix });
       const gw = Field({ label: 'Gateway', value: iface.gateway });
-      const openSvcs = Field({ label: 'Open services (comma)', value: (iface.open_services || []).join(', ') });
       const sync = () => {
         ifaces[idx] = {
           name: iface.name, mac_address: mac.get() || null, enabled: en.get(), dhcp: dhcp.get(),
           address: addr.get() || null, prefix: prefix.get() ? Number(prefix.get()) : null,
           gateway: gw.get() || null, mtu: iface.mtu, dns: iface.dns || [],
-          open_services: openSvcs.get().split(',').map(s => s.trim()).filter(Boolean),
+          open_services: iface.open_services || [],
         };
       };
-      for (const f of [en.input, dhcp.input, mac.input, addr.input, prefix.input, gw.input, openSvcs.input]) {
+      for (const f of [en.input, dhcp.input, mac.input, addr.input, prefix.input, gw.input]) {
         f.addEventListener('change', sync);
       }
       return Card({ title: iface.name, subtitle: 'Interface address, DHCP, gateway, and exposed services.', class: 'iface-card' },
-        en.wrap, dhcp.wrap, mac.wrap, addr.wrap, prefix.wrap, gw.wrap, openSvcs.wrap);
+        en.wrap, dhcp.wrap, mac.wrap, addr.wrap, prefix.wrap, gw.wrap);
     }));
   }
   renderIfaces();
