@@ -73,6 +73,14 @@ impl AuditLog {
         Ok(out)
     }
 
+    /// Remove all persisted audit entries.
+    pub fn clear(&self) -> std::io::Result<()> {
+        if self.path.exists() {
+            std::fs::remove_file(&self.path)?;
+        }
+        Ok(())
+    }
+
     /// Trim the oldest lines until under the byte budget.
     fn rotate_if_needed(&self) -> std::io::Result<()> {
         let len = std::fs::metadata(&self.path).map(|m| m.len()).unwrap_or(0);
@@ -143,5 +151,20 @@ mod tests {
         let len = std::fs::metadata(log.path()).unwrap().len();
         assert!(len <= 300, "len={len}");
         assert!(len > 0);
+    }
+
+    #[test]
+    fn clear_removes_all_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = AuditLog::new(dir.path().join("audit.jsonl"), 1 << 20);
+        log.append(&AuditEntry {
+            ts: "2026-07-21T10:00:00Z".into(),
+            user: "admin".into(),
+            action: "network.apply".into(),
+            detail: None,
+        })
+        .unwrap();
+        log.clear().unwrap();
+        assert!(log.read_all().unwrap().is_empty());
     }
 }

@@ -21,12 +21,13 @@ function downloadText(name, text) {
 }
 
 export async function render(api, store) {
-  const [sec, exposure, trust, wg, certs] = await Promise.all([
+  const [sec, exposure, trust, wg, certs, systemCfg] = await Promise.all([
     api.get('/api/v1/security'),
     api.get('/api/v1/security/exposure'),
     api.get('/api/v1/security/trust'),
     api.get('/api/v1/security/wireguard/pubkey').catch(() => ({ public_key: '', has_private_key: false })),
     api.get('/api/v1/security/certs').catch(() => []),
+    api.get('/api/v1/system'),
   ]);
 
   // ---------- Session + WireGuard ----------
@@ -54,6 +55,30 @@ export async function render(api, store) {
   }, idle.wrap, plainHttp.wrap, wgEn.wrap, wgPort.wrap,
     el('div', { class: 'row' }, el('span', { class: 'muted', style: 'font-size:13px' }, 'WireGuard public key:'),
       wg.public_key ? el('code', { class: 'mono' }, wg.public_key) : Badge(wg.has_private_key ? 'key present, no peer' : 'not generated yet', 'neutral')));
+
+  // ---------- SSH + console ----------
+  const sshd = Toggle({ label: 'SSH daemon enabled', checked: systemCfg.ssh && systemCfg.ssh.sshd_enabled });
+  const getty = Toggle({ label: 'Serial getty enabled', checked: systemCfg.ssh && systemCfg.ssh.serial_getty_enabled });
+  const authKeys = Field({ label: 'Authorized keys (one per line)', type: 'textarea', value: systemCfg.ssh && systemCfg.ssh.authorized_keys });
+  const sshCard = Card({
+    title: 'SSH and console',
+    subtitle: 'Control remote shell access and the serial console login.',
+    footer: ActionList(
+      ActionRow('Apply to device', 'Apply the general system configuration to the running device.', Button({ variant: 'outline', onClick: async () => { await api.post('/api/v1/system/apply', {}); store.toast('System settings applied', 'success'); } }, 'Apply')),
+      ActionRow('Save settings', 'Store SSH and console settings for the next apply.', Button({
+        onClick: async () => {
+          await api.put('/api/v1/system', {
+            ...systemCfg,
+            ssh: {
+              sshd_enabled: sshd.get(),
+              serial_getty_enabled: getty.get(),
+              authorized_keys: authKeys.get(),
+            },
+          });
+          store.toast('SSH settings saved', 'success');
+        }
+      }, 'Save'))),
+  }, el('div', { class: 'form-grid' }, sshd.wrap, getty.wrap, authKeys.wrap));
 
   // ---------- TLS: CSR generator + certificate inventory ----------
   const cn = Field({ label: 'Common name', placeholder: 'device.example.com' });
@@ -94,6 +119,6 @@ export async function render(api, store) {
 
   return el('div', {},
     el('div', { class: 'page-header' }, el('h1', {}, 'Security'), el('p', {}, 'Sessions, WireGuard, TLS, and exposure/trust posture.')),
-    configCard,
+    configCard, sshCard,
     el('div', { class: 'card-grid' }, csrCard, certsCard, exposureCard, trustCard));
 }

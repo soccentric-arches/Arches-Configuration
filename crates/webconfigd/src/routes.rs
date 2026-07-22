@@ -105,7 +105,10 @@ pub fn build_router(state: AppState, static_dir: std::path::PathBuf) -> Router {
         // Logs (§4.6)
         .route("/logs", get(logs::read))
         .route("/logs/config", get(logs::get_config).put(logs::put_config))
-        .route("/logs/audit", get(logs::audit_log))
+        .route(
+            "/logs/audit",
+            get(logs::audit_log).delete(logs::clear_audit),
+        )
         .route("/logs/download", get(logs::download))
         // Alerts (§4.7)
         .route("/alerts", get(alerts::get).put(alerts::put))

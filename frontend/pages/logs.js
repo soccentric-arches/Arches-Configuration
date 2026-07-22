@@ -6,6 +6,7 @@ import { Card } from '../components/card.js';
 import { Field } from '../components/field.js';
 import { Toggle } from '../components/toggle.js';
 import { Button } from '../components/button.js';
+import { confirmDialog } from '../components/modal.js';
 import { ActionList, ActionRow } from '../components/action-row.js';
 
 export async function render(api, store) {
@@ -72,7 +73,20 @@ export async function render(api, store) {
     auditPre.textContent = (entries || []).map(e => `${e.ts}  ${e.user}  ${e.action}${e.detail ? '  ' + e.detail : ''}`).join('\n');
   }
   await loadAudit();
-  const auditCard = Card({ title: 'Audit log', subtitle: 'Administrative actions recorded by WebConfig.', footer: ActionList(ActionRow('Refresh audit log', 'Reload the recorded administrative actions from the device.', Button({ variant: 'outline', onClick: loadAudit }, 'Refresh'))) }, auditPre);
+  const auditCard = Card({
+    title: 'Audit log', subtitle: 'Administrative actions recorded by WebConfig.', footer: ActionList(
+      ActionRow('Refresh audit log', 'Reload the recorded administrative actions from the device.', Button({ variant: 'outline', onClick: loadAudit }, 'Refresh')),
+      ActionRow('Remove audit log', 'Permanently delete the stored administrative action history.', Button({
+        variant: 'destructive-outline',
+        onClick: async () => {
+          if (!await confirmDialog({ title: 'Remove audit log?', description: 'This permanently deletes the stored administrative action history.', confirmLabel: 'Remove audit log', variant: 'destructive' })) return;
+          await api.del('/api/v1/logs/audit');
+          await loadAudit();
+          store.toast('Audit log removed', 'success');
+        },
+      }, 'Remove log')),
+    )
+  }, auditPre);
 
   return el('div', {},
     el('div', { class: 'page-header' }, el('h1', {}, 'Logs'), el('p', {}, 'Journal viewer, storage policy, and the audit trail.')),

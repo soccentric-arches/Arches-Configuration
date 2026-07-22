@@ -82,6 +82,17 @@ export async function render(api, store) {
         ? Table({ columns: ['User', 'Role', 'Groups', ''] }, userRows).element
         : EmptyState({ title: 'No users configured' }));
 
+    const rootPassword = Field({ label: 'New root password (min 8)', type: 'password' });
+    const rootCard = Card({ title: 'Root password', subtitle: 'Change the Linux root password used for local administration.' }, rootPassword.wrap,
+        ActionList(ActionRow('Set root password', 'Replace the current root password with the new value.', Button({
+            onClick: async () => {
+                if (rootPassword.get().length < 8) { store.toast('Password must be at least 8 characters', 'error'); return; }
+                await api.post('/api/v1/system/root-password', { password: rootPassword.get() });
+                store.toast('Root password set', 'success');
+                rootPassword.set('');
+            },
+        }, 'Set password'))));
+
     const groupCards = (groups || []).map((group) => {
         const membersList = group.members || [];
         const available = (users || []).filter(user => !membersList.includes(user.username));
@@ -145,6 +156,7 @@ export async function render(api, store) {
     return el('div', {},
         el('div', { class: 'page-header' }, el('h1', {}, 'Users & Groups'), el('p', {}, 'Manage local accounts, roles, groups, and group membership.')),
         usersCard,
+        rootCard,
         groupsHeader,
         groupCards.length
             ? el('div', { class: 'card-grid' }, ...groupCards)

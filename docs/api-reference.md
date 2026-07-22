@@ -115,6 +115,7 @@ Base URL: `https://<device>:8443/api/v1`. All responses are JSON.
 | GET | `/logs/config` | any | `LogsConfig`. |
 | PUT | `/logs/config` | **[admin]** | `LogsConfig` (applies journald). |
 | GET | `/logs/audit` | any | `[{ts, user, action, detail}]`. |
+| DELETE | `/logs/audit` | **[admin]** | Clear the persisted audit log. |
 | GET | `/logs/download` | any | full journal export. |
 
 ## Alerts (§4.7)
