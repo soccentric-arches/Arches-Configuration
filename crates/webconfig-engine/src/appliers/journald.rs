@@ -122,10 +122,7 @@ impl JournaldApplier {
             {
                 return Err(ApplyError::Validation {
                     stage: crate::applier::ApplyStage::Validate,
-                    message: format!(
-                        "remote syslog host {:?} has invalid characters",
-                        rs.host
-                    ),
+                    message: format!("remote syslog host {:?} has invalid characters", rs.host),
                 });
             }
         }
@@ -172,7 +169,10 @@ impl Applier for JournaldApplier {
                 std::fs::write(&unit_path, unit)?;
                 if real {
                     let _ = run_cmd("systemctl", &["daemon-reload"]);
-                    let _ = run_cmd("systemctl", &["enable", "--now", "webconfig-syslog-forward.service"]);
+                    let _ = run_cmd(
+                        "systemctl",
+                        &["enable", "--now", "webconfig-syslog-forward.service"],
+                    );
                 }
             }
             None => {
@@ -181,7 +181,10 @@ impl Applier for JournaldApplier {
                 }
                 if real {
                     let _ = run_cmd("systemctl", &["stop", "webconfig-syslog-forward.service"]);
-                    let _ = run_cmd("systemctl", &["disable", "webconfig-syslog-forward.service"]);
+                    let _ = run_cmd(
+                        "systemctl",
+                        &["disable", "webconfig-syslog-forward.service"],
+                    );
                     let _ = run_cmd("systemctl", &["daemon-reload"]);
                 }
             }
@@ -270,8 +273,10 @@ mod tests {
             enabled: true,
         });
         let unit = JournaldApplier::render_forwarder(&c).expect("enabled → unit");
-        assert!(unit.contains("webconfig-syslog-forward.service")
-            || unit.contains("remote syslog forwarder"));
+        assert!(
+            unit.contains("webconfig-syslog-forward.service")
+                || unit.contains("remote syslog forwarder")
+        );
         assert!(unit.contains("nc logs.example.com 514"));
         assert!(!unit.contains("nc -u"));
     }
@@ -341,8 +346,9 @@ mod tests {
         a.apply(&sys, &c).unwrap();
         assert!(!unit.exists(), "disabled → forwarder unit removed");
 
-        // Rollback restores the last apply's prior state (no unit).
+        // Rollback undoes the last (disabling) apply: it captured the unit
+        // present before removing it, so rollback restores the unit.
         a.rollback(&sys).unwrap();
-        assert!(!unit.exists());
+        assert!(unit.exists(), "rollback restores the prior forwarder unit");
     }
 }

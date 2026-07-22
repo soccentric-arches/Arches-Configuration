@@ -124,7 +124,7 @@ Base URL: `https://<device>:8443/api/v1`. All responses are JSON.
 | PUT | `/logs/config` | **[admin]** | `LogsConfig` (applies journald). |
 | GET | `/logs/audit` | any | `[{ts, user, action, detail}]`. |
 | DELETE | `/logs/audit` | **[admin]** | Clear the persisted audit log. |
-| GET | `/logs/download` | any | full journal export. |
+| GET | `/logs/download` | any | full journal export, or per-unit export with `?unit=` (spec §4.6). |
 
 ## Alerts (§4.7)
 
@@ -171,7 +171,7 @@ when no explicit state was previously stored.
 
 | Method | Path | Role | Notes |
 |---|---|---|---|
-| GET | `/events` | any | Server-Sent Events: `vitals` (snapshot) + `heartbeat` ticks. |
+| GET | `/events` | any | Server-Sent Events: `vitals` (snapshot) + `journal` follow chunks (cursor-based, real root only, spec §4.6 follow mode). |
 
 > **[admin]** = admin only. **[op+]** = operator or admin. "any" = any
 > authenticated session. No route is usable unauthenticated except the public

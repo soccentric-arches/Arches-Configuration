@@ -6,7 +6,6 @@ import { Card } from '../components/card.js';
 import { Field } from '../components/field.js';
 import { Toggle } from '../components/toggle.js';
 import { Button } from '../components/button.js';
-import { confirmDialog } from '../components/modal.js';
 import { ActionList, ActionRow } from '../components/action-row.js';
 
 export async function render(api, store) {
@@ -49,17 +48,48 @@ export async function render(api, store) {
     pre.textContent = (r.lines || []).join('\n');
   }
 
+  // Follow mode via SSE (spec §4.6): while on, append new journal lines as they
+  // arrive. The backend streams a cursor-based `journal` event (new lines only,
+  // no dupes); we render the MESSAGE field of each JSON line.
+  let followSource = null;
+  function stopFollow() {
+    if (followSource) { followSource.close(); followSource = null; }
+  }
+  function startFollow() {
+    stopFollow();
+    followSource = api.eventSource('/api/v1/events');
+    followSource.addEventListener('journal', (e) => {
+      let lines = [];
+      try { lines = JSON.parse(e.data); } catch (_) { return; }
+      const rendered = (Array.isArray(lines) ? lines : [])
+        .map(l => { try { return JSON.parse(l).MESSAGE ?? l; } catch (_) { return l; } });
+      if (rendered.length) {
+        pre.textContent += (pre.textContent ? '\n' : '') + rendered.join('\n');
+        pre.scrollTop = pre.scrollHeight;
+      }
+    });
+  }
+  const followToggle = Toggle({ label: 'Follow (live)', checked: false,
+    onChange: v => v ? startFollow() : stopFollow() });
+  store.registerCleanup(stopFollow);
+
   const viewerCard = Card({
     title: 'System logs',
-    subtitle: 'Filter and inspect recent journal lines from the device.',
+    subtitle: 'Filter and inspect recent journal lines from the device, or follow live over SSE.',
     footer: ActionList(
-      ActionRow('Download full export', 'Save the complete journal as a text file for offline review.', Button({
+      ActionRow('Download export', 'Save the journal as a text file. With a unit set, exports just that unit (spec §4.6 per-unit export).', Button({
         variant: 'outline',
-        onClick: async () => { const r = await api.get('/api/v1/logs/download'); downloadText('journal-export.log', r.export || ''); },
+        onClick: async () => {
+          const q = new URLSearchParams();
+          if (unit.get()) q.set('unit', unit.get());
+          const r = await api.get(`/api/v1/logs/download?${q.toString()}`);
+          const name = unit.get() ? `${unit.get().replace(/[^A-Za-z0-9._-]/g, '_')}.log` : 'journal-export.log';
+          downloadText(name, r.export || '');
+        },
       }, 'Download export')),
       ActionRow('Clear viewer', 'Remove the currently displayed log lines without changing stored logs.', Button({ variant: 'outline', onClick: () => { pre.textContent = ''; } }, 'Clear')),
       ActionRow('Load logs', 'Fetch journal lines using the selected unit, priority, and limit filters.', Button({ onClick: loadLogs }, 'Load'))),
-  }, el('div', { class: 'field-row' }, unit.wrap, priority.wrap, limit.wrap), pre);
+  }, el('div', { class: 'field-row' }, unit.wrap, priority.wrap, limit.wrap), followToggle.wrap, pre);
 
   // ---------- Journald config ----------
   const storage = Field({
@@ -103,18 +133,11 @@ export async function render(api, store) {
   }
   await loadAudit();
   const auditCard = Card({
-    title: 'Audit log', subtitle: 'Administrative actions recorded by WebConfig.', footer: ActionList(
+    title: 'Audit log',
+    subtitle: 'Administrative actions recorded by WebConfig. The audit log is append-only (spec §4.8) — it is not deletable from the UI; only a full factory reset wipes it.',
+    footer: ActionList(
       ActionRow('Refresh audit log', 'Reload the recorded administrative actions from the device.', Button({ variant: 'outline', onClick: loadAudit }, 'Refresh')),
-      ActionRow('Remove audit log', 'Permanently delete the stored administrative action history.', Button({
-        variant: 'destructive-outline',
-        onClick: async () => {
-          if (!await confirmDialog({ title: 'Remove audit log?', description: 'This permanently deletes the stored administrative action history.', confirmLabel: 'Remove audit log', variant: 'destructive' })) return;
-          await api.del('/api/v1/logs/audit');
-          await loadAudit();
-          store.toast('Audit log removed', 'success');
-        },
-      }, 'Remove log')),
-    )
+    ),
   }, auditPre);
 
   return el('div', {},

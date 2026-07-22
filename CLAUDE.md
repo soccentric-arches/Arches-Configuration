@@ -127,6 +127,19 @@ See `docs/webconfig-spec.md` for the full spec.
   None). `TempZone.throttled` is READ, never hardcoded false: any
   `thermal_zone*/cdev*/cur_state > 0` ⇒ throttled (fanless SoCs' cdev0 is the
   freq clamp). `None`/false when not reported is correct behavior, not a stub.
+- §4.6 logs: `/events` SSE emits BOTH `vitals` AND `journal` follow chunks
+  (cursor-based: seed last 50 lines + capture cursor, then `journalctl
+  --after-cursor` per tick; `--show-cursor` sentinel parsed by
+  `parse_journal_follow`). Polled (every 2s), not a blocking `journalctl -f`,
+  because the daemon is current-thread — state the assumption (§7). `/logs/download`
+  accepts `?unit=` for per-unit export. The journald applier materializes remote
+  syslog as `webconfig-syslog-forward.service` (`journalctl -f -o cat | nc [-u]
+  host port`, enabled+started on real root; removed+stopped when disabled) —
+  host charset-validated to block shell injection. Per-service log levels are
+  NOT here — they ride the service schema's `apply_hook` (§4.3).
+- The frontend Logs page must NOT offer a "remove audit log" / `DELETE
+  /logs/audit` action — the audit log is append-only (spec §4.8). There is no
+  such route; only a full factory reset wipes audit. (Removed the dead button.)
 
 ## Don't
 
