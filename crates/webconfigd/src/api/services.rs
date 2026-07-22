@@ -290,7 +290,13 @@ async fn run_apply_hooks(app: &AppState, id: &str) -> Vec<String> {
     let mut ran = Vec::new();
     for (kind, target) in pairs {
         let outcome = match kind.as_str() {
-            "restart" => app.systemd.restart(&target).await.ok().is_some().to_string(),
+            "restart" => app
+                .systemd
+                .restart(&target)
+                .await
+                .ok()
+                .is_some()
+                .to_string(),
             "reload" => {
                 if app.engine.sysroot.is_real_root() {
                     webconfig_engine::applier::run_cmd("systemctl", &["reload", &target])

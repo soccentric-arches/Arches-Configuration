@@ -104,6 +104,12 @@ See `docs/webconfig-spec.md` for the full spec.
   `connectivity_test` pings the configured gateway (first interface with one),
   then a public IP, then resolves via the configured DNS — not hardcoded
   192.168.1.1/1.1.1.1.
+- `PUT /apps/:id/settings` fires the app schema's `apply_hook`s after commit
+  (spec §3/§4.3): `restart` → `systemd.restart(target)`, `reload` →
+  `systemctl reload`, `sighup` → `pkill -HUP -x <proc>` (real root only). Hooks
+  are looked up by schema file **stem** (the URL `:id`), deduped across fields,
+  target-charset-validated, best-effort (a failed verb is recorded + skipped,
+  never failing the save), and the side effect is appended to the audit entry.
 
 ## Don't
 

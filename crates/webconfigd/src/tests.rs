@@ -30,13 +30,18 @@ use crate::state::AppState;
 /// Build the full app router against a tempdir fake sysroot. Returns the router
 /// and the tempdir (caller must keep the tempdir alive for the test duration).
 async fn build_app() -> (axum::Router, tempfile::TempDir) {
+    build_app_with(Schema::default_permissive()).await
+}
+
+/// Like [`build_app`] but with a caller-supplied schema (e.g. one loaded from a
+/// tempdir to exercise schema-driven paths like app `apply_hook`s).
+async fn build_app_with(schema: Schema) -> (axum::Router, tempfile::TempDir) {
     let dir = tempfile::tempdir().unwrap();
     let sysroot = Sysroot::at(dir.path());
     let webconfig_dir = sysroot.webconfig_dir();
     std::fs::create_dir_all(&webconfig_dir).ok();
 
-    let schema = Schema::default_permissive();
-    let store = ConfigStore::new(sysroot.clone(), schema);
+    let store = ConfigStore::new(sysroot.clone(), schema.clone());
     let engine = EngineBridge::new(store, sysroot.clone());
 
     // Minimal manifest with a service allowlist + one peripheral so the I/O and
@@ -56,7 +61,7 @@ async fn build_app() -> (axum::Router, tempfile::TempDir) {
 
     let state = AppState {
         engine: engine.clone(),
-        schema: Arc::new(Schema::default_permissive()),
+        schema: Arc::new(schema),
         manifest: Arc::new(manifest),
         audit: Arc::new(AuditLog::new(webconfig_dir.join("audit.jsonl"), 64 * 1024)),
         alert_engine: Arc::new(tokio::sync::Mutex::new(AlertEngine::new())),
@@ -350,4 +355,81 @@ async fn confirm_pending_clears_on_explicit_confirm() {
     );
     let rolled = bridge.tick_confirm().await;
     assert!(!rolled, "confirmed apply must not be rolled back");
+}
+
+#[tokio::test]
+async fn app_settings_put_fires_schema_apply_hook() {
+    // The schema-driven app settings engine must run the declared `apply_hook`
+    // after a settings save (spec §3/§4.3): a `restart` hook reaches the
+    // systemd client and is recorded in the audit trail.
+    let schema_dir = tempfile::tempdir().unwrap();
+    let schema = r#"{
+        "id": "app:demo",
+        "title": "Demo app",
+        "groups": [
+            {
+                "id": "main",
+                "title": "Main",
+                "fields": [
+                    {
+                        "id": "site_id",
+                        "title": "Site ID",
+                        "field_type": "string",
+                        "apply_hook": { "kind": "restart", "target": "demo.service" }
+                    }
+                ]
+            }
+        ]
+    }"#;
+    std::fs::write(schema_dir.path().join("app-demo.schema.json"), schema).unwrap();
+    let loaded = Schema::load_dir(schema_dir.path()).unwrap();
+    let (app, _dir) = build_app_with(loaded).await;
+
+    // Bootstrap admin + session + csrf.
+    let (st, ck, _) = send(
+        &app,
+        "POST",
+        "/api/v1/auth/first-boot",
+        None,
+        None,
+        Some(r#"{"username":"admin","password":"password1"}"#),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let cookie = ck.unwrap();
+    let (_, _, text) = send(
+        &app,
+        "GET",
+        "/api/v1/auth/whoami",
+        Some(&cookie),
+        None,
+        None,
+    )
+    .await;
+    let csrf = serde_json::from_str::<serde_json::Value>(&text).unwrap()["csrf"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // PUT app settings → the restart hook fires (mock systemd accepts it) and
+    // is recorded in the audit entry for this save.
+    let (st, _, body) = send(
+        &app,
+        "PUT",
+        "/api/v1/apps/app-demo/settings",
+        Some(&cookie),
+        Some(&csrf),
+        Some(r#"{"site_id":"site-1"}"#),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(body, r#"{"site_id":"site-1"}"#);
+
+    // The audit log entry carries the side effect that ran.
+    let (st, _, audit) = send(&app, "GET", "/api/v1/logs/audit", Some(&cookie), None, None).await;
+    assert_eq!(st, StatusCode::OK);
+    assert!(
+        audit.contains("restart demo.service"),
+        "audit should record the apply_hook: {audit}"
+    );
 }
