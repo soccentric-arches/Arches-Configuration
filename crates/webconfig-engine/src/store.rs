@@ -324,9 +324,15 @@ pub mod network {
 
     #[derive(Debug, Clone, Default, Serialize, Deserialize)]
     pub struct FirewallConfig {
+        #[serde(default = "default_firewall_enabled")]
+        pub enabled: bool,
         /// Services globally open regardless of interface binding.
         #[serde(default)]
         pub default_open: Vec<String>,
+    }
+
+    fn default_firewall_enabled() -> bool {
+        true
     }
 
     #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -370,6 +376,8 @@ pub mod services {
     #[derive(Debug, Clone, Default, Serialize, Deserialize)]
     pub struct MqttConfig {
         #[serde(default)]
+        pub enabled: bool,
+        #[serde(default)]
         pub host: Option<String>,
         #[serde(default)]
         pub port: Option<u16>,
@@ -406,6 +414,8 @@ pub mod updates {
 
     #[derive(Debug, Clone, Default, Serialize, Deserialize)]
     pub struct OtaConfig {
+        #[serde(default)]
+        pub enabled: bool,
         #[serde(default)]
         pub server_url: Option<String>,
         /// v1: notify-only (spec §4.4). [v2] auto-apply + maintenance windows.
@@ -487,6 +497,8 @@ pub mod logs {
 
     #[derive(Debug, Clone, Default, Serialize, Deserialize)]
     pub struct RemoteSyslog {
+        #[serde(default)]
+        pub enabled: bool,
         pub host: String,
         pub port: u16,
         /// `udp` or `tcp` (spec §4.6 — one destination).
@@ -499,6 +511,8 @@ pub mod alerts {
 
     #[derive(Debug, Clone, Default, Serialize, Deserialize)]
     pub struct AlertsConfig {
+        #[serde(default)]
+        pub enabled: bool,
         #[serde(default)]
         pub rules: Vec<AlertRule>,
         /// Webhook POST targets (spec §4.7).

@@ -163,6 +163,7 @@ mod tests {
             host: "logs.example".into(),
             port: 514,
             protocol: "icmp".into(),
+            enabled: true,
         });
         assert!(a.validate(&sys, &c).is_err());
     }

@@ -159,6 +159,12 @@ Base URL: `https://<device>:8443/api/v1`. All responses are JSON.
 | POST | `/io/mcu/firmware` | **[admin]** | signed firmware upload (version, signed). |
 | GET | `/io/platform-panel` | any | Zion FPGA / Joshua PRU / Arches cameras. |
 
+Feature configuration endpoints expose an explicit `enabled` field before their
+detail settings are applied. This includes MQTT cloud connectivity, alerting,
+firewall policy, OTA updates, and remote syslog. Existing firewall
+configurations default to enabled; the optional services default to disabled
+when no explicit state was previously stored.
+
 ## SSE
 
 | Method | Path | Role | Notes |

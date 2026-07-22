@@ -3,6 +3,7 @@
 import { el } from '../core/dom.js';
 import { Card } from '../components/card.js';
 import { Field } from '../components/field.js';
+import { Toggle } from '../components/toggle.js';
 import { Button } from '../components/button.js';
 import { Table } from '../components/table.js';
 import { EmptyState } from '../components/empty-state.js';
@@ -11,6 +12,7 @@ import { ActionList, ActionRow } from '../components/action-row.js';
 export async function render(api, store) {
   const data = await api.get('/api/v1/alerts');
   const rules = (data.rules || []).slice();
+  const enabled = Toggle({ label: 'Enable alerting', checked: data.enabled === true });
 
   const tableHost = el('div');
   function renderRules() {
@@ -46,11 +48,11 @@ export async function render(api, store) {
   const rulesCard = Card({
     title: 'Alert rules', subtitle: 'Review the pending threshold rules before saving them to the device.', footer: ActionList(ActionRow('Save all rules', 'Persist the current alert rules and notification settings.', Button({
       onClick: async () => {
-        await api.put('/api/v1/alerts', { rules, webhooks: data.webhooks || [], mqtt_event_topic: data.mqtt_event_topic || null });
+        await api.put('/api/v1/alerts', { enabled: enabled.get(), rules, webhooks: data.webhooks || [], mqtt_event_topic: data.mqtt_event_topic || null });
         store.toast('Alert rules saved', 'success');
       },
     }, 'Save all'))),
-  }, tableHost);
+  }, enabled.wrap, tableHost);
 
   const historyItems = (data.history || []).slice(-20).reverse();
   const historyCard = Card({ title: 'Recent events', subtitle: 'The most recent alert transitions recorded by the daemon.' },

@@ -9,6 +9,7 @@ import { ActionList, ActionRow } from '../components/action-row.js';
 
 export async function render(api, store) {
     const mqtt = await api.get('/api/v1/services/mqtt');
+    const enabled = Toggle({ label: 'Enable cloud connection', checked: mqtt.enabled === true });
     const host = Field({ label: 'Broker host', value: mqtt.host, placeholder: 'mqtt.example.com', help: 'DNS name or IP address of the MQTT broker.' });
     const port = Field({ label: 'Port', type: 'number', value: mqtt.port || 1883, help: 'TCP port exposed by the broker; TLS commonly uses 8883.' });
     const user = Field({ label: 'Username', value: mqtt.username, help: 'Optional broker account used for authentication.' });
@@ -31,6 +32,7 @@ export async function render(api, store) {
                 onClick: async () => {
                     await api.put('/api/v1/services/mqtt', {
                         host: host.get() || null,
+                        enabled: enabled.get(),
                         port: port.get() ? Number(port.get()) : null,
                         tls: tls.get(),
                         username: user.get() || null,
@@ -42,7 +44,7 @@ export async function render(api, store) {
                     store.toast('Cloud settings saved', 'success');
                 },
             }, 'Save settings'))),
-    }, el('div', { class: 'form-grid' }, host.wrap, port.wrap, user.wrap, pass.wrap, topic.wrap, tls.wrap));
+    }, el('div', { class: 'form-grid' }, enabled.wrap, host.wrap, port.wrap, user.wrap, pass.wrap, topic.wrap, tls.wrap));
 
     return el('div', {},
         el('div', { class: 'page-header' },

@@ -45,7 +45,7 @@ export async function render(api, store) {
     options: [{ value: 'volatile', label: 'Volatile (ramdisk)' }, { value: 'persistent', label: 'Persistent (eMMC)' }],
   });
   const maxSize = Field({ label: 'Max size when persistent (bytes)', type: 'number', value: cfg.max_size_bytes });
-  const syslogEnabled = Toggle({ label: 'Remote syslog', checked: !!cfg.remote_syslog });
+  const syslogEnabled = Toggle({ label: 'Enable remote syslog', checked: !!cfg.remote_syslog && cfg.remote_syslog.enabled === true });
   const syslogHost = Field({ label: 'Host', value: cfg.remote_syslog && cfg.remote_syslog.host });
   const syslogPort = Field({ label: 'Port', type: 'number', value: (cfg.remote_syslog && cfg.remote_syslog.port) || 514 });
   const syslogProto = Field({ label: 'Protocol', type: 'select', value: (cfg.remote_syslog && cfg.remote_syslog.protocol) || 'udp', options: [{ value: 'udp', label: 'UDP' }, { value: 'tcp', label: 'TCP' }] });
@@ -58,7 +58,7 @@ export async function render(api, store) {
         await api.put('/api/v1/logs/config', {
           storage: storage.get(),
           max_size_bytes: Number(maxSize.get()) || 0,
-          remote_syslog: syslogEnabled.get() ? { host: syslogHost.get(), port: Number(syslogPort.get()) || 514, protocol: syslogProto.get() } : null,
+          remote_syslog: syslogEnabled.get() ? { enabled: true, host: syslogHost.get(), port: Number(syslogPort.get()) || 514, protocol: syslogProto.get() } : null,
         });
         store.toast('Logging config applied', 'success');
       },

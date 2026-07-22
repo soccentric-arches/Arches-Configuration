@@ -4,6 +4,7 @@
 import { el } from '../core/dom.js';
 import { Card } from '../components/card.js';
 import { Field } from '../components/field.js';
+import { Toggle } from '../components/toggle.js';
 import { Button } from '../components/button.js';
 import { Table } from '../components/table.js';
 import { StatusDot } from '../components/badge.js';
@@ -55,6 +56,7 @@ export async function render(api, store) {
     placeholder: 'https://updates.example.com/check',
     help: 'The server should return JSON with update_available, and optionally version and platform.',
   });
+  const otaEnabled = Toggle({ label: 'Enable remote updates', checked: otaConfig.enabled === true });
   const otaStatus = el('div', { class: 'field-help' });
   const checkOta = async () => {
     const result = await api.get('/api/v1/updates/ota/check');
@@ -68,12 +70,12 @@ export async function render(api, store) {
     footer: ActionList(
       ActionRow('Save server', 'Store the remote update server URL on the device.', Button({
         onClick: async () => {
-          await api.put('/api/v1/updates/ota', { ...otaConfig, server_url: otaServer.get() || null });
+          await api.put('/api/v1/updates/ota', { ...otaConfig, enabled: otaEnabled.get(), server_url: otaServer.get() || null });
           store.toast('Update server saved', 'success');
         }
       }, 'Save')),
       ActionRow('Check for updates', 'Ask the configured server for the latest update status.', Button({ variant: 'outline', onClick: checkOta }, 'Check now'))),
-  }, otaServer.wrap, otaStatus);
+  }, otaEnabled.wrap, otaServer.wrap, otaStatus);
 
   return el('div', {},
     el('div', { class: 'page-header' }, el('h1', {}, 'Updates'), el('p', {}, 'A/B slot management, OTA, and config backup.')),
