@@ -24,8 +24,8 @@ export function initRouter({ sidebar, topbar }) {
 }
 
 function parse() {
-  const h = location.hash.replace(/^#\/?/, '').split('/')[0] || 'system';
-  return ROUTE_IDS.includes(h) ? h : 'system';
+  const h = location.hash.replace(/^#\/?/, '').split('/')[0] || 'overview';
+  return ROUTE_IDS.includes(h) ? h : 'overview';
 }
 
 /** Programmatic navigation (sidebar, command palette). Guards unsaved edits. */

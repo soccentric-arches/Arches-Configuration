@@ -84,6 +84,10 @@ impl From<webconfig_engine::users::UserError> for ApiError {
         match e {
             webconfig_engine::users::UserError::NotFound(_) => ApiError::NotFound,
             webconfig_engine::users::UserError::Exists(_) => ApiError::Conflict(e.to_string()),
+            webconfig_engine::users::UserError::GroupExists(_) => ApiError::Conflict(e.to_string()),
+            webconfig_engine::users::UserError::MembershipExists(_) => {
+                ApiError::Conflict(e.to_string())
+            }
             webconfig_engine::users::UserError::LastAdmin => ApiError::Conflict(e.to_string()),
             webconfig_engine::users::UserError::InvalidCredentials => ApiError::Unauthorized,
             webconfig_engine::users::UserError::InvalidRole(_) => {

@@ -57,6 +57,9 @@ impl NetworkdApplier {
             "RequiredForOnline={}\n",
             if iface.enabled { "yes" } else { "no" }
         ));
+        if let Some(mac) = &iface.mac_address {
+            s.push_str(&format!("MACAddress={mac}\n"));
+        }
         if let Some(mtu) = iface.mtu {
             s.push_str(&format!("MTU={mtu}\n"));
         }
@@ -88,6 +91,14 @@ impl NetworkdApplier {
                     stage: crate::applier::ApplyStage::Validate,
                     message: "interface with empty name".into(),
                 });
+            }
+            if let Some(mac) = &iface.mac_address {
+                if !valid_mac_address(mac) {
+                    return Err(ApplyError::Validation {
+                        stage: crate::applier::ApplyStage::Validate,
+                        message: format!("iface {} has invalid MAC address {mac}", iface.name),
+                    });
+                }
             }
             if !iface.dhcp {
                 let Some(addr_s) = &iface.address else {
@@ -142,6 +153,14 @@ impl NetworkdApplier {
         let _ = sysroot;
         Ok(())
     }
+}
+
+fn valid_mac_address(value: &str) -> bool {
+    let parts: Vec<&str> = value.split(':').collect();
+    parts.len() == 6
+        && parts
+            .iter()
+            .all(|part| part.len() == 2 && part.bytes().all(|byte| byte.is_ascii_hexdigit()))
 }
 
 impl Default for NetworkdApplier {
@@ -271,6 +290,7 @@ mod tests {
     ) -> Interface {
         Interface {
             name: name.into(),
+            mac_address: None,
             enabled: true,
             dhcp,
             address: addr.map(Into::into),
@@ -296,6 +316,26 @@ mod tests {
         assert!(out.contains("Address=192.168.1.10/24"));
         assert!(out.contains("Gateway=192.168.1.1"));
         assert!(out.contains("RequiredForOnline=yes"));
+    }
+
+    #[test]
+    fn renders_mac_address_assignment() {
+        let mut i = iface("eth0", true, None, None, None);
+        i.mac_address = Some("AA:BB:CC:DD:EE:FF".into());
+        let out = NetworkdApplier::render(&i);
+        assert!(out.contains("MACAddress=AA:BB:CC:DD:EE:FF"));
+    }
+
+    #[test]
+    fn rejects_invalid_mac_address() {
+        let sys = Sysroot::at("/tmp/never");
+        let a = NetworkdApplier::new();
+        let mut c = Config::default();
+        let mut i = iface("eth0", true, None, None, None);
+        i.mac_address = Some("not-a-mac".into());
+        c.network.interfaces.push(i);
+        let err = a.validate(&sys, &c).unwrap_err();
+        assert!(err.to_string().contains("invalid MAC address"));
     }
 
     #[test]

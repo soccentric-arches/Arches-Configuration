@@ -36,13 +36,35 @@ pub async fn get(State(app): State<AppState>) -> ApiResult<Json<serde_json::Valu
             let operstate = std::fs::read_to_string(netdir.join(&name).join("operstate"))
                 .map(|s| s.trim().to_string())
                 .unwrap_or_else(|_| "unknown".into());
-            live.push(serde_json::json!({ "name": name, "mac": mac, "operstate": operstate }));
+            let addresses = live_addresses(&app.engine.sysroot, &name);
+            live.push(
+                serde_json::json!({ "name": name, "mac": mac, "operstate": operstate, "addresses": addresses }),
+            );
         }
     }
     Ok(Json(serde_json::json!({
         "config": cfg.network,
         "live": live,
     })))
+}
+
+fn live_addresses(sysroot: &webconfig_engine::Sysroot, iface: &str) -> Vec<String> {
+    if !sysroot.is_real_root() {
+        return Vec::new();
+    }
+    let Ok(raw) =
+        webconfig_engine::applier::run_cmd("ip", &["-j", "address", "show", "dev", iface])
+    else {
+        return Vec::new();
+    };
+    let Ok(entries) = serde_json::from_str::<Vec<serde_json::Value>>(&raw) else {
+        return Vec::new();
+    };
+    entries
+        .iter()
+        .flat_map(|entry| entry["addr_info"].as_array().into_iter().flatten())
+        .filter_map(|address| address["local"].as_str().map(str::to_string))
+        .collect()
 }
 
 /// `PUT /api/v1/network` — update the network section. Admin only (operator

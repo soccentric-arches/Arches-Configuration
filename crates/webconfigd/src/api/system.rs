@@ -54,21 +54,62 @@ pub async fn apply(
 /// `GET /api/v1/system/info` — read-only device info (spec §4.1).
 pub async fn info(State(app): State<AppState>) -> ApiResult<Json<serde_json::Value>> {
     let m = &app.manifest;
-    let os_release =
-        std::fs::read_to_string(app.engine.sysroot.join("/etc/os-release")).unwrap_or_default();
+    let configured = app.engine.load()?.system;
+    let sysroot = &app.engine.sysroot;
+    let os_release = std::fs::read_to_string(sysroot.join("/etc/os-release")).unwrap_or_default();
     let mut kv = std::collections::BTreeMap::new();
     for line in os_release.lines() {
         if let Some((k, v)) = line.split_once('=') {
             kv.insert(k.to_string(), v.trim_matches('"').to_string());
         }
     }
+    let unknown = || "unknown".to_string();
+    let read_first = |paths: &[&str]| {
+        paths
+            .iter()
+            .find_map(|path| {
+                std::fs::read_to_string(sysroot.join(path))
+                    .ok()
+                    .map(|value| value.trim_matches('\0').trim().to_string())
+                    .filter(|value| !value.is_empty())
+            })
+            .unwrap_or_else(unknown)
+    };
+    let os_version = kv
+        .get("PRETTY_NAME")
+        .or_else(|| kv.get("VERSION"))
+        .cloned()
+        .unwrap_or_else(unknown);
+    let os_revision = kv
+        .get("BUILD_ID")
+        .or_else(|| kv.get("VERSION_ID"))
+        .cloned()
+        .unwrap_or_else(unknown);
     Ok(Json(serde_json::json!({
         "platform": m.platform,
         "model": m.model,
         "board_name": m.board_name,
+        "hardware_revision": configured.hardware_revision.or_else(|| Some(read_first(&[
+            "/etc/hardware-revision",
+            "/etc/board-revision",
+            "/proc/device-tree/chosen/board-revision",
+        ]))),
+        "serial_number": configured.serial_number,
         "has_rtc": m.has_rtc,
+        "os_name": kv.get("NAME").cloned().unwrap_or_else(unknown),
+        "os_version": os_version,
+        "os_revision": os_revision,
+        "kernel_version": read_first(&["/proc/sys/kernel/osrelease"]),
+        "bootloader_version": read_first(&[
+            "/etc/bootloader-version",
+            "/etc/bootloader_version",
+            "/proc/device-tree/chosen/bootloader-version",
+        ]),
+        "software_name": "WebConfig",
+        "software_version": env!("CARGO_PKG_VERSION"),
+        "software_revision": std::env::var("WEBCONFIG_REVISION").unwrap_or_else(|_| unknown()),
         "os_release": kv,
-        "uptime_secs": webconfig_engine::monitoring::read_vitals(&app.engine.sysroot).uptime_secs,
+        "uptime_secs": webconfig_engine::monitoring::read_vitals(sysroot).uptime_secs,
     })))
 }
 
@@ -162,6 +203,7 @@ pub async fn list_users(
             .map(|u| UserPublic {
                 username: u.username.clone(),
                 role: u.role.as_str().to_string(),
+                groups: u.groups.clone(),
             })
             .collect(),
     ))
@@ -171,6 +213,7 @@ pub async fn list_users(
 pub struct UserPublic {
     pub username: String,
     pub role: String,
+    pub groups: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -203,7 +246,124 @@ pub async fn create_user(
     Ok(Json(UserPublic {
         username: req.username,
         role: parsed.as_str().to_string(),
+        groups: Vec::new(),
     }))
+}
+
+#[derive(Serialize)]
+pub struct GroupPublic {
+    pub name: String,
+    pub members: Vec<String>,
+}
+
+/// `GET /api/v1/system/groups` — list groups and their members.
+pub async fn list_groups(
+    State(app): State<AppState>,
+    _role: AuthRole,
+) -> ApiResult<Json<Vec<GroupPublic>>> {
+    let store = app.load_users().map_err(|_| ApiError::Internal)?;
+    Ok(Json(
+        store
+            .groups
+            .into_iter()
+            .map(|group| GroupPublic {
+                name: group.name,
+                members: group.members,
+            })
+            .collect(),
+    ))
+}
+
+#[derive(Deserialize)]
+pub struct CreateGroupRequest {
+    pub name: String,
+}
+
+/// `POST /api/v1/system/groups` — create a group (admin only).
+pub async fn create_group(
+    State(app): State<AppState>,
+    role: AuthRole,
+    session: Session,
+    Json(req): Json<CreateGroupRequest>,
+) -> ApiResult<Json<GroupPublic>> {
+    role.require_admin("groups.create")?;
+    let mut store = app.load_users().map_err(|_| ApiError::Internal)?;
+    store.add_group(&req.name)?;
+    app.save_users(&store).map_err(|_| ApiError::Internal)?;
+    audit(
+        &app,
+        &username(&session).await,
+        "groups.create",
+        Some(req.name.clone()),
+    );
+    Ok(Json(GroupPublic {
+        name: req.name,
+        members: Vec::new(),
+    }))
+}
+
+/// `DELETE /api/v1/system/groups/:name` — delete a group (admin only).
+pub async fn delete_group(
+    State(app): State<AppState>,
+    role: AuthRole,
+    session: Session,
+    Path(name): Path<String>,
+) -> ApiResult<Json<serde_json::Value>> {
+    role.require_admin("groups.delete")?;
+    let mut store = app.load_users().map_err(|_| ApiError::Internal)?;
+    store.remove_group(&name)?;
+    app.save_users(&store).map_err(|_| ApiError::Internal)?;
+    audit(
+        &app,
+        &username(&session).await,
+        "groups.delete",
+        Some(name.clone()),
+    );
+    Ok(Json(serde_json::json!({ "deleted": name })))
+}
+
+/// `PUT/DELETE /api/v1/system/groups/:name/members/:user` — assign or remove
+/// a user from a group (admin only).
+pub async fn add_group_member(
+    State(app): State<AppState>,
+    role: AuthRole,
+    session: Session,
+    Path((group, user)): Path<(String, String)>,
+) -> ApiResult<Json<serde_json::Value>> {
+    role.require_admin("groups.members.put")?;
+    let mut store = app.load_users().map_err(|_| ApiError::Internal)?;
+    store.add_member(&group, &user)?;
+    app.save_users(&store).map_err(|_| ApiError::Internal)?;
+    audit(
+        &app,
+        &username(&session).await,
+        "groups.members.put",
+        Some(format!("{group}:{user}")),
+    );
+    Ok(Json(
+        serde_json::json!({ "group": group, "user": user, "member": true }),
+    ))
+}
+
+pub async fn remove_group_member(
+    State(app): State<AppState>,
+    role: AuthRole,
+    session: Session,
+    Path((group, user)): Path<(String, String)>,
+) -> ApiResult<Json<serde_json::Value>> {
+    role.require_admin("groups.members.delete")?;
+    let mut store = app.load_users().map_err(|_| ApiError::Internal)?;
+    store.remove_member(&group, &user)?;
+    app.save_users(&store).map_err(|_| ApiError::Internal)?;
+    audit(
+        &app,
+        &username(&session).await,
+        "groups.members.delete",
+        Some(format!("{group}:{user}")),
+    );
+    Ok(Json(
+        serde_json::json!({ "group": group, "user": user, "member": false }),
+    ))
 }
 
 /// `DELETE /api/v1/system/users/:name` (admin only; last-admin guarded).

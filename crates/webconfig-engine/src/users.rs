@@ -29,6 +29,14 @@ pub enum UserError {
     NotFound(String),
     #[error("user already exists: {0}")]
     Exists(String),
+    #[error("group not found: {0}")]
+    GroupNotFound(String),
+    #[error("group already exists: {0}")]
+    GroupExists(String),
+    #[error("user is already a member of group: {0}")]
+    MembershipExists(String),
+    #[error("user is not a member of group: {0}")]
+    MembershipNotFound(String),
     #[error("invalid credentials")]
     InvalidCredentials,
     #[error("last admin cannot be removed or demoted")]
@@ -81,11 +89,22 @@ pub struct UserRecord {
     /// argon2 PHC string.
     pub password_hash: String,
     pub role: Role,
+    #[serde(default)]
+    pub groups: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GroupRecord {
+    pub name: String,
+    #[serde(default)]
+    pub members: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct UserStore {
     pub users: Vec<UserRecord>,
+    #[serde(default)]
+    pub groups: Vec<GroupRecord>,
 }
 
 impl UserStore {
@@ -145,6 +164,7 @@ impl UserStore {
             username: username.into(),
             password_hash: hash,
             role,
+            groups: Vec::new(),
         });
         Ok(())
     }
@@ -189,6 +209,66 @@ impl UserStore {
             return Err(UserError::LastAdmin);
         }
         self.users.retain(|u| u.username != username);
+        for group in &mut self.groups {
+            group.members.retain(|member| member != username);
+        }
+        Ok(())
+    }
+
+    pub fn add_group(&mut self, name: &str) -> Result<(), UserError> {
+        if self.groups.iter().any(|group| group.name == name) {
+            return Err(UserError::GroupExists(name.into()));
+        }
+        self.groups.push(GroupRecord {
+            name: name.into(),
+            members: Vec::new(),
+        });
+        Ok(())
+    }
+
+    pub fn remove_group(&mut self, name: &str) -> Result<(), UserError> {
+        if !self.groups.iter().any(|group| group.name == name) {
+            return Err(UserError::GroupNotFound(name.into()));
+        }
+        self.groups.retain(|group| group.name != name);
+        for user in &mut self.users {
+            user.groups.retain(|group| group != name);
+        }
+        Ok(())
+    }
+
+    pub fn add_member(&mut self, group_name: &str, username: &str) -> Result<(), UserError> {
+        if self.find(username).is_none() {
+            return Err(UserError::NotFound(username.into()));
+        }
+        let group = self
+            .groups
+            .iter_mut()
+            .find(|group| group.name == group_name)
+            .ok_or_else(|| UserError::GroupNotFound(group_name.into()))?;
+        if group.members.iter().any(|member| member == username) {
+            return Err(UserError::MembershipExists(username.into()));
+        }
+        group.members.push(username.into());
+        if let Some(user) = self.users.iter_mut().find(|user| user.username == username) {
+            user.groups.push(group_name.into());
+        }
+        Ok(())
+    }
+
+    pub fn remove_member(&mut self, group_name: &str, username: &str) -> Result<(), UserError> {
+        let group = self
+            .groups
+            .iter_mut()
+            .find(|group| group.name == group_name)
+            .ok_or_else(|| UserError::GroupNotFound(group_name.into()))?;
+        if !group.members.iter().any(|member| member == username) {
+            return Err(UserError::MembershipNotFound(username.into()));
+        }
+        group.members.retain(|member| member != username);
+        if let Some(user) = self.users.iter_mut().find(|user| user.username == username) {
+            user.groups.retain(|group| group != group_name);
+        }
         Ok(())
     }
 
@@ -251,6 +331,25 @@ mod tests {
             store.add("u", "pw", Role::Viewer),
             Err(UserError::Exists(_))
         ));
+    }
+
+    #[test]
+    fn groups_assign_members_and_cleanup() {
+        let mut store = UserStore::default();
+        store.add("admin", "pw", Role::Admin).unwrap();
+        store.add("operator", "pw", Role::Operator).unwrap();
+        store.add_group("maintainers").unwrap();
+        store.add_member("maintainers", "operator").unwrap();
+        assert_eq!(store.groups[0].members, vec!["operator"]);
+        assert_eq!(store.users[1].groups, vec!["maintainers"]);
+
+        store.remove_member("maintainers", "operator").unwrap();
+        assert!(store.groups[0].members.is_empty());
+        store.add_member("maintainers", "operator").unwrap();
+        store.remove("operator").unwrap();
+        assert!(store.groups[0].members.is_empty());
+        store.remove_group("maintainers").unwrap();
+        assert!(store.groups.is_empty());
     }
 
     #[test]

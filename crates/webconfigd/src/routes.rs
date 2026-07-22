@@ -49,6 +49,15 @@ pub fn build_router(state: AppState, static_dir: std::path::PathBuf) -> Router {
             "/system/users",
             get(system::list_users).post(system::create_user),
         )
+        .route(
+            "/system/groups",
+            get(system::list_groups).post(system::create_group),
+        )
+        .route("/system/groups/:name", delete(system::delete_group))
+        .route(
+            "/system/groups/:group/members/:user",
+            put(system::add_group_member).delete(system::remove_group_member),
+        )
         .route("/system/users/:name", delete(system::delete_user))
         .route("/system/users/:name/role", put(system::set_role))
         .route("/system/users/:name/password", put(system::change_password))

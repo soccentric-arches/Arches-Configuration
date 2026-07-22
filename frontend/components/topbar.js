@@ -7,14 +7,25 @@ export function Topbar({ onToggleSidebar, onOpenPalette }) {
   const title = el('span', { class: 'page-title' }, '');
   const badge = el('span', { class: 'badge badge-info', hidden: true });
   const session = el('span', { class: 'muted', style: 'font-size:13px' });
+  const desktopToggle = Button({
+    variant: 'ghost', size: 'sm', icon: 'menu', title: 'Collapse navigation',
+    onClick: onToggleSidebar,
+  });
+  desktopToggle.classList.add('sidebar-desktop-toggle');
+  const mobileToggle = Button({
+    variant: 'ghost', size: 'sm', icon: 'menu', title: 'Open navigation',
+    onClick: onToggleSidebar,
+  });
+  mobileToggle.classList.add('sidebar-mobile-toggle');
 
   const searchTrigger = el('button', {
     type: 'button', class: 'btn btn-outline btn-sm search-trigger', onclick: onOpenPalette,
   }, el('span', { class: 'row' }, icon('search', { size: 14 }), el('span', { class: 'search-trigger-label' }, 'Search…')),
-  el('span', { class: 'cmdk-hint-kbd' }, '⌘K'));
+    el('span', { class: 'cmdk-hint-kbd' }, '⌘K'));
 
   const element = el('div', { class: 'topbar' },
-    Button({ variant: 'ghost', size: 'sm', icon: 'menu', onClick: onToggleSidebar, title: 'Toggle navigation' }),
+    desktopToggle,
+    mobileToggle,
     title,
     badge,
     el('div', { class: 'spacer' }),

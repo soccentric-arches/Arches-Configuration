@@ -7,6 +7,7 @@ import { Card } from '../components/card.js';
 import { Field } from '../components/field.js';
 import { Toggle } from '../components/toggle.js';
 import { Button } from '../components/button.js';
+import { ActionList, ActionRow } from '../components/action-row.js';
 
 export async function render(api, store) {
   const { config, live } = await api.get('/api/v1/network');
@@ -22,23 +23,24 @@ export async function render(api, store) {
     ifaceHost.replaceChildren(...ifaces.map((iface, idx) => {
       const en = Toggle({ label: 'Enabled', checked: iface.enabled });
       const dhcp = Toggle({ label: 'DHCP', checked: iface.dhcp });
+      const mac = Field({ label: 'MAC address override', value: iface.mac_address, placeholder: 'AA:BB:CC:DD:EE:FF', help: 'Optional hardware address assigned when this interface is brought up.' });
       const addr = Field({ label: 'Static address', value: iface.address, placeholder: '192.168.1.50' });
       const prefix = Field({ label: 'Prefix', type: 'number', value: iface.prefix });
       const gw = Field({ label: 'Gateway', value: iface.gateway });
       const openSvcs = Field({ label: 'Open services (comma)', value: (iface.open_services || []).join(', ') });
       const sync = () => {
         ifaces[idx] = {
-          name: iface.name, enabled: en.get(), dhcp: dhcp.get(),
+          name: iface.name, mac_address: mac.get() || null, enabled: en.get(), dhcp: dhcp.get(),
           address: addr.get() || null, prefix: prefix.get() ? Number(prefix.get()) : null,
           gateway: gw.get() || null, mtu: iface.mtu, dns: iface.dns || [],
           open_services: openSvcs.get().split(',').map(s => s.trim()).filter(Boolean),
         };
       };
-      for (const f of [en.input, dhcp.input, addr.input, prefix.input, gw.input, openSvcs.input]) {
+      for (const f of [en.input, dhcp.input, mac.input, addr.input, prefix.input, gw.input, openSvcs.input]) {
         f.addEventListener('change', sync);
       }
-      return Card({ title: iface.name, class: 'iface-card' },
-        en.wrap, dhcp.wrap, addr.wrap, prefix.wrap, gw.wrap, openSvcs.wrap);
+      return Card({ title: iface.name, subtitle: 'Interface address, DHCP, gateway, and exposed services.', class: 'iface-card' },
+        en.wrap, dhcp.wrap, mac.wrap, addr.wrap, prefix.wrap, gw.wrap, openSvcs.wrap);
     }));
   }
   renderIfaces();
@@ -79,8 +81,9 @@ export async function render(api, store) {
     el('div', { class: 'page-header' }, el('h1', {}, 'Networking'),
       el('p', {}, 'Applying is provisional — reconnect on the new address and confirm within the window, or the change rolls back automatically.')),
     Card({ title: 'Interfaces', subtitle: `${ifaces.length} detected` }, ifaceHost),
-    Card({ title: 'DNS + AP mode' }, dns.wrap, confirmWindow.wrap, apEn.wrap, apSsid.wrap, apPass.wrap),
-    el('div', { class: 'form-actions' },
-      Button({ onClick: apply }, 'Save & apply network settings'),
-      Button({ variant: 'outline', onClick: rollback }, 'Roll back now')));
+    Card({ title: 'DNS + AP mode', subtitle: 'Set name servers and the fallback access-point provisioning behavior.' }, dns.wrap, confirmWindow.wrap, apEn.wrap, apSsid.wrap, apPass.wrap),
+    Card({ title: 'Network actions', subtitle: 'Applying network settings is provisional until the new connection is confirmed.' },
+      ActionList(
+        ActionRow('Save and apply', 'Write the edited interfaces and apply them. The connection may move to a new address.', Button({ onClick: apply }, 'Apply settings')),
+        ActionRow('Roll back now', 'Restore the previous network configuration immediately.', Button({ variant: 'outline', onClick: rollback }, 'Roll back')))));
 }

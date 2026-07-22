@@ -43,7 +43,7 @@ Base URL: `https://<device>:8443/api/v1`. All responses are JSON.
 
 | Method | Path | Role | Notes |
 |---|---|---|---|
-| GET | `/system` | any | `SystemConfig` (hostname, asset_tag, time, ssh, ntp_servers). |
+| GET | `/system` | any | `SystemConfig` (hostname, asset_tag, hardware_revision, serial_number, time, ssh, ntp_servers). |
 | PUT | `/system` | **[admin]** | `SystemConfig` → saved section. |
 | POST | `/system/apply` | **[admin]** | apply hostname + time appliers. |
 | GET | `/system/info` | any | platform, model, board_name, has_rtc, os_release, uptime. |
@@ -61,7 +61,7 @@ Base URL: `https://<device>:8443/api/v1`. All responses are JSON.
 
 | Method | Path | Role | Notes |
 |---|---|---|---|
-| GET | `/network` | any | `{config: NetworkConfig, live: [{name, mac, operstate}]}`. |
+| GET | `/network` | any | `{config: NetworkConfig, live: [{name, mac, operstate}]}`. Interface config may include `mac_address` (`AA:BB:CC:DD:EE:FF`) to assign a persistent MAC through systemd-networkd. |
 | PUT | `/network` | **[admin]** | `NetworkConfig` → saved section (does not apply). |
 | POST | `/network/apply` | **[admin]** | apply networkd + firewall → `{provisional: bool, confirm_window_secs}`. Provisional ⇒ confirm or auto-rollback. |
 | POST | `/network/confirm` | **[admin]** | confirm the provisional change → `{confirmed}`. |

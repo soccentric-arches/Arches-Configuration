@@ -6,6 +6,7 @@ import { Card } from '../components/card.js';
 import { Field } from '../components/field.js';
 import { Toggle } from '../components/toggle.js';
 import { Button } from '../components/button.js';
+import { ActionList, ActionRow } from '../components/action-row.js';
 
 export async function render(api, store) {
   const cfg = await api.get('/api/v1/logs/config');
@@ -27,14 +28,14 @@ export async function render(api, store) {
 
   const viewerCard = Card({
     title: 'System logs',
-    footer: [
-      Button({
+    subtitle: 'Filter and inspect recent journal lines from the device.',
+    footer: ActionList(
+      ActionRow('Download full export', 'Save the complete journal as a text file for offline review.', Button({
         variant: 'outline',
         onClick: async () => { const r = await api.get('/api/v1/logs/download'); downloadText('journal-export.log', r.export || ''); },
-      }, 'Download full export'),
-      Button({ variant: 'outline', onClick: () => { pre.textContent = ''; } }, 'Clear'),
-      Button({ onClick: loadLogs }, 'Load'),
-    ],
+      }, 'Download export')),
+      ActionRow('Clear viewer', 'Remove the currently displayed log lines without changing stored logs.', Button({ variant: 'outline', onClick: () => { pre.textContent = ''; } }, 'Clear')),
+      ActionRow('Load logs', 'Fetch journal lines using the selected unit, priority, and limit filters.', Button({ onClick: loadLogs }, 'Load'))),
   }, el('div', { class: 'field-row' }, unit.wrap, priority.wrap, limit.wrap), pre);
 
   // ---------- Journald config ----------
@@ -50,7 +51,8 @@ export async function render(api, store) {
 
   const configCard = Card({
     title: 'Journald configuration',
-    footer: Button({
+    subtitle: 'Choose log persistence and optional remote syslog forwarding.',
+    footer: ActionList(ActionRow('Save and apply', 'Apply the journald storage and remote syslog settings.', Button({
       onClick: async () => {
         await api.put('/api/v1/logs/config', {
           storage: storage.get(),
@@ -59,7 +61,7 @@ export async function render(api, store) {
         });
         store.toast('Logging config applied', 'success');
       },
-    }, 'Save & apply'),
+    }, 'Save & apply'))),
   }, storage.wrap, maxSize.wrap, syslogEnabled.wrap,
     el('div', { class: 'field-row' }, syslogHost.wrap, syslogPort.wrap, syslogProto.wrap));
 
@@ -70,7 +72,7 @@ export async function render(api, store) {
     auditPre.textContent = (entries || []).map(e => `${e.ts}  ${e.user}  ${e.action}${e.detail ? '  ' + e.detail : ''}`).join('\n');
   }
   await loadAudit();
-  const auditCard = Card({ title: 'Audit log', footer: Button({ variant: 'outline', onClick: loadAudit }, 'Refresh') }, auditPre);
+  const auditCard = Card({ title: 'Audit log', subtitle: 'Administrative actions recorded by WebConfig.', footer: ActionList(ActionRow('Refresh audit log', 'Reload the recorded administrative actions from the device.', Button({ variant: 'outline', onClick: loadAudit }, 'Refresh'))) }, auditPre);
 
   return el('div', {},
     el('div', { class: 'page-header' }, el('h1', {}, 'Logs'), el('p', {}, 'Journal viewer, storage policy, and the audit trail.')),

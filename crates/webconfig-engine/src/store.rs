@@ -196,6 +196,10 @@ pub mod system {
         #[serde(default)]
         pub asset_tag: Option<String>,
         #[serde(default)]
+        pub hardware_revision: Option<String>,
+        #[serde(default)]
+        pub serial_number: Option<String>,
+        #[serde(default)]
         pub time: TimeConfig,
         #[serde(default)]
         pub ssh: SshConfig,
@@ -264,6 +268,9 @@ pub mod network {
     #[derive(Debug, Clone, Default, Serialize, Deserialize)]
     pub struct Interface {
         pub name: String,
+        /// Optional locally assigned MAC address, applied by systemd-networkd.
+        #[serde(default)]
+        pub mac_address: Option<String>,
         #[serde(default)]
         pub enabled: bool,
         #[serde(default = "default_dhcp")]

@@ -6,6 +6,7 @@ import { el } from '../core/dom.js';
 import { Card } from '../components/card.js';
 import { Field } from '../components/field.js';
 import { Button } from '../components/button.js';
+import { ActionList, ActionRow } from '../components/action-row.js';
 import { Sparkline } from '../components/sparkline.js';
 
 function fmtBytes(b) {
@@ -22,7 +23,7 @@ function metricTile(label) {
   const valueEl = el('div', { class: 'tile-value' }, '—');
   const spark = Sparkline({ height: 36 });
   const node = el('div', { class: 'card' },
-    el('div', { class: 'card-body' }, el('h3', {}, label), valueEl, spark.canvas));
+    el('div', { class: 'card-body' }, el('h3', {}, label), el('div', { class: 'tile-sub' }, 'Live telemetry'), valueEl, spark.canvas));
   return {
     node,
     update(text, numericValue) {
@@ -38,7 +39,7 @@ export async function render(api, store) {
   const disk = metricTile('Disk (max)');
   const temp = metricTile('Hottest');
   const uptimeEl = el('div', { class: 'tile-value' }, '—');
-  const uptimeTile = el('div', { class: 'card' }, el('div', { class: 'card-body' }, el('h3', {}, 'Uptime'), uptimeEl));
+  const uptimeTile = el('div', { class: 'card' }, el('div', { class: 'card-body' }, el('h3', {}, 'Uptime'), el('div', { class: 'tile-sub' }, 'Time since last boot'), uptimeEl));
   const netTiles = new Map();
   const netHost = el('div', { class: 'card-grid' });
 
@@ -87,20 +88,20 @@ export async function render(api, store) {
   const wearResult = el('div', { class: 'tile-sub', style: 'margin-top:8px' });
   const emmcCard = Card({
     title: 'eMMC wear', subtitle: 'Reads the device life-time estimate (spec §4.5).',
-    footer: Button({
+    footer: ActionList(ActionRow('Check wear', 'Read the eMMC lifetime estimate from the selected block device.', Button({
       variant: 'outline',
       onClick: async () => {
         const r = await api.get(`/api/v1/monitoring/emmc/${encodeURIComponent(dev.get())}`);
         wearResult.textContent = r.life_time_estimate ? `Life-time estimate: ${r.life_time_estimate}` : 'No wear data reported for this device.';
       },
-    }, 'Check wear'),
+    }, 'Check wear'))),
   }, dev.wrap, wearResult);
 
   return el('div', {},
     el('div', { class: 'page-header row', style: 'justify-content:space-between' },
       el('div', {}, el('h1', {}, 'Monitoring'), el('p', {}, 'Live vitals, pushed over SSE.')),
       el('div', { class: 'row' }, liveDot, liveLabel)),
-    Card({ title: 'Vitals' }, el('div', { class: 'card-grid' }, cpu.node, mem.node, disk.node, uptimeTile, temp.node)),
-    Card({ title: 'Network throughput' }, netHost),
+    Card({ title: 'Vitals', subtitle: 'Live CPU, memory, disk, temperature, and uptime readings.' }, el('div', { class: 'card-grid' }, cpu.node, mem.node, disk.node, uptimeTile, temp.node)),
+    Card({ title: 'Network throughput', subtitle: 'Per-interface receive throughput from the live telemetry stream.' }, netHost),
     emmcCard);
 }
