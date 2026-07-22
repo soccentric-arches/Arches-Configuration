@@ -35,23 +35,40 @@ function usagePercent(total, available) {
     return total ? Math.max(0, Math.min(100, (1 - available / total) * 100)) : null;
 }
 
+function isNvmeMount(mount) {
+    return mount.physical === true && /^\/dev\/nvme\d+n\d+(p\d+)?$/.test(mount.source || '');
+}
+
 function statusBadge(operstate) {
     const active = operstate === 'up';
     return Badge(operstate || 'unknown', active ? 'success' : 'neutral');
 }
 
 function renderStorage(vitals) {
-    if (!vitals.mounts || !vitals.mounts.length) {
+    const mounts = (vitals.mounts || []).filter(isNvmeMount);
+    const rows = mounts.map((mount) => {
+        const used = usagePercent(mount.total_bytes, mount.avail_bytes);
+        return [
+            el('code', {}, mount.source),
+            mount.target,
+            mount.fstype || '—',
+            used == null ? '—' : `${used.toFixed(0)}%`,
+            fmtBytes(mount.avail_bytes),
+        ];
+    });
+    if (vitals.swap_total_bytes) {
+        rows.push([
+            'Swap',
+            '—',
+            'swap',
+            `${usagePercent(vitals.swap_total_bytes, vitals.swap_free_bytes || 0).toFixed(0)}%`,
+            fmtBytes(vitals.swap_free_bytes),
+        ]);
+    }
+    if (!rows.length) {
         return el('div', { class: 'muted' }, 'No storage status reported.');
     }
-    return el('div', { class: 'stack' }, ...vitals.mounts.map((mount) => {
-        const used = usagePercent(mount.total_bytes, mount.avail_bytes);
-        return el('div', { class: 'field-row' },
-            el('div', {}, el('div', { class: 'field-label' }, mount.target), el('div', { class: 'field-help' }, 'Mounted filesystem and source type.'), el('div', {}, mount.source || mount.fstype)),
-            el('div', {}, el('div', { class: 'field-label' }, 'Used'), el('div', { class: 'field-help' }, 'Share of this filesystem currently occupied.'), el('div', {}, used == null ? '—' : `${used.toFixed(0)}%`)),
-            el('div', {}, el('div', { class: 'field-label' }, 'Available'), el('div', { class: 'field-help' }, 'Space available for files and services.'), el('div', {}, fmtBytes(mount.avail_bytes))),
-        );
-    }));
+    return Table({ columns: ['Drive', 'Mount', 'Filesystem', 'Used', 'Available'] }, rows).element;
 }
 
 function renderInterfaces(network) {
@@ -170,7 +187,7 @@ export async function render(api, store) {
                 el('div', {}, el('div', { class: 'overview-eyebrow' }, 'Current state'), connectionBadge, el('div', { class: 'overview-hero-meta' }, 'Live telemetry connected')))),
         el('div', { class: 'overview-metrics' }, cpu.node, memory.node, temperature.node, uptime.node),
         el('div', { class: 'card-grid overview-info-grid' }, identity, software),
-        Card({ title: 'Storage status', subtitle: 'Mounted filesystems, capacity, and current usage.' }, renderStorage(vitals)),
+        Card({ title: 'Storage status', subtitle: 'NVMe drives and swap space only.' }, renderStorage(vitals)),
         Card({ title: 'Network interfaces', subtitle: 'Live link state, addresses, and hardware identifiers.' }, renderInterfaces(network)),
         Card({ title: 'Physical hardware', subtitle: 'Only devices returned by live USB and PCI discovery are shown.' }, renderPhysicalDevices(usb, pci)),
     );
