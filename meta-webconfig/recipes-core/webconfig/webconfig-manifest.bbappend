@@ -1,4 +1,4 @@
-# webconfig-manifest.bbappend — per-machine board manifest selection (spec §3).
+# webconfig-manifest.bbappend — per-machine YAML board selection (spec §3).
 #
 # The six platforms differ ONLY in their board manifest. This bbappend maps each
 # project's MACHINE name to the right manifest file. Replace the placeholder
@@ -10,15 +10,15 @@
 # the relevant file is present and the default WEBCONFIG_MANIFEST_FILE picks it.
 
 # Default (dev/CI when no machine override matches).
-# WEBCONFIG_MANIFEST_FILE = "arches.json"
+# WEBCONFIG_BOARD_FILE = "generic.yaml"
 
 # Per-machine overrides — uncomment and set to your BSP's MACHINE names:
-# WEBCONFIG_MANIFEST_FILE:raspberrypi-cm4-64   = "acadia.json"
-# WEBCONFIG_MANIFEST_FILE:jetson-orin-nano      = "arches.json"
-# WEBCONFIG_MANIFEST_FILE:am62xx-evm            = "joshua.json"
-# WEBCONFIG_MANIFEST_FILE:imx8mp-var-dart       = "pinnacle.json"
-# WEBCONFIG_MANIFEST_FILE:genericx86-64         = "sequoia.json"
-# WEBCONFIG_MANIFEST_FILE:zynqmp-generic        = "zion.json"
+# WEBCONFIG_BOARD_FILE:raspberrypi-cm4-64   = "acadia.yaml"
+# WEBCONFIG_BOARD_FILE:jetson-orin-nano      = "arches.yaml"
+# WEBCONFIG_BOARD_FILE:am62xx-evm            = "joshua.yaml"
+# WEBCONFIG_BOARD_FILE:imx8mp-var-dart       = "pinnacle.yaml"
+# WEBCONFIG_BOARD_FILE:genericx86-64         = "sequoia.yaml"
+# WEBCONFIG_BOARD_FILE:zynqmp-generic        = "zion.yaml"
 
 # Mirror the platform id into the daemon environment so the embedded fallback
 # manifest matches the installed one (spec §3).

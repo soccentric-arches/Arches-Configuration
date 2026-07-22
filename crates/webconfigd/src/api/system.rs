@@ -171,13 +171,23 @@ pub async fn factory_reset(
     audit(&app, &user, "system.factory-reset", Some(req.mode.clone()));
     let dir = app.engine.sysroot.webconfig_dir();
     if dir.exists() {
-        // Settings only: remove config + audit + alerts but keep users.
+        // Settings only: reset the SQLite config and audit tables but keep users.
+        let database = dir.join("config.db");
+        if let Ok(conn) = rusqlite::Connection::open(&database) {
+            let _ = conn.execute("DELETE FROM config_state", []);
+            let _ = conn.execute("DELETE FROM audit_entries", []);
+        }
         let _ = std::fs::remove_file(dir.join("config.json"));
         let _ = std::fs::remove_file(dir.join("config.json.bak"));
         let _ = std::fs::remove_file(dir.join("audit.jsonl"));
         let _ = std::fs::remove_file(dir.join("alert.jsonl"));
         if req.mode == "settings+users" {
-            let _ = std::fs::remove_file(app.users_path.clone());
+            if let Ok(conn) = rusqlite::Connection::open(&database) {
+                let _ = conn.execute("DELETE FROM group_members", []);
+                let _ = conn.execute("DELETE FROM groups", []);
+                let _ = conn.execute("DELETE FROM users", []);
+            }
+            let _ = std::fs::remove_file(dir.join("users.json"));
         }
     }
     if app.engine.sysroot.is_real_root() {

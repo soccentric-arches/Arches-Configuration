@@ -1,7 +1,7 @@
 //! Board manifest (spec §3 platform layer).
 //!
 //! The board manifest is a BSP-provided, read-only file at
-//! `/usr/share/webconfig/board-manifest.json` declaring available I/O
+//! `/etc/webconfig/board.yaml` or `/usr/share/webconfig/board.yaml` declaring available I/O
 //! (CAN/serial/GPIO/I2C/MCU/FPGA/PRU) with Linux device names and human names.
 //! Per-platform dashboard tiles and panels are declared as **data, not code**;
 //! the six platforms differ only in this layer (spec §3).
@@ -17,6 +17,8 @@ use thiserror::Error;
 pub enum ManifestError {
     #[error("manifest parse error: {0}")]
     Parse(#[from] serde_json::Error),
+    #[error("manifest YAML parse error: {0}")]
+    YamlParse(#[from] serde_yaml::Error),
     #[error("manifest io error: {0}")]
     Io(#[from] std::io::Error),
     #[error("manifest not found at {0}")]
@@ -101,9 +103,27 @@ pub struct BoardManifest {
     pub has_tpm: bool,
     #[serde(default)]
     pub secure_boot: bool,
+    /// Optional first-boot values for the live SQLite configuration.
+    /// Subsequent edits are stored in SQLite and do not mutate this file.
+    #[serde(default)]
+    pub config_defaults: Option<crate::store::Config>,
 }
 
 impl BoardManifest {
+    /// Load the administrator-controlled YAML board definition from a file.
+    pub fn load_yaml_path(path: &Path) -> Result<Self, ManifestError> {
+        if !path.exists() {
+            return Err(ManifestError::NotFound(path.display().to_string()));
+        }
+        let raw = std::fs::read_to_string(path)?;
+        Ok(serde_yaml::from_str(&raw)?)
+    }
+
+    /// Load `board.yaml` from a directory containing the file.
+    pub fn load_yaml(dir: &Path) -> Result<Self, ManifestError> {
+        Self::load_yaml_path(&dir.join("board.yaml"))
+    }
+
     /// Load from `<share>/board-manifest.json`. Returns `NotFound` if absent.
     pub fn load(share_dir: &Path) -> Result<Self, ManifestError> {
         let path = share_dir.join("board-manifest.json");
@@ -168,5 +188,14 @@ mod tests {
             let m: BoardManifest = serde_json::from_str(raw).unwrap();
             assert_eq!(&m.platform.as_str(), platform, "platform mismatch");
         }
+    }
+
+    #[test]
+    fn generic_yaml_manifest_parses_with_defaults() {
+        let manifest: BoardManifest =
+            serde_yaml::from_str(include_str!("../../../board-manifests/generic.yaml")).unwrap();
+        assert_eq!(manifest.platform, "generic-linux");
+        assert!(manifest.config_defaults.is_some());
+        assert!(manifest.config_defaults.unwrap().system.time.ntp_enabled);
     }
 }

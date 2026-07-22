@@ -1,18 +1,17 @@
 //! Canonical config store (spec §3.2).
 //!
-//! A single versioned JSON tree persisted at `<data>/webconfig/config.json`
-//! with atomic write (temp file + `rename`) and a backup copy
-//! `config.json.bak`. All mutations go through [`ConfigStore::commit`], which
-//! validates against the loaded [`Schema`](crate::schema::Schema) before
-//! writing, so the on-disk tree is always schema-valid.
+//! A single versioned config tree persisted in SQLite at
+//! `<data>/webconfig/config.db`. The tree is serialized as JSON inside one
+//! transactional row so the public typed API remains stable while SQLite is
+//! the authoritative database. Existing `config.json` files are imported once
+//! on first open and are never written again.
 //!
 //! The store is synchronous and blocking-friendly: the HTTP layer runs it on a
 //! blocking task (spec §3, applier trait). It performs no network or D-Bus I/O.
 
-use std::fs;
-use std::io::Write;
 use std::path::PathBuf;
 
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -24,8 +23,10 @@ use crate::CONFIG_SCHEMA_VERSION;
 pub enum StoreError {
     #[error("config file not found at {0}")]
     NotFound(PathBuf),
-    #[error("config parse error: {0}")]
+    #[error("config serialization error: {0}")]
     Parse(#[from] serde_json::Error),
+    #[error("sqlite error: {0}")]
+    Sqlite(#[from] rusqlite::Error),
     #[error("schema validation failed: {0}")]
     Validation(String),
     #[error("io error: {0}")]
@@ -95,32 +96,60 @@ impl Default for ConfigFile {
 pub struct ConfigStore {
     sysroot: Sysroot,
     schema: Schema,
+    defaults: Config,
 }
 
 impl ConfigStore {
     /// Open the store for `sysroot`, validating commits against `schema`.
     pub fn new(sysroot: Sysroot, schema: Schema) -> Self {
-        Self { sysroot, schema }
+        Self {
+            sysroot,
+            schema,
+            defaults: Config::default(),
+        }
+    }
+
+    /// Open the store with board YAML values used only when SQLite has no live
+    /// row yet. Once seeded, the database is authoritative.
+    pub fn with_defaults(sysroot: Sysroot, schema: Schema, defaults: Config) -> Self {
+        Self {
+            sysroot,
+            schema,
+            defaults,
+        }
     }
 
     fn path(&self) -> PathBuf {
-        self.sysroot.webconfig_dir().join("config.json")
+        self.sysroot.webconfig_dir().join("config.db")
     }
 
-    fn backup_path(&self) -> PathBuf {
-        self.sysroot.webconfig_dir().join("config.json.bak")
+    fn legacy_path(&self) -> PathBuf {
+        self.sysroot.webconfig_dir().join("config.json")
     }
 
     /// Load the config tree, or return a fresh default on first boot.
     /// A backup of the previous file is *not* touched on load.
     pub fn load(&self) -> Result<ConfigFile, StoreError> {
         let path = self.path();
-        if !path.exists() {
-            tracing::info!("no config.json present — seeding defaults (first boot)");
-            return Ok(ConfigFile::new());
-        }
-        let raw = fs::read_to_string(&path)?;
-        let file: ConfigFile = serde_json::from_str(&raw)?;
+        std::fs::create_dir_all(self.sysroot.webconfig_dir())?;
+        let conn = Connection::open(&path)?;
+        self.initialize(&conn)?;
+        let row: Option<(u32, String)> = conn
+            .query_row(
+                "SELECT schema_version, config_json FROM config_state WHERE id = 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        let Some((schema_version, raw)) = row else {
+            let file = self.import_or_default()?;
+            self.write_connection(&conn, &file)?;
+            return Ok(file);
+        };
+        let file = ConfigFile {
+            schema_version,
+            config: serde_json::from_str(&raw)?,
+        };
         if file.schema_version > CONFIG_SCHEMA_VERSION {
             // Newer file than this engine — refuse rather than silently drop.
             return Err(StoreError::Version {
@@ -139,25 +168,51 @@ impl ConfigStore {
         self.schema.validate(&file.config)?;
 
         let dir = self.sysroot.webconfig_dir();
-        fs::create_dir_all(&dir)?;
-
-        let raw = serde_json::to_vec_pretty(file)?;
-        // Atomic write: write to a temp sibling, fsync, then rename over the
-        // real path so a crash mid-write never leaves a truncated config.
-        let tmp = dir.join("config.json.tmp");
-        {
-            let mut f = fs::File::create(&tmp)?;
-            f.write_all(&raw)?;
-            f.sync_all()?;
-        }
-        // Backup the existing file (if any) before clobbering it.
-        let path = self.path();
-        if path.exists() {
-            let _ = fs::copy(&path, self.backup_path());
-        }
-        fs::rename(&tmp, &path)?;
-        tracing::info!("config committed ({} bytes)", raw.len());
+        std::fs::create_dir_all(&dir)?;
+        let conn = Connection::open(self.path())?;
+        self.initialize(&conn)?;
+        self.write_connection(&conn, file)?;
+        tracing::info!("config committed to SQLite");
         Ok(())
+    }
+
+    fn initialize(&self, conn: &Connection) -> Result<(), StoreError> {
+        conn.execute_batch(
+            "PRAGMA journal_mode = WAL;
+             PRAGMA foreign_keys = ON;
+             CREATE TABLE IF NOT EXISTS config_state (
+                 id INTEGER PRIMARY KEY CHECK (id = 1),
+                 schema_version INTEGER NOT NULL,
+                 config_json TEXT NOT NULL,
+                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+             );",
+        )?;
+        Ok(())
+    }
+
+    fn write_connection(&self, conn: &Connection, file: &ConfigFile) -> Result<(), StoreError> {
+        let raw = serde_json::to_string(&file.config)?;
+        conn.execute(
+            "INSERT INTO config_state (id, schema_version, config_json) VALUES (1, ?1, ?2)
+             ON CONFLICT(id) DO UPDATE SET schema_version = excluded.schema_version,
+             config_json = excluded.config_json, updated_at = CURRENT_TIMESTAMP",
+            params![file.schema_version, raw],
+        )?;
+        Ok(())
+    }
+
+    fn import_or_default(&self) -> Result<ConfigFile, StoreError> {
+        let legacy = self.legacy_path();
+        if legacy.exists() {
+            let raw = std::fs::read_to_string(&legacy)?;
+            tracing::info!(path = %legacy.display(), "importing legacy JSON config into SQLite");
+            return Ok(serde_json::from_str(&raw)?);
+        }
+        tracing::info!("no live config found — seeding defaults from board YAML layer");
+        Ok(ConfigFile {
+            schema_version: CONFIG_SCHEMA_VERSION,
+            config: self.defaults.clone(),
+        })
     }
 
     /// Load → mutate → commit in one call. The closure receives a mutable
@@ -789,7 +844,7 @@ mod tests {
     }
 
     #[test]
-    fn commit_is_atomic_and_backs_up() {
+    fn commit_is_transactional_in_sqlite() {
         let dir = tempfile::tempdir().unwrap();
         let sys = Sysroot::at(dir.path());
         let store = ConfigStore::new(sys, Schema::default_permissive());
@@ -801,14 +856,15 @@ mod tests {
         file.config.system.hostname = Some("second".into());
         store.commit(&file).unwrap();
 
-        // Backup should hold the previous ("first") value.
-        let bak =
-            std::fs::read_to_string(dir.path().join("data/webconfig/config.json.bak")).unwrap();
-        assert!(bak.contains("first"));
-        let cur = std::fs::read_to_string(dir.path().join("data/webconfig/config.json")).unwrap();
+        let conn = rusqlite::Connection::open(dir.path().join("data/webconfig/config.db")).unwrap();
+        let cur: String = conn
+            .query_row(
+                "SELECT config_json FROM config_state WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert!(cur.contains("second"));
-        // No leftover tmp file.
-        assert!(!dir.path().join("data/webconfig/config.json.tmp").exists());
     }
 
     #[test]

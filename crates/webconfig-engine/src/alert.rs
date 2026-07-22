@@ -18,6 +18,7 @@ use std::path::Path;
 
 use crate::monitoring::Vitals;
 use crate::store::alerts::AlertRule;
+use rusqlite::{params, Connection};
 
 /// One history entry — fired or cleared.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -197,6 +198,25 @@ impl AlertHistory {
     }
 
     pub fn record(&self, event: &AlertEvent) -> std::io::Result<()> {
+        if self.is_sqlite() {
+            let conn = self.open_sqlite()?;
+            conn.execute(
+                "INSERT INTO alert_history (ts, rule_id, state, value) VALUES (?1, ?2, ?3, ?4)",
+                params![
+                    event.ts,
+                    event.rule_id,
+                    serde_json::to_string(&event.state)?,
+                    event.value
+                ],
+            )
+            .map_err(sqlite_io)?;
+            conn.execute(
+                "DELETE FROM alert_history WHERE id NOT IN (SELECT id FROM alert_history ORDER BY id DESC LIMIT ?1)",
+                params![self.max_entries as i64],
+            )
+            .map_err(sqlite_io)?;
+            return Ok(());
+        }
         if let Some(parent) = self.path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -211,6 +231,30 @@ impl AlertHistory {
     }
 
     pub fn read_all(&self) -> std::io::Result<Vec<AlertEvent>> {
+        if self.is_sqlite() {
+            let conn = self.open_sqlite()?;
+            let mut stmt = conn
+                .prepare("SELECT ts, rule_id, state, value FROM alert_history ORDER BY id")
+                .map_err(sqlite_io)?;
+            let rows = stmt
+                .query_map([], |row| {
+                    let state: String = row.get(2)?;
+                    Ok(AlertEvent {
+                        ts: row.get(0)?,
+                        rule_id: row.get(1)?,
+                        state: serde_json::from_str(&state).map_err(|error| {
+                            rusqlite::Error::FromSqlConversionFailure(
+                                2,
+                                rusqlite::types::Type::Text,
+                                Box::new(error),
+                            )
+                        })?,
+                        value: row.get(3)?,
+                    })
+                })
+                .map_err(sqlite_io)?;
+            return rows.map(|row| row.map_err(sqlite_io)).collect();
+        }
         if !self.path.exists() {
             return Ok(Vec::new());
         }
@@ -246,6 +290,29 @@ impl AlertHistory {
     pub fn path(&self) -> &Path {
         &self.path
     }
+
+    fn is_sqlite(&self) -> bool {
+        self.path.extension().and_then(|e| e.to_str()) == Some("db")
+    }
+
+    fn open_sqlite(&self) -> std::io::Result<Connection> {
+        if let Some(parent) = self.path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let conn = Connection::open(&self.path).map_err(sqlite_io)?;
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS alert_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts TEXT NOT NULL, rule_id TEXT NOT NULL, state TEXT NOT NULL, value REAL NOT NULL
+             );",
+        )
+        .map_err(sqlite_io)?;
+        Ok(conn)
+    }
+}
+
+fn sqlite_io(error: rusqlite::Error) -> std::io::Error {
+    std::io::Error::other(error)
 }
 
 /// Helper trait so `f64::NEG_INFINITY.into_option()` reads cleanly.
@@ -355,5 +422,24 @@ mod tests {
         let raw = std::fs::read_to_string(h.path()).unwrap();
         let count = raw.lines().filter(|l| !l.is_empty()).count();
         assert_eq!(count, 3);
+    }
+
+    #[test]
+    fn sqlite_history_records_and_trims() {
+        let dir = tempfile::tempdir().unwrap();
+        let history = AlertHistory::new(dir.path().join("config.db"), 2);
+        for index in 0..3 {
+            history
+                .record(&AlertEvent {
+                    ts: format!("t={index}"),
+                    rule_id: "disk".into(),
+                    state: AlertState::Fired,
+                    value: index as f64,
+                })
+                .unwrap();
+        }
+        let events = history.read_all().unwrap();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].value, 1.0);
     }
 }

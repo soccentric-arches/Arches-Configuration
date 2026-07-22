@@ -9,6 +9,7 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::Path;
 
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 
 /// One audit entry.
@@ -41,6 +42,9 @@ impl AuditLog {
     }
 
     pub fn append(&self, entry: &AuditEntry) -> std::io::Result<()> {
+        if self.is_sqlite() {
+            return self.append_sqlite(entry);
+        }
         if let Some(parent) = self.path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -57,6 +61,9 @@ impl AuditLog {
 
     /// Read all current entries (newest last).
     pub fn read_all(&self) -> std::io::Result<Vec<AuditEntry>> {
+        if self.is_sqlite() {
+            return self.read_sqlite();
+        }
         if !self.path.exists() {
             return Ok(Vec::new());
         }
@@ -75,6 +82,12 @@ impl AuditLog {
 
     /// Remove all persisted audit entries.
     pub fn clear(&self) -> std::io::Result<()> {
+        if self.is_sqlite() {
+            let conn = self.open_sqlite()?;
+            conn.execute("DELETE FROM audit_entries", [])
+                .map_err(sqlite_io)?;
+            return Ok(());
+        }
         if self.path.exists() {
             std::fs::remove_file(&self.path)?;
         }
@@ -113,6 +126,67 @@ impl AuditLog {
     pub fn path(&self) -> &Path {
         &self.path
     }
+
+    fn is_sqlite(&self) -> bool {
+        self.path.extension().and_then(|e| e.to_str()) == Some("db")
+    }
+
+    fn open_sqlite(&self) -> std::io::Result<Connection> {
+        if let Some(parent) = self.path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let conn = Connection::open(&self.path).map_err(sqlite_io)?;
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS audit_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts TEXT NOT NULL, user TEXT NOT NULL, action TEXT NOT NULL, detail TEXT
+             );",
+        )
+        .map_err(sqlite_io)?;
+        Ok(conn)
+    }
+
+    fn append_sqlite(&self, entry: &AuditEntry) -> std::io::Result<()> {
+        let conn = self.open_sqlite()?;
+        conn.execute(
+            "INSERT INTO audit_entries (ts, user, action, detail) VALUES (?1, ?2, ?3, ?4)",
+            params![entry.ts, entry.user, entry.action, entry.detail],
+        )
+        .map_err(sqlite_io)?;
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM audit_entries", [], |row| row.get(0))
+            .map_err(sqlite_io)?;
+        if count > 10_000 {
+            conn.execute(
+                "DELETE FROM audit_entries WHERE id IN (SELECT id FROM audit_entries ORDER BY id LIMIT ?1)",
+                params![count - 8_000],
+            )
+            .map_err(sqlite_io)?;
+        }
+        Ok(())
+    }
+
+    fn read_sqlite(&self) -> std::io::Result<Vec<AuditEntry>> {
+        let conn = self.open_sqlite()?;
+        let mut stmt = conn
+            .prepare("SELECT ts, user, action, detail FROM audit_entries ORDER BY id")
+            .map_err(sqlite_io)?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(AuditEntry {
+                    ts: row.get(0)?,
+                    user: row.get(1)?,
+                    action: row.get(2)?,
+                    detail: row.get(3)?,
+                })
+            })
+            .map_err(sqlite_io)?;
+        rows.map(|row| row.map_err(sqlite_io)).collect()
+    }
+}
+
+fn sqlite_io(error: rusqlite::Error) -> std::io::Error {
+    std::io::Error::other(error)
 }
 
 #[cfg(test)]
@@ -133,6 +207,20 @@ mod tests {
         let all = log.read_all().unwrap();
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].action, "network.apply");
+    }
+
+    #[test]
+    fn sqlite_append_and_read_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = AuditLog::new(dir.path().join("config.db"), 1 << 20);
+        log.append(&AuditEntry {
+            ts: "2026-07-21T10:00:00Z".into(),
+            user: "admin".into(),
+            action: "network.apply".into(),
+            detail: None,
+        })
+        .unwrap();
+        assert_eq!(log.read_all().unwrap()[0].action, "network.apply");
     }
 
     #[test]

@@ -49,7 +49,9 @@ tokio-rustls = { version = "0.26", default-features = false, features = ["ring",
 # Serde + validation
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
+serde_yaml = "0.9"
 jsonschema = { version = "0.17", default-features = false }
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 # Auth
 argon2 = { version = "0.5", default-features = false, features = ["alloc", "password-hash"] }

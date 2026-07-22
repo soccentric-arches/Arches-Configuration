@@ -18,7 +18,7 @@ pub async fn get(
     _role: AuthRole,
 ) -> ApiResult<Json<serde_json::Value>> {
     let cfg = app.engine.load()?;
-    let history = AlertHistory::new(app.engine.sysroot.webconfig_dir().join("alert.jsonl"), 1000)
+    let history = AlertHistory::new(app.engine.sysroot.webconfig_dir().join("config.db"), 1000)
         .read_all()
         .unwrap_or_default();
     Ok(Json(serde_json::json!({
@@ -67,7 +67,7 @@ pub async fn history(
     State(app): State<AppState>,
     _role: AuthRole,
 ) -> ApiResult<Json<Vec<webconfig_engine::alert::AlertEvent>>> {
-    let h = AlertHistory::new(app.engine.sysroot.webconfig_dir().join("alert.jsonl"), 1000)
+    let h = AlertHistory::new(app.engine.sysroot.webconfig_dir().join("config.db"), 1000)
         .read_all()
         .unwrap_or_default();
     Ok(Json(h))

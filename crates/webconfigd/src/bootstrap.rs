@@ -37,10 +37,15 @@ pub(crate) async fn build(sysroot: Sysroot) -> Application {
             Schema::default_permissive()
         }),
     );
-    let manifest = Arc::new(load_or_seed_manifest(&share));
-    let store = ConfigStore::new(sysroot.clone(), (*schema).clone());
+    let manifest = Arc::new(load_or_seed_manifest(&sysroot, &share));
+    let store = ConfigStore::with_defaults(
+        sysroot.clone(),
+        (*schema).clone(),
+        manifest.config_defaults.clone().unwrap_or_default(),
+    );
     let engine = EngineBridge::new(store, sysroot.clone());
-    let audit = Arc::new(AuditLog::new(webconfig_dir.join("audit.jsonl"), 256 * 1024));
+    let database = webconfig_dir.join("config.db");
+    let audit = Arc::new(AuditLog::new(database.clone(), 256 * 1024));
     let alert_engine = Arc::new(tokio::sync::Mutex::new(AlertEngine::new()));
 
     let state = AppState {
@@ -51,7 +56,7 @@ pub(crate) async fn build(sysroot: Sysroot) -> Application {
         alert_engine: alert_engine.clone(),
         update_backend: crate::update_backend::make_backend(&sysroot),
         systemd: crate::systemd::make_client(&sysroot).await,
-        users_path: webconfig_dir.join("users.json"),
+        users_path: database,
         login_throttle: Arc::new(LoginThrottle::new()),
     };
 
@@ -63,7 +68,14 @@ pub(crate) async fn build(sysroot: Sysroot) -> Application {
     }
 }
 
-fn load_or_seed_manifest(share: &Path) -> BoardManifest {
+fn load_or_seed_manifest(sysroot: &Sysroot, share: &Path) -> BoardManifest {
+    let local_yaml = sysroot.join("/etc/webconfig/board.yaml");
+    if let Ok(manifest) = BoardManifest::load_yaml_path(&local_yaml) {
+        return manifest;
+    }
+    if let Ok(manifest) = BoardManifest::load_yaml(share) {
+        return manifest;
+    }
     if let Ok(manifest) = BoardManifest::load(share) {
         return manifest;
     }
@@ -86,5 +98,5 @@ fn load_or_seed_manifest(share: &Path) -> BoardManifest {
 }
 
 pub(crate) fn alert_history(engine: &EngineBridge) -> AlertHistory {
-    AlertHistory::new(engine.sysroot.webconfig_dir().join("alert.jsonl"), 1000)
+    AlertHistory::new(engine.sysroot.webconfig_dir().join("config.db"), 1000)
 }

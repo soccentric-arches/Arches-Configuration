@@ -312,7 +312,7 @@ pub async fn diagnostics(
         String::new()
     };
     let history = webconfig_engine::alert::AlertHistory::new(
-        app.engine.sysroot.webconfig_dir().join("alert.jsonl"),
+        app.engine.sysroot.webconfig_dir().join("config.db"),
         1000,
     )
     .read_all()

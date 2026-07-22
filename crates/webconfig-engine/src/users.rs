@@ -1,19 +1,18 @@
 //! Web-UI user store (spec §4.1).
 //!
-//! Local user store at `/data/webconfig/users.json`, argon2 hashes, roles
+//! Local user store in the SQLite database at `/data/webconfig/config.db`, argon2 hashes, roles
 //! **admin / operator / viewer** (admin: everything; operator: app settings +
 //! service restart only; viewer: read-only). First boot has **no default
 //! password** — the API forces admin password creation on first access
 //! (spec §4.8, CRA/SB-327 compliance). Changing the Linux root password is a
 //! separate single action (`chpasswd`) handled by the HTTP layer, not here.
 //!
-//! No database — JSON file only (spec §2).
-
 use std::path::{Path, PathBuf};
 
 use argon2::password_hash::{PasswordHash, SaltString};
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
 use rand_core::OsRng;
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -23,6 +22,8 @@ pub enum UserError {
     Io(#[from] std::io::Error),
     #[error("parse error: {0}")]
     Parse(#[from] serde_json::Error),
+    #[error("sqlite error: {0}")]
+    Sqlite(#[from] rusqlite::Error),
     #[error("hash error: {0}")]
     Hash(String),
     #[error("user not found: {0}")]
@@ -109,6 +110,9 @@ pub struct UserStore {
 
 impl UserStore {
     pub fn load(path: &Path) -> Result<Self, UserError> {
+        if path.extension().and_then(|e| e.to_str()) == Some("db") {
+            return Self::load_sqlite(path);
+        }
         if !path.exists() {
             return Ok(Self::default());
         }
@@ -117,6 +121,9 @@ impl UserStore {
     }
 
     pub fn save(&self, path: &Path) -> Result<(), UserError> {
+        if path.extension().and_then(|e| e.to_str()) == Some("db") {
+            return self.save_sqlite(path);
+        }
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -124,6 +131,109 @@ impl UserStore {
         let tmp = path.with_extension("json.tmp");
         std::fs::write(&tmp, serde_json::to_vec_pretty(self)?)?;
         std::fs::rename(&tmp, path)?;
+        Ok(())
+    }
+
+    fn load_sqlite(path: &Path) -> Result<Self, UserError> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let conn = Connection::open(path)?;
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS users (
+                username TEXT PRIMARY KEY, password_hash TEXT NOT NULL, role TEXT NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS groups (
+                name TEXT PRIMARY KEY
+             );
+             CREATE TABLE IF NOT EXISTS group_members (
+                group_name TEXT NOT NULL, username TEXT NOT NULL,
+                PRIMARY KEY (group_name, username)
+             );",
+        )?;
+        let mut users = Vec::new();
+        let mut stmt =
+            conn.prepare("SELECT username, password_hash, role FROM users ORDER BY username")?;
+        let rows = stmt.query_map([], |row| {
+            let username: String = row.get(0)?;
+            let password_hash: String = row.get(1)?;
+            let role: String = row.get(2)?;
+            Ok((username, password_hash, role))
+        })?;
+        for row in rows {
+            let (username, password_hash, role) = row?;
+            let groups = conn
+                .prepare(
+                    "SELECT group_name FROM group_members WHERE username = ?1 ORDER BY group_name",
+                )?
+                .query_map(params![username], |member| member.get(0))?
+                .collect::<Result<Vec<String>, _>>()?;
+            users.push(UserRecord {
+                username,
+                password_hash,
+                role: Role::parse(&role)?,
+                groups,
+            });
+        }
+        let mut group_stmt = conn.prepare("SELECT name FROM groups ORDER BY name")?;
+        let groups = group_stmt
+            .query_map([], |row| {
+                Ok(GroupRecord {
+                    name: row.get(0)?,
+                    members: Vec::new(),
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut store = Self { users, groups };
+        for group in &mut store.groups {
+            group.members = conn
+                .prepare(
+                    "SELECT username FROM group_members WHERE group_name = ?1 ORDER BY username",
+                )?
+                .query_map(params![group.name], |row| row.get(0))?
+                .collect::<Result<Vec<String>, _>>()?;
+        }
+        if store.users.is_empty() {
+            let legacy = path.with_file_name("users.json");
+            if legacy.exists() {
+                let imported: Self = serde_json::from_str(&std::fs::read_to_string(legacy)?)?;
+                imported.save_sqlite(path)?;
+                return Ok(imported);
+            }
+        }
+        Ok(store)
+    }
+
+    fn save_sqlite(&self, path: &Path) -> Result<(), UserError> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let mut conn = Connection::open(path)?;
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password_hash TEXT NOT NULL, role TEXT NOT NULL);
+             CREATE TABLE IF NOT EXISTS groups (name TEXT PRIMARY KEY);
+             CREATE TABLE IF NOT EXISTS group_members (group_name TEXT NOT NULL, username TEXT NOT NULL, PRIMARY KEY (group_name, username));",
+        )?;
+        let tx = conn.transaction()?;
+        tx.execute("DELETE FROM group_members", [])?;
+        tx.execute("DELETE FROM groups", [])?;
+        tx.execute("DELETE FROM users", [])?;
+        for user in &self.users {
+            tx.execute(
+                "INSERT INTO users (username, password_hash, role) VALUES (?1, ?2, ?3)",
+                params![user.username, user.password_hash, user.role.as_str()],
+            )?;
+        }
+        for group in &self.groups {
+            tx.execute("INSERT INTO groups (name) VALUES (?1)", params![group.name])?;
+            for username in &group.members {
+                tx.execute(
+                    "INSERT INTO group_members (group_name, username) VALUES (?1, ?2)",
+                    params![group.name, username],
+                )?;
+            }
+        }
+        tx.commit()?;
         Ok(())
     }
 
@@ -278,7 +388,7 @@ impl UserStore {
 
     /// Where the store lives on the data partition.
     pub fn default_path(webconfig_dir: &Path) -> PathBuf {
-        webconfig_dir.join("users.json")
+        webconfig_dir.join("config.db")
     }
 }
 
@@ -310,6 +420,24 @@ mod tests {
         );
         assert!(loaded.authenticate("admin", "wrong").is_err());
         assert!(loaded.authenticate("nobody", "x").is_err());
+    }
+
+    #[test]
+    fn sqlite_authenticate_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.db");
+        let mut store = UserStore::default();
+        store.add("admin", "correct horse", Role::Admin).unwrap();
+        store.add_group("operators").unwrap();
+        store.add_member("operators", "admin").unwrap();
+        store.save(&path).unwrap();
+
+        let loaded = UserStore::load(&path).unwrap();
+        assert_eq!(
+            loaded.authenticate("admin", "correct horse").unwrap(),
+            Role::Admin
+        );
+        assert_eq!(loaded.groups[0].members, vec!["admin"]);
     }
 
     #[test]
