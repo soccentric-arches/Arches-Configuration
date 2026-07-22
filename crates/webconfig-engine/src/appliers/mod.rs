@@ -6,6 +6,7 @@
 //! interactions that cannot be fully implemented go through a narrow trait
 //! with a real implementation **and** a mock — never a silent TODO (spec §7).
 
+pub mod ap;
 pub mod can;
 pub mod firewall;
 pub mod hostname;
@@ -13,8 +14,10 @@ pub mod journald;
 pub mod networkd;
 pub mod ssh;
 pub mod time;
+pub mod wifi;
 pub mod wireguard;
 
+pub use ap::ApApplier;
 pub use can::CanApplier;
 pub use firewall::FirewallApplier;
 pub use hostname::HostnameApplier;
@@ -22,6 +25,7 @@ pub use journald::JournaldApplier;
 pub use networkd::NetworkdApplier;
 pub use ssh::SshApplier;
 pub use time::TimeApplier;
+pub use wifi::WifiApplier;
 pub use wireguard::WireGuardApplier;
 
 use crate::applier::Applier;
@@ -36,6 +40,8 @@ pub fn all() -> Vec<Box<dyn Applier>> {
         Box::new(SshApplier::new()),
         Box::new(NetworkdApplier::new()),
         Box::new(FirewallApplier::new()),
+        Box::new(WifiApplier::new()),
+        Box::new(ApApplier::new()),
         Box::new(CanApplier::new()),
         Box::new(JournaldApplier::new()),
         Box::new(WireGuardApplier::new()),

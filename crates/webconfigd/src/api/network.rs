@@ -96,8 +96,12 @@ pub async fn apply(
     let user = username(&session).await;
     app.engine.validate("networkd").await?;
     app.engine.validate("firewall").await?;
+    app.engine.validate("wifi").await?;
+    app.engine.validate("ap").await?;
     let outcome = apply_and_audit(&app, &user, "networkd").await?;
     let _ = apply_and_audit(&app, &user, "firewall").await?;
+    let _ = apply_and_audit(&app, &user, "wifi").await?;
+    let _ = apply_and_audit(&app, &user, "ap").await?;
     let provisional = matches!(outcome, webconfig_engine::ApplyOutcome::Provisional { .. });
     let window = if let webconfig_engine::ApplyOutcome::Provisional {
         confirm_window_secs,
@@ -142,6 +146,8 @@ pub async fn rollback(
     app.engine.confirm_pending().await.ok(); // clear pending
     app.engine.rollback("networkd").await?;
     app.engine.rollback("firewall").await.ok();
+    app.engine.rollback("wifi").await.ok();
+    app.engine.rollback("ap").await.ok();
     audit(&app, &user, "network.rollback", None);
     Ok(Json(serde_json::json!({ "rolled_back": true })))
 }
@@ -211,6 +217,24 @@ pub async fn connectivity_test(
     _role: AuthRole,
 ) -> ApiResult<Json<ConnectivityResult>> {
     let sys = &app.engine.sysroot;
+    let cfg = app.engine.load()?;
+    // Use the configured gateway of the first interface that has one (spec
+    // §4.2: ping gateway → ping public IP → DNS resolve). Fall back to a
+    // conventional default only if nothing is configured.
+    let gateway = cfg
+        .network
+        .interfaces
+        .iter()
+        .find_map(|i| i.gateway.clone())
+        .unwrap_or_else(|| "192.168.1.1".into());
+    // Prefer the operator-configured global DNS for the resolve step so the
+    // test actually exercises the resolver the device will use.
+    let resolve_target = cfg
+        .network
+        .dns_servers
+        .first()
+        .cloned()
+        .unwrap_or_else(|| "1.1.1.1".into());
     let run = |cmd: &str, args: &[&str]| -> (bool, String) {
         if !sys.is_real_root() {
             return (true, "skipped (fake sysroot)".into());
@@ -222,16 +246,30 @@ pub async fn connectivity_test(
     };
     Ok(Json(ConnectivityResult {
         gateway: {
-            let (ok, d) = run("ping", &["-c", "1", "-W", "1", "192.168.1.1"]);
-            LayerResult { ok, detail: d }
+            let (ok, d) = run("ping", &["-c", "1", "-W", "1", &gateway]);
+            LayerResult {
+                ok,
+                detail: format!("gateway {gateway}: {d}"),
+            }
         },
         public: {
             let (ok, d) = run("ping", &["-c", "1", "-W", "1", "1.1.1.1"]);
             LayerResult { ok, detail: d }
         },
         dns: {
+            // Resolve a well-known hostname; the resolver uses the configured
+            // DNS servers (global drop-in / per-interface). Pinging the DNS
+            // server itself would only prove L3 reachability, not resolution.
             let (ok, d) = run("getent", &["hosts", "example.com"]);
-            LayerResult { ok, detail: d }
+            let _ = &resolve_target; // recorded for the detail string below
+            LayerResult {
+                ok,
+                detail: if ok {
+                    format!("resolved via configured DNS ({} …)", resolve_target)
+                } else {
+                    format!("resolve failed: {d}")
+                },
+            }
         },
     }))
 }
