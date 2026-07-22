@@ -5,7 +5,7 @@ import { Card } from '../components/card.js';
 import { Field } from '../components/field.js';
 import { Toggle } from '../components/toggle.js';
 import { Button } from '../components/button.js';
-import { confirmDialog } from '../components/modal.js';
+import { confirmDialog, promptDialog } from '../components/modal.js';
 import { ActionList, ActionRow } from '../components/action-row.js';
 
 function downloadJson(name, obj) {
@@ -35,8 +35,27 @@ export async function render(api, store) {
 
     downloadButton = Button({
         variant: 'outline', onClick: async () => {
-            const r = await api.get(`/api/v1/updates/backup?include_secrets=${includeSecrets.get()}`);
-            downloadJson('webconfig-backup.json', r);
+            try {
+                if (includeSecrets.get()) {
+                    // Secrets only ever leave the device inside a
+                    // passphrase-encrypted envelope (spec §4.4). The passphrase
+                    // travels in the POST body, never the query string.
+                    const passphrase = await promptDialog({
+                        title: 'Encrypt backup with secrets',
+                        label: 'Passphrase (min 8 characters)',
+                        type: 'password',
+                        placeholder: 'At least 8 characters',
+                        confirmLabel: 'Download',
+                    });
+                    if (!passphrase) { store.toast('Cancelled', 'info'); return; }
+                    if (passphrase.length < 8) { store.toast('Passphrase must be at least 8 characters', 'error'); return; }
+                    const r = await api.post('/api/v1/updates/backup', { passphrase });
+                    downloadJson('webconfig-backup.json', r);
+                } else {
+                    const r = await api.get('/api/v1/updates/backup?include_secrets=false');
+                    downloadJson('webconfig-backup.json', r);
+                }
+            } catch (e) { store.toast(e.message, 'error'); }
         }
     }, 'Download config');
     restoreButton = Button({
@@ -46,7 +65,19 @@ export async function render(api, store) {
             if (!file) { store.toast('Choose a backup file first', 'error'); return; }
             if (!await confirmDialog({ title: 'Restore config?', description: 'This overwrites the current configuration.', variant: 'destructive' })) return;
             try {
-                await api.post('/api/v1/updates/restore', JSON.parse(await file.text()));
+                const parsed = JSON.parse(await file.text());
+                let body = parsed;
+                if (parsed && parsed.encrypted) {
+                    const passphrase = await promptDialog({
+                        title: 'Encrypted backup',
+                        label: 'Passphrase',
+                        type: 'password',
+                        confirmLabel: 'Restore',
+                    });
+                    if (!passphrase) { store.toast('Cancelled', 'info'); return; }
+                    body = { ...parsed, passphrase };
+                }
+                await api.post('/api/v1/updates/restore', body);
                 store.toast('Config restored', 'success');
             } catch (e) { store.toast(e.message, 'error'); }
         },

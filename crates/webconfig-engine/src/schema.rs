@@ -96,16 +96,31 @@ impl Schema {
 
     /// Validate a config tree against all loaded validators. Permissive mode
     /// accepts anything.
+    ///
+    /// Validators are keyed by the schema file *stem* (e.g. `app-example`), but
+    /// whether a schema governs an app setting is decided by the descriptor's
+    /// `id` (`app:example`), not the stem. App settings live under
+    /// `config.app_settings[<stem>]`; top-level sections live under
+    /// `config[<stem>]`. The two vectors are pushed in lockstep in `load_dir`,
+    /// so a `zip` pairs each validator with its descriptor.
     pub fn validate(&self, config: &Config) -> Result<(), SchemaError> {
         if self.permissive {
             return Ok(());
         }
         let whole = serde_json::to_value(config).map_err(SchemaError::Parse)?;
-        for (name, validator) in &self.validators {
-            let target = if name.starts_with("app:") {
-                whole.get("app_settings").cloned().unwrap_or(Value::Null)
+        for ((stem, validator), (_stem, descriptor)) in
+            self.validators.iter().zip(self.descriptors.iter())
+        {
+            let target = if descriptor.id.starts_with("app:") {
+                // App settings are keyed by the file stem (the URL `:id` the
+                // services API uses), not by the `app:`-prefixed descriptor id.
+                whole
+                    .get("app_settings")
+                    .and_then(|a| a.get(stem.as_str()))
+                    .cloned()
+                    .unwrap_or(Value::Null)
             } else {
-                whole.get(name.as_str()).cloned().unwrap_or(Value::Null)
+                whole.get(stem.as_str()).cloned().unwrap_or(Value::Null)
             };
             if target.is_null() {
                 continue;
@@ -115,7 +130,8 @@ impl Schema {
             // so `is_valid` avoids the lifetime entanglement here (spec §3).
             if !validator.is_valid(&target) {
                 return Err(SchemaError::Validation(format!(
-                    "section {name}: validation failed"
+                    "section {}: validation failed",
+                    descriptor.id
                 )));
             }
         }
@@ -225,5 +241,61 @@ mod tests {
     fn missing_dir_falls_back_to_permissive() {
         let s = Schema::load_dir(Path::new("/no/such/dir/here")).unwrap();
         s.validate(&Config::default()).unwrap();
+    }
+
+    #[test]
+    fn app_schema_validates_app_settings_by_stem() {
+        // A schema whose descriptor id is `app:example` (file stem
+        // `app-example`) must validate `config.app_settings["app-example"]`,
+        // not `config["app:example"]`. This is the bug where app schemas were
+        // routed by `name.starts_with("app:")` on the stem — which never
+        // matched — so app settings were never server-validated.
+        let dir = tempfile::tempdir().unwrap();
+        let schema = r#"{
+            "id": "app:example",
+            "title": "Example app",
+            "validate": {
+                "type": "object",
+                "required": ["site_id"],
+                "properties": { "site_id": { "type": "string" } }
+            }
+        }"#;
+        std::fs::write(dir.path().join("app-example.schema.json"), schema).unwrap();
+        let s = Schema::load_dir(dir.path()).unwrap();
+
+        // Missing required `site_id` under app_settings["app-example"] → fails.
+        let mut cfg = Config::default();
+        cfg.app_settings
+            .insert("app-example".into(), serde_json::json!({}));
+        assert!(s.validate(&cfg).is_err());
+
+        // Present → passes.
+        cfg.app_settings.insert(
+            "app-example".into(),
+            serde_json::json!({"site_id":"site-1"}),
+        );
+        assert!(s.validate(&cfg).is_ok());
+    }
+
+    #[test]
+    fn top_level_schema_validates_its_section() {
+        // A non-app schema (id == stem == "system") validates config.system.
+        let dir = tempfile::tempdir().unwrap();
+        let schema = r#"{
+            "id": "system",
+            "title": "System",
+            "validate": {
+                "type": "object",
+                "properties": { "hostname": { "type": "string", "minLength": 3 } }
+            }
+        }"#;
+        std::fs::write(dir.path().join("system.schema.json"), schema).unwrap();
+        let s = Schema::load_dir(dir.path()).unwrap();
+
+        let mut cfg = Config::default();
+        cfg.system.hostname = Some("ab".into()); // too short
+        assert!(s.validate(&cfg).is_err());
+        cfg.system.hostname = Some("arches-01".into());
+        assert!(s.validate(&cfg).is_ok());
     }
 }

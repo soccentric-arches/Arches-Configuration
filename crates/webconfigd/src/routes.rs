@@ -20,7 +20,10 @@ use crate::state::AppState;
 /// directory (served by the daemon, executing entirely in the browser, spec §2).
 pub fn build_router(state: AppState, static_dir: std::path::PathBuf) -> Router {
     let session_layer = SessionManagerLayer::new(MemoryStore::default())
-        .with_secure(false) // first-boot may be over plain HTTP; HTTPS enforced at TLS layer
+        // The daemon serves TLS only (server.rs), so the session cookie is
+        // always carried over HTTPS — mark it Secure so browsers never emit it
+        // over plain HTTP (spec §4.8: sessions httpOnly + Secure).
+        .with_secure(true)
         .with_same_site(SameSite::Lax)
         .with_http_only(true)
         .with_path("/".to_string());
@@ -100,7 +103,10 @@ pub fn build_router(state: AppState, static_dir: std::path::PathBuf) -> Router {
             get(updates::get_backup_config).put(updates::put_backup_config),
         )
         .route("/updates/backup/check", get(updates::backup_check))
-        .route("/updates/backup", get(updates::backup))
+        .route(
+            "/updates/backup",
+            get(updates::backup).post(updates::backup_encrypted),
+        )
         .route("/updates/restore", post(updates::restore))
         .route("/updates/diagnostics", get(updates::diagnostics))
         .route("/updates/factory-reset", post(updates::factory_reset))
@@ -116,10 +122,7 @@ pub fn build_router(state: AppState, static_dir: std::path::PathBuf) -> Router {
         .route("/logs", get(logs::read))
         .route("/logs/sources", get(logs::sources))
         .route("/logs/config", get(logs::get_config).put(logs::put_config))
-        .route(
-            "/logs/audit",
-            get(logs::audit_log).delete(logs::clear_audit),
-        )
+        .route("/logs/audit", get(logs::audit_log))
         .route("/logs/download", get(logs::download))
         // Alerts (§4.7)
         .route("/alerts", get(alerts::get).put(alerts::put))

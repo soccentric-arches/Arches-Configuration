@@ -5,7 +5,7 @@
 use axum::extract::State;
 use axum::Json;
 use tower_sessions::Session;
-use webconfig_engine::update::{InstallProgress, InstallStage};
+use webconfig_engine::update::InstallProgress;
 
 use crate::api::{audit, username};
 use crate::auth::AuthRole;
@@ -244,21 +244,26 @@ pub async fn backup_check(
 }
 
 /// `GET /api/v1/updates/backup` — download the config store as a file (spec
-/// §4.4). **Secrets excluded by default** (PSKs, WireGuard private key, user
-/// hashes redacted).
+/// §4.4). **Secrets are always excluded** on this route: every secret field is
+/// redacted. To obtain a backup that includes secrets, use
+/// `POST /updates/backup` with a passphrase, which returns a
+/// passphrase-encrypted envelope (secrets only ever leave the device encrypted,
+/// spec §4.4).
 pub async fn backup(
     State(app): State<AppState>,
     _role: AuthRole,
     axum::extract::Query(q): axum::extract::Query<BackupQuery>,
 ) -> ApiResult<Json<serde_json::Value>> {
     let mut cfg = app.engine.load()?;
-    if !q.include_secrets {
-        redact_secrets(&mut cfg);
-    }
+    redact_secrets(&mut cfg);
+    // `include_secrets` is accepted for backward compatibility with older
+    // clients but is ignored on GET — secrets never travel in plaintext. The
+    // response always reports `secrets_included: false`.
+    let _ = q.include_secrets;
     Ok(Json(serde_json::json!({
         "schema_version": webconfig_engine::CONFIG_SCHEMA_VERSION,
         "config": cfg,
-        "secrets_included": q.include_secrets,
+        "secrets_included": false,
     })))
 }
 
@@ -268,8 +273,55 @@ pub struct BackupQuery {
     pub include_secrets: bool,
 }
 
+/// `POST /api/v1/updates/backup` — download a **passphrase-encrypted** backup
+/// that includes secrets (spec §4.4). The passphrase never leaves the request
+/// body (not a query string, so it is not logged in access logs/journal). The
+/// response is an encrypted envelope the frontend downloads verbatim; secrets
+/// are only ever present inside the AEAD ciphertext.
+pub async fn backup_encrypted(
+    State(app): State<AppState>,
+    role: AuthRole,
+    session: Session,
+    Json(req): Json<BackupSecretRequest>,
+) -> ApiResult<Json<serde_json::Value>> {
+    role.require_admin("updates.backup.secrets")?;
+    if req.passphrase.len() < 8 {
+        return Err(ApiError::BadRequest(
+            "passphrase must be at least 8 characters".into(),
+        ));
+    }
+    let cfg = app.engine.load()?;
+    let payload = serde_json::json!({
+        "schema_version": webconfig_engine::CONFIG_SCHEMA_VERSION,
+        "config": cfg,
+    });
+    let payload_bytes =
+        serde_json::to_vec(&payload).map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    let env = webconfig_engine::backup::encrypt(&payload_bytes, &req.passphrase)
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    audit(
+        &app,
+        &username(&session).await,
+        "updates.backup.secrets",
+        None,
+    );
+    Ok(Json(serde_json::json!({
+        "schema_version": webconfig_engine::CONFIG_SCHEMA_VERSION,
+        "secrets_included": true,
+        "encrypted": env,
+    })))
+}
+
+#[derive(serde::Deserialize)]
+pub struct BackupSecretRequest {
+    pub passphrase: String,
+}
+
 /// `POST /api/v1/updates/restore` — restore validates schema version and
-/// tolerates version skew (drop unknown fields gracefully, spec §4.4).
+/// tolerates version skew (drop unknown fields gracefully, spec §4.4). Accepts
+/// either a plaintext (redacted) `ConfigFile` or an encrypted backup envelope
+/// produced by `POST /updates/backup`; in the encrypted case a `passphrase`
+/// field is required to decrypt.
 pub async fn restore(
     State(app): State<AppState>,
     role: AuthRole,
@@ -277,11 +329,29 @@ pub async fn restore(
     Json(req): Json<serde_json::Value>,
 ) -> ApiResult<Json<serde_json::Value>> {
     role.require_admin("updates.restore")?;
-    // serde tolerates unknown fields by default (no deny_unknown_fields), so
-    // version skew drops gracefully. We only refuse a *newer* schema than the
-    // engine supports.
-    let file: webconfig_engine::store::ConfigFile =
-        serde_json::from_value(req).map_err(|e| ApiError::BadRequest(e.to_string()))?;
+
+    let file = if let Some(enc) = req.get("encrypted") {
+        // Encrypted backup: decrypt with the supplied passphrase, then parse
+        // the inner ConfigFile.
+        let passphrase = req
+            .get("passphrase")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                ApiError::BadRequest("passphrase required to restore an encrypted backup".into())
+            })?;
+        let env: webconfig_engine::backup::EncryptedBackup =
+            serde_json::from_value(enc.clone()).map_err(|e| ApiError::BadRequest(e.to_string()))?;
+        let plaintext = webconfig_engine::backup::decrypt(&env, passphrase)
+            .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+        serde_json::from_slice::<webconfig_engine::store::ConfigFile>(&plaintext)
+            .map_err(|e| ApiError::BadRequest(format!("decrypted backup is not valid: {e}")))?
+    } else {
+        // Plaintext (redacted) backup: serde tolerates unknown fields by
+        // default (no deny_unknown_fields), so version skew drops gracefully.
+        serde_json::from_value::<webconfig_engine::store::ConfigFile>(req)
+            .map_err(|e| ApiError::BadRequest(e.to_string()))?
+    };
+
     if file.schema_version > webconfig_engine::CONFIG_SCHEMA_VERSION {
         return Err(ApiError::Conflict(format!(
             "backup schema_version {} > engine {}",
@@ -351,17 +421,38 @@ fn map_upd(e: webconfig_engine::update::UpdateError) -> ApiError {
     }
 }
 
-/// Strip secrets from a config tree before backup/diagnostics (spec §4.4:
-/// secrets excluded by default).
+/// Strip every secret from a config tree before a plaintext backup/diagnostics
+/// export (spec §4.4: secrets excluded by default — a secret-bearing backup
+/// must go through the passphrase-encrypted path instead). The WireGuard
+/// private key lives in a separate file (never in the config tree) and user
+/// password hashes live in the separate users store (not exported here), so
+/// neither needs redaction in this tree.
 fn redact_secrets(cfg: &mut webconfig_engine::Config) {
+    const REDACTED: &str = "[redacted]";
+
+    // Wi-Fi PSKs.
     for w in &mut cfg.network.wifi {
-        w.psk = w.psk.as_ref().map(|_| "[redacted]".into());
+        if w.psk.is_some() {
+            w.psk = Some(REDACTED.into());
+        }
     }
+    // AP provisioning passphrase.
+    if !cfg.network.ap_mode.passphrase.is_empty() {
+        cfg.network.ap_mode.passphrase = REDACTED.into();
+    }
+    // 5G modem credentials.
+    if cfg.network.cellular_5g.pin.is_some() {
+        cfg.network.cellular_5g.pin = Some(REDACTED.into());
+    }
+    if cfg.network.cellular_5g.password.is_some() {
+        cfg.network.cellular_5g.password = Some(REDACTED.into());
+    }
+    // MQTT broker password.
     if let Some(m) = &mut cfg.services.mqtt.password {
-        *m = "[redacted]".into();
+        *m = REDACTED.into();
     }
-    // The WireGuard private key lives in a separate file and is never in the
-    // config tree; no action needed here.
-    // Keep the [v2] stub marker so the install stages enum is referenced.
-    let _ = InstallStage::Done;
+    // Telemetry publish password.
+    if !cfg.monitoring.telemetry.password.is_empty() {
+        cfg.monitoring.telemetry.password = REDACTED.into();
+    }
 }

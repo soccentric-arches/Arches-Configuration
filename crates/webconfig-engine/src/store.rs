@@ -185,6 +185,12 @@ impl ConfigStore {
                  schema_version INTEGER NOT NULL,
                  config_json TEXT NOT NULL,
                  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+             );
+             CREATE TABLE IF NOT EXISTS config_state_backup (
+                 id INTEGER PRIMARY KEY CHECK (id = 1),
+                 schema_version INTEGER NOT NULL,
+                 config_json TEXT NOT NULL,
+                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
              );",
         )?;
         Ok(())
@@ -192,12 +198,36 @@ impl ConfigStore {
 
     fn write_connection(&self, conn: &Connection, file: &ConfigFile) -> Result<(), StoreError> {
         let raw = serde_json::to_string(&file.config)?;
-        conn.execute(
-            "INSERT INTO config_state (id, schema_version, config_json) VALUES (1, ?1, ?2)
-             ON CONFLICT(id) DO UPDATE SET schema_version = excluded.schema_version,
-             config_json = excluded.config_json, updated_at = CURRENT_TIMESTAMP",
-            params![file.schema_version, raw],
-        )?;
+        // Atomic commit (spec §3 "atomic write + backup copy"): in one
+        // transaction, snapshot the *previous* committed config into the
+        // backup table, then upsert the new config. If anything fails the
+        // transaction is rolled back and the live row is untouched.
+        conn.execute_batch("BEGIN")?;
+        let result: Result<(), rusqlite::Error> = (|| {
+            conn.execute(
+                "INSERT OR REPLACE INTO config_state_backup
+                     (id, schema_version, config_json, updated_at)
+                 SELECT id, schema_version, config_json, updated_at
+                 FROM config_state WHERE id = 1",
+                [],
+            )?;
+            conn.execute(
+                "INSERT INTO config_state (id, schema_version, config_json) VALUES (1, ?1, ?2)
+                 ON CONFLICT(id) DO UPDATE SET schema_version = excluded.schema_version,
+                 config_json = excluded.config_json, updated_at = CURRENT_TIMESTAMP",
+                params![file.schema_version, raw],
+            )?;
+            Ok(())
+        })();
+        match result {
+            Ok(()) => {
+                conn.execute_batch("COMMIT")?;
+            }
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(StoreError::Sqlite(e));
+            }
+        }
         Ok(())
     }
 
@@ -230,6 +260,32 @@ impl ConfigStore {
     /// Path on disk (for diagnostics / backup download).
     pub fn file_path(&self) -> PathBuf {
         self.path()
+    }
+
+    /// Load the previous committed config (the backup snapshot), or `None` if
+    /// only one commit has ever happened (no prior state to snapshot). Used for
+    /// disaster recovery / rollback-to-last-known-good (spec §3 backup copy).
+    pub fn load_backup(&self) -> Result<Option<ConfigFile>, StoreError> {
+        let path = self.path();
+        if !path.exists() {
+            return Ok(None);
+        }
+        let conn = Connection::open(&path)?;
+        self.initialize(&conn)?;
+        let row: Option<(u32, String)> = conn
+            .query_row(
+                "SELECT schema_version, config_json FROM config_state_backup WHERE id = 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        match row {
+            None => Ok(None),
+            Some((schema_version, raw)) => Ok(Some(ConfigFile {
+                schema_version,
+                config: serde_json::from_str(&raw)?,
+            })),
+        }
     }
 }
 
@@ -912,5 +968,47 @@ mod tests {
             })
             .unwrap();
         assert_eq!(out.config.system.hostname.as_deref(), Some("z"));
+    }
+
+    #[test]
+    fn commit_snapshots_previous_state_into_backup_row() {
+        // spec §3: each commit keeps a backup copy of the *previous* state.
+        let dir = tempfile::tempdir().unwrap();
+        let sys = Sysroot::at(dir.path());
+        let store = ConfigStore::new(sys, Schema::default_permissive());
+
+        // `load()` seeds the defaults (writes id=1); no prior state exists yet,
+        // so no backup row is created during seeding.
+        let mut file = store.load().unwrap();
+        assert!(store.load_backup().unwrap().is_none());
+
+        // First explicit commit ("first"): the backup row snapshots the
+        // previous (seeded-default) state, whose hostname is None.
+        file.config.system.hostname = Some("first".into());
+        store.commit(&file).unwrap();
+        let backup0 = store.load_backup().unwrap().expect("backup row present");
+        assert!(backup0.config.system.hostname.is_none());
+
+        // Second commit ("second"): backup now holds "first".
+        file.config.system.hostname = Some("second".into());
+        store.commit(&file).unwrap();
+        let backup1 = store.load_backup().unwrap().expect("backup row present");
+        assert_eq!(backup1.config.system.hostname.as_deref(), Some("first"));
+
+        // The live row holds the latest ("second") state.
+        assert_eq!(
+            store.load().unwrap().config.system.hostname.as_deref(),
+            Some("second")
+        );
+
+        // Third commit ("third"): backup now holds "second".
+        file.config.system.hostname = Some("third".into());
+        store.commit(&file).unwrap();
+        let backup2 = store.load_backup().unwrap().expect("backup row present");
+        assert_eq!(backup2.config.system.hostname.as_deref(), Some("second"));
+        assert_eq!(
+            store.load().unwrap().config.system.hostname.as_deref(),
+            Some("third")
+        );
     }
 }

@@ -1,9 +1,12 @@
 //! Append-only audit log (spec §4.8).
 //!
-//! An append-only ring file of all config-UI actions (user, action, timestamp),
+//! An append-only record of all config-UI actions (user, action, timestamp),
 //! viewable under Logs and included in the diagnostics bundle (spec §4.4).
-//! Implemented as a bounded ring buffer on disk so it never grows unbounded on
-//! eMMC. No database (spec §2).
+//! Persisted in SQLite (`config.db`) when the path ends in `.db`, else as a
+//! bounded JSONL ring file on disk so it never grows unbounded on eMMC. The
+//! audit log is append-only from the HTTP API's perspective — there is no
+//! public delete/clear route. A full factory reset is the only legitimate wipe
+//! and is performed by the System factory-reset handler, not via this module.
 
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -78,20 +81,6 @@ impl AuditLog {
             }
         }
         Ok(out)
-    }
-
-    /// Remove all persisted audit entries.
-    pub fn clear(&self) -> std::io::Result<()> {
-        if self.is_sqlite() {
-            let conn = self.open_sqlite()?;
-            conn.execute("DELETE FROM audit_entries", [])
-                .map_err(sqlite_io)?;
-            return Ok(());
-        }
-        if self.path.exists() {
-            std::fs::remove_file(&self.path)?;
-        }
-        Ok(())
     }
 
     /// Trim the oldest lines until under the byte budget.
@@ -242,9 +231,13 @@ mod tests {
     }
 
     #[test]
-    fn clear_removes_all_entries() {
+    fn append_only_has_no_public_clear() {
+        // The audit log is append-only from the API's perspective: there is no
+        // `clear()` method and no DELETE route. Only factory reset wipes it
+        // (inlined in the System handler). This test exists so that anyone
+        // re-adding a public clear path trips a compile error here first.
         let dir = tempfile::tempdir().unwrap();
-        let log = AuditLog::new(dir.path().join("audit.jsonl"), 1 << 20);
+        let log = AuditLog::new(dir.path().join("config.db"), 1 << 20);
         log.append(&AuditEntry {
             ts: "2026-07-21T10:00:00Z".into(),
             user: "admin".into(),
@@ -252,7 +245,14 @@ mod tests {
             detail: None,
         })
         .unwrap();
-        log.clear().unwrap();
-        assert!(log.read_all().unwrap().is_empty());
+        // Append again — entries accumulate; nothing is cleared.
+        log.append(&AuditEntry {
+            ts: "2026-07-21T10:01:00Z".into(),
+            user: "admin".into(),
+            action: "system.put".into(),
+            detail: None,
+        })
+        .unwrap();
+        assert_eq!(log.read_all().unwrap().len(), 2);
     }
 }

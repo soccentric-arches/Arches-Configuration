@@ -6,7 +6,7 @@ use axum::Json;
 use tower_sessions::Session;
 use webconfig_engine::store::logs::LogsConfig;
 
-use crate::api::{apply_and_audit, audit, username};
+use crate::api::{apply_and_audit, username};
 use crate::auth::AuthRole;
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
@@ -128,24 +128,13 @@ pub async fn put_config(
 }
 
 /// `GET /api/v1/logs/audit` — the audit log, viewable under Logs (spec §4.8).
+/// The audit log is **append-only**: there is no DELETE/clear route. Only a
+/// full factory reset wipes it (see System factory-reset).
 pub async fn audit_log(
     State(app): State<AppState>,
     _role: AuthRole,
 ) -> ApiResult<Json<Vec<webconfig_engine::audit::AuditEntry>>> {
     Ok(Json(app.audit.read_all().unwrap_or_default()))
-}
-
-/// `DELETE /api/v1/logs/audit` — clear the persisted audit log (admin only).
-pub async fn clear_audit(
-    State(app): State<AppState>,
-    role: AuthRole,
-    session: Session,
-) -> ApiResult<Json<serde_json::Value>> {
-    role.require_admin("logs.audit.clear")?;
-    let user = username(&session).await;
-    app.audit.clear().map_err(ApiError::from)?;
-    audit(&app, &user, "logs.audit.clear", None);
-    Ok(Json(serde_json::json!({ "cleared": true })))
 }
 
 /// `GET /api/v1/logs/download` — full journal export (spec §4.6).

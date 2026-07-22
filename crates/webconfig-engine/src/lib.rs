@@ -1,9 +1,9 @@
 //! SoCcentric WebConfig config engine.
 //!
 //! The engine is the canonical config store (spec §3.2): a single versioned
-//! JSON tree persisted at `/data/webconfig/config.json` with atomic writes and
-//! a backup copy. The UI never edits `/etc` directly — instead **appliers**
-//! translate the store → system.
+//! config tree persisted in SQLite at `/data/webconfig/config.db` with atomic
+//! commits (WAL) and a backup-snapshot row. The UI never edits `/etc` directly
+//! — instead **appliers** translate the store → system.
 //!
 //! This crate is deliberately free of any HTTP / async-runtime code so the
 //! whole engine can be unit-tested against a tempdir fake sysroot on x86 CI
@@ -17,6 +17,7 @@ pub mod alert;
 pub mod applier;
 pub mod appliers;
 pub mod audit;
+pub mod backup;
 pub mod manifest;
 pub mod monitoring;
 pub mod schema;

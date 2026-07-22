@@ -20,6 +20,23 @@ See `docs/webconfig-spec.md` for the full spec.
 
 ## Do
 
+- Backup secrets via `POST /updates/backup` with a JSON body `{ "passphrase" }`
+  → returns a passphrase-encrypted envelope (Argon2id key derivation +
+  ChaCha20-Poly1305 AEAD via `ring`, base64 fields). `GET /updates/backup`
+  always redacts secrets (no plaintext secret ever leaves the device). Restore
+  detects `.encrypted` in the uploaded file and prompts for the passphrase;
+  `/updates/restore` decrypts then commits. Passphrase travels in the POST
+  body, never a query string.
+- `ring` is already in the vendored supply chain (rustls/rcgen/tokio-rustls all
+  depend on it) — adding it as a direct `webconfig-engine` dep introduces no
+  new external crate. The `ring::aead` API: `UnboundKey::new(alg, &key)`,
+  `LessSafeKey::new(unbound)`, `Nonce::assume_unique_for_key([u8;12])`,
+  `seal_in_place_append_tag(nonce, Aad::empty(), &mut Vec)`; RNG via
+  `ring::rand::SystemRandom` + `SecureRandom::fill(&mut [u8])`.
+- Keep a config backup snapshot: `config_state_backup` table holds the previous
+  committed row; `commit()` snapshots then upserts inside one `BEGIN/COMMIT`
+  (spec §3 "atomic write + backup copy"). `ConfigStore::load_backup()` reads it.
+
 - Build/test via the root Makefile only (global §12). Never bypass with ad-hoc
   `cargo` commands in CI/PR validation.
 - Stop a local daemon and clear its listener with `make stop`; override the
@@ -61,6 +78,19 @@ See `docs/webconfig-spec.md` for the full spec.
 
 ## Don't
 
+- Don't route app-schema validation by `name.starts_with("app:")` on the
+  validator key — validators are keyed by the schema file **stem**
+  (`app-example`), while app-ness is decided by `descriptor.id` (`app:example`).
+  Route via `descriptor.id.starts_with("app:")` and target
+  `config.app_settings[<stem>]`; top-level schemas target `config[<stem>]`.
+  (Previously app settings were never server-validated.)
+- Don't add a `DELETE /logs/audit` route or an `AuditLog::clear()` method — the
+  audit log is append-only (spec §4.8). Only a full factory reset wipes it, and
+  that wipe is inlined in `system::factory_reset` (it does more than audit:
+  config_state, users, groups). `AuditLog` has no public clear path.
+- Don't set the session cookie `with_secure(false)` — the daemon is TLS-only
+  (server.rs), so `with_secure(true)` is correct (spec §4.8 httpOnly+Secure).
+  First-boot admin creation happens over the same TLS listener.
 - Don't expect the CSRF guard to return 403. Missing/invalid `X-CSRF-Token` on
   a mutating protected route returns **400 BadRequest** (`csrf.rs`). Tests must
   assert `StatusCode::BAD_REQUEST`, not `FORBIDDEN`.
