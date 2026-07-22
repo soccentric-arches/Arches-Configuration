@@ -135,9 +135,8 @@ fn read_mounts(sysroot: &Sysroot) -> Vec<Mount> {
 }
 
 fn statvfs(sysroot: &Sysroot, target: &str) -> (u64, u64) {
-    // Best-effort: read /proc/diskstats? No — use the per-mount sysfs-backed
-    // approach would be complex. In the fake sysroot there are no real mounts,
-    // so we read a hint file we drop in tests: <sysroot>/sys-block-usage/<target>.
+    // Test sysroots use a hint file because their mounts are not real. On a
+    // generic Linux host, use the standard `df` interface for actual usage.
     let hint = sysroot
         .root()
         .join("sys-block-usage")
@@ -148,7 +147,33 @@ fn statvfs(sysroot: &Sysroot, target: &str) -> (u64, u64) {
         let avail: u64 = it.next().and_then(|s| s.parse().ok()).unwrap_or(0);
         return (total, avail);
     }
-    (0, 0)
+    if !sysroot.is_real_root() {
+        return (0, 0);
+    }
+    let Ok(output) = std::process::Command::new("df")
+        .args(["-P", "-k", "--", target])
+        .output()
+    else {
+        return (0, 0);
+    };
+    if !output.status.success() {
+        return (0, 0);
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let Some(line) = stdout.lines().nth(1) else {
+        return (0, 0);
+    };
+    let fields: Vec<&str> = line.split_whitespace().collect();
+    let Some(total_kib) = fields.get(1).and_then(|value| value.parse::<u64>().ok()) else {
+        return (0, 0);
+    };
+    let Some(available_kib) = fields.get(3).and_then(|value| value.parse::<u64>().ok()) else {
+        return (0, 0);
+    };
+    (
+        total_kib.saturating_mul(1024),
+        available_kib.saturating_mul(1024),
+    )
 }
 
 fn read_thermal(sysroot: &Sysroot) -> Vec<TempZone> {

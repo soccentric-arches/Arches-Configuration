@@ -80,8 +80,9 @@ fn load_or_seed_manifest(sysroot: &Sysroot, share: &Path) -> BoardManifest {
         return manifest;
     }
 
-    let platform = std::env::var("WEBCONFIG_PLATFORM").unwrap_or_else(|_| "arches".into());
+    let platform = std::env::var("WEBCONFIG_PLATFORM").unwrap_or_else(|_| "generic-linux".into());
     let raw = match platform.as_str() {
+        "generic" | "generic-linux" => include_str!("../../../board-manifests/generic.yaml"),
         "acadia" => include_str!("../../../board-manifests/acadia.json"),
         "zion" => include_str!("../../../board-manifests/zion.json"),
         "pinnacle" => include_str!("../../../board-manifests/pinnacle.json"),
@@ -90,11 +91,11 @@ fn load_or_seed_manifest(sysroot: &Sysroot, share: &Path) -> BoardManifest {
         _ => include_str!("../../../board-manifests/arches.json"),
     };
 
-    if let Ok(parent) = share.canonicalize() {
-        let _ = std::fs::create_dir_all(&parent);
-        let _ = std::fs::write(parent.join("board-manifest.json"), raw);
+    if platform == "generic" || platform == "generic-linux" {
+        serde_yaml::from_str(raw).unwrap_or_default()
+    } else {
+        serde_json::from_str(raw).unwrap_or_default()
     }
-    serde_json::from_str(raw).unwrap_or_default()
 }
 
 pub(crate) fn alert_history(engine: &EngineBridge) -> AlertHistory {

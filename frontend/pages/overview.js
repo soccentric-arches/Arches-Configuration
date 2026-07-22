@@ -75,7 +75,7 @@ export async function render(api, store) {
     const [config, info, vitals, network] = await Promise.all([
         api.get('/api/v1/system'),
         api.get('/api/v1/system/info').catch(() => null),
-        api.get('/api/v1/monitoring/vitals'),
+        api.get('/api/v1/monitoring/vitals').catch(() => ({})),
         api.get('/api/v1/network').catch(() => ({ live: [], config: {} })),
     ]);
 
@@ -108,6 +108,16 @@ export async function render(api, store) {
     });
     source.addEventListener('error', () => setConnectionState(false));
     store.registerCleanup(() => source.close());
+
+    const refresh = async () => {
+        try {
+            updateVitals(await api.get('/api/v1/monitoring/vitals'));
+            setConnectionState(true);
+        } catch (_) {
+            setConnectionState(false);
+        }
+    };
+    store.registerTimer(setInterval(refresh, 5000));
 
     const identity = Card({ title: 'Device identity', subtitle: 'Hardware and board identifiers reported by the device.' },
         el('div', { class: 'overview-detail-grid' },

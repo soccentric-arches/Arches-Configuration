@@ -11,6 +11,16 @@ service_allowlist:
   - sshd.service
   - systemd-networkd.service
   - systemd-resolved.service
+  - systemd-timesyncd.service
+  - NetworkManager.service
+  - wpa_supplicant.service
+  - systemd-journald.service
+  - cron.service
+  - crond.service
+  - dbus.service
+  - docker.service
+  - containerd.service
+  - nginx.service
   - webconfigd.service
 peripherals: []
 dashboard_tiles: []
@@ -43,6 +53,7 @@ config_defaults:
     firewall:
       enabled: true
       default_open: []
+      open_ports: []
     confirm_window_secs: 90
     ap_mode:
       enabled: false
@@ -81,7 +92,8 @@ config_defaults:
       include_diagnostics: false
   logs:
     storage: volatile
-    max_size_mb: 100
+    max_size_bytes: 104857600
+    retention_days: 30
     remote_syslog: null
   alerts:
     enabled: false
