@@ -29,10 +29,7 @@ pub(crate) async fn run_alert_timer(
         // (spec §4.7). User rules override defaults by id; defaults ship in the
         // board manifest (Arches: throttling; all: disk-full, watchdog-reset).
         let rules = merge_defaults(&manifest.default_alert_rules, &config.alerts.rules);
-        let events = alert_engine
-            .lock()
-            .await
-            .evaluate(&rules, &vitals, tick);
+        let events = alert_engine.lock().await.evaluate(&rules, &vitals, tick);
         for event in events {
             tracing::info!(rule = %event.rule_id, state = ?event.state, "alert");
             // Event log (always) — append to the ring-buffer history.

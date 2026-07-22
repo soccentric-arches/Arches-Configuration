@@ -544,7 +544,9 @@ async fn alerts_expose_default_packs_and_persist_push_targets() {
     let (st, _, body) = send(&app, "GET", "/api/v1/alerts", Some(&cookie), None, None).await;
     assert_eq!(st, StatusCode::OK);
     let v: serde_json::Value = serde_json::from_str(&body).unwrap();
-    let defaults = v["default_rules"].as_array().expect("default_rules present");
+    let defaults = v["default_rules"]
+        .as_array()
+        .expect("default_rules present");
     assert!(
         defaults.iter().any(|r| r["id"] == "disk-full"),
         "default pack must include disk-full: {defaults:?}"

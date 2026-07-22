@@ -137,12 +137,7 @@ fn resolve_metric(metric: &str, vitals: &Vitals) -> Option<f64> {
     // `temp.<zone>` prefix branch, which would otherwise treat "throttled" as
     // a zone name.
     if metric == "temp.throttled" {
-        return Some(
-            vitals
-                .temperatures
-                .iter()
-                .any(|z| z.throttled) as u8 as f64,
-        );
+        return Some(vitals.temperatures.iter().any(|z| z.throttled) as u8 as f64);
     }
     if let Some(zone) = metric.strip_prefix("temp.") {
         return vitals
@@ -172,9 +167,7 @@ fn resolve_metric(metric: &str, vitals: &Vitals) -> Option<f64> {
     // recorded — the absence of a reset is a definite "not throttled".
     if metric == "boot.watchdog" {
         let reason = vitals.last_boot_reason.as_deref().unwrap_or("");
-        let hit = reason
-            .to_ascii_lowercase()
-            .contains("watchdog")
+        let hit = reason.to_ascii_lowercase().contains("watchdog")
             || reason.to_ascii_lowercase().contains("hardware");
         return Some(hit as u8 as f64);
     }

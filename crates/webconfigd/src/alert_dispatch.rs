@@ -39,7 +39,11 @@ pub fn event_payload(event: &AlertEvent, rule: &AlertRule) -> String {
 
 /// Write a payload to a per-event temp file and return its path, so we can pass
 /// `--data @file` / `-f @file` to the tool without shell-escaping the body.
-fn stage_payload(sysroot: &Sysroot, event: &AlertEvent, payload: &str) -> std::io::Result<std::path::PathBuf> {
+fn stage_payload(
+    sysroot: &Sysroot,
+    event: &AlertEvent,
+    payload: &str,
+) -> std::io::Result<std::path::PathBuf> {
     let dir = sysroot.webconfig_dir().join("alert-out");
     std::fs::create_dir_all(&dir)?;
     let path = dir.join(format!("{}.json", sanitize(&event.ts)));
@@ -107,7 +111,11 @@ pub fn mqtt_topic(base: &str, rule_id: &str) -> String {
 
 /// `mosquitto_pub` argument list for publishing the staged payload to `topic`,
 /// derived from the MQTT broker config (host/port/credentials/TLS).
-pub fn mqtt_args(cfg: &MqttConfig, topic: &str, payload_file: &std::path::Path) -> Option<Vec<String>> {
+pub fn mqtt_args(
+    cfg: &MqttConfig,
+    topic: &str,
+    payload_file: &std::path::Path,
+) -> Option<Vec<String>> {
     let host = cfg.host.as_deref().unwrap_or("");
     if host.is_empty() {
         return None;
@@ -188,7 +196,13 @@ pub fn dispatch_event(
         dispatch_webhook(sysroot, &alerts.webhooks, &payload, event);
     }
     if wants_mqtt {
-        dispatch_mqtt(sysroot, mqtt_cfg, alerts.mqtt_event_topic.as_deref(), &payload, event);
+        dispatch_mqtt(
+            sysroot,
+            mqtt_cfg,
+            alerts.mqtt_event_topic.as_deref(),
+            &payload,
+            event,
+        );
     }
 }
 
@@ -231,7 +245,10 @@ mod tests {
 
     #[test]
     fn webhook_args_use_data_binary_at_file() {
-        let args = webhook_args("https://hook.example/x", std::path::Path::new("/tmp/p.json"));
+        let args = webhook_args(
+            "https://hook.example/x",
+            std::path::Path::new("/tmp/p.json"),
+        );
         assert!(args.contains(&"-X".into()));
         assert!(args.contains(&"POST".into()));
         assert!(args.contains(&"@/tmp/p.json".into()));
@@ -240,8 +257,14 @@ mod tests {
 
     #[test]
     fn mqtt_topic_joins_base_and_rule() {
-        assert_eq!(mqtt_topic("soccentric/events", "disk-full"), "soccentric/events/disk-full");
-        assert_eq!(mqtt_topic("soccentric/events/", "disk-full"), "soccentric/events/disk-full");
+        assert_eq!(
+            mqtt_topic("soccentric/events", "disk-full"),
+            "soccentric/events/disk-full"
+        );
+        assert_eq!(
+            mqtt_topic("soccentric/events/", "disk-full"),
+            "soccentric/events/disk-full"
+        );
     }
 
     #[test]
@@ -253,7 +276,12 @@ mod tests {
         cfg.tls = true;
         cfg.username = Some("user".into());
         cfg.password = Some("pass".into());
-        let args = mqtt_args(&cfg, "soccentric/events/disk-full", std::path::Path::new("/p.json")).unwrap();
+        let args = mqtt_args(
+            &cfg,
+            "soccentric/events/disk-full",
+            std::path::Path::new("/p.json"),
+        )
+        .unwrap();
         assert!(args.contains(&"-h".into()));
         assert!(args.contains(&"broker.local".into()));
         assert!(args.contains(&"8883".into()));
@@ -280,7 +308,13 @@ mod tests {
             ..Default::default()
         };
         // Must not panic or touch the network on a fake sysroot.
-        dispatch_event(&sys, &alerts, &mqtt, &rule_with(&["webhook", "mqtt"]), &ev());
+        dispatch_event(
+            &sys,
+            &alerts,
+            &mqtt,
+            &rule_with(&["webhook", "mqtt"]),
+            &ev(),
+        );
     }
 
     #[test]
