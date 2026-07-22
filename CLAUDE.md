@@ -22,6 +22,8 @@ See `docs/webconfig-spec.md` for the full spec.
 
 - Build/test via the root Makefile only (global §12). Never bypass with ad-hoc
   `cargo` commands in CI/PR validation.
+- Stop a local daemon and clear its listener with `make stop`; override the
+  default TLS port with `make stop WEBCONFIG_PORT=<port>`.
 - Integration tests for the binary crate `webconfigd` live as
   `#[cfg(test)] mod tests;` in `src/main.rs` → `src/tests.rs`. Binary crates do
   not expose a lib target to the `tests/` directory, so external integration

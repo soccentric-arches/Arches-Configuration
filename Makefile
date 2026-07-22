@@ -14,7 +14,10 @@
 #   make fmt        — format in place
 #   make vendor     — (re)generate the vendored offline crate tarball
 #   make cross      — build all three cross-targets (CI parity)
-#   make run        — run the daemon against a tempdir fake sysroot (dev)
+#   make run        — run the daemon against the real host (live /proc, real
+#                     backends); persistent state in ./data (dev)
+#   make run-mock   — run against a tempdir fake sysroot (mock backends, no HW)
+#   make stop       — stop the process listening on the WebConfig TCP port
 #   make clean      — remove target/
 
 # Install rustup (if missing) plus the exact pinned toolchain, components,
@@ -37,12 +40,14 @@ toolchain: ## Install rustup + the exact pinned toolchain (one-time host setup)
 	echo "==> ready: $$(rustup run $(RUST_CHANNEL) rustc --version)"
 
 CARGO ?= cargo
+WEBCONFIG_PORT ?= 8443
+export WEBCONFIG_PORT
 TARGETS := x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu armv7-unknown-linux-gnueabihf
 # Pinned channel, read straight from rust-toolchain.toml so this target can't
 # drift from the pin.
 RUST_CHANNEL := $(shell grep -m1 '^channel' rust-toolchain.toml | sed -E 's/.*"([^"]*)".*/\1/')
 
-.PHONY: help build release test lint fmt vendor cross run clean check toolchain
+.PHONY: help build release test lint fmt vendor cross run run-mock stop clean check toolchain
 
 # Bare `make` prints help rather than building, so a stray invocation never
 # kicks off a network install or a build by surprise.
@@ -81,12 +86,55 @@ cross: ## Build all three cross-targets (x86_64/aarch64/armv7), CI parity
 		$(CARGO) build --workspace --release --target $$t || exit 1; \
 	done
 
-# Dev run against a tempdir fake sysroot so no hardware is required (spec §6).
-run: ## Run the daemon against a tempdir fake sysroot (dev)
+# Dev run against the REAL host sysroot (spec §6): no WEBCONFIG_SYSROOT is
+# set, so resolve_sysroot() uses "/" and is_real_root() is true — the daemon
+# reads live /proc + /sys and uses the real systemd/update backends (mock
+# backends are only selected for a tempdir fake sysroot). State (config.db,
+# cert.pem, key.pem) is redirected to a persistent, gitignored ./data so the
+# first-boot admin and config survive restarts, mirroring a device's /data
+# partition. Wipe ./data to reset to first-boot. For the no-hardware mock
+# mode, use `make run-mock`.
+run: ## Run the daemon against the real host (live /proc, real backends)
+	@mkdir -p data; \
+	WEBCONFIG_DATA_DIR="$$(pwd)/data" \
+	RUST_LOG=info \
+	$(CARGO) run -p webconfigd -- --
+
+# Mock mode: run against a tempdir fake sysroot so no hardware is required and
+# no host side effects occur (spec §6). Vitals read as zeros; backends are
+# mocks. The tempdir is wiped by the OS on reboot; state does not persist.
+run-mock: ## Run against a tempdir fake sysroot (mock backends, no hardware)
 	WEBCONFIG_SYSROOT=$$(mktemp -d) \
 	WEBCONFIG_DATA_DIR=$$WEBCONFIG_SYSROOT/data \
 	RUST_LOG=info \
 	$(CARGO) run -p webconfigd -- --
+
+# Stop the process holding the default daemon port, or an overridden
+# WEBCONFIG_PORT. A clear port is already in the desired state.
+stop: ## Stop the process listening on WEBCONFIG_PORT (default: 8443)
+	@case "$$WEBCONFIG_PORT" in \
+		[1-9]|[1-9][0-9]|[1-9][0-9][0-9]|[1-9][0-9][0-9][0-9]|[1-9][0-9][0-9][0-9][0-9]) ;; \
+		*) echo "WEBCONFIG_PORT must be an integer between 1 and 65535" >&2; exit 2 ;; \
+	esac; \
+	if [ "$$WEBCONFIG_PORT" -lt 1 ] || [ "$$WEBCONFIG_PORT" -gt 65535 ]; then \
+		echo "WEBCONFIG_PORT must be an integer between 1 and 65535" >&2; exit 2; \
+	fi; \
+	fuser "$$WEBCONFIG_PORT/tcp" >/dev/null 2>&1; status=$$?; \
+	if [ $$status -eq 0 ]; then \
+		fuser -k -TERM "$$WEBCONFIG_PORT/tcp" >/dev/null || exit $$?; \
+		for attempt in 1 2 3 4 5; do \
+			if ! fuser "$$WEBCONFIG_PORT/tcp" >/dev/null 2>&1; then \
+				echo "Stopped process listening on port $$WEBCONFIG_PORT"; exit 0; \
+			fi; \
+			sleep 1; \
+		done; \
+		echo "Port $$WEBCONFIG_PORT is still in use after SIGTERM" >&2; exit 1; \
+	fi; \
+	if [ $$status -eq 1 ]; then \
+		echo "No process is listening on port $$WEBCONFIG_PORT"; \
+	else \
+		echo "Unable to inspect port $$WEBCONFIG_PORT" >&2; exit $$status; \
+	fi
 
 clean: ## Remove target/
 	$(CARGO) clean
