@@ -10,6 +10,7 @@ use webconfig_engine::manifest::BoardManifest;
 use webconfig_engine::schema::Schema;
 use webconfig_engine::users::UserStore;
 
+use crate::auth::LoginThrottle;
 use crate::engine_bridge::EngineBridge;
 use crate::systemd::SystemdClient;
 use crate::update_backend::UpdateBackend;
@@ -25,6 +26,7 @@ pub struct AppState {
     pub update_backend: Arc<dyn UpdateBackend>,
     pub systemd: Arc<dyn SystemdClient>,
     pub users_path: std::path::PathBuf,
+    pub login_throttle: Arc<LoginThrottle>,
 }
 
 impl AppState {
@@ -72,5 +74,10 @@ impl FromRef<AppState> for Arc<dyn SystemdClient> {
 impl FromRef<AppState> for Arc<tokio::sync::Mutex<AlertEngine>> {
     fn from_ref(s: &AppState) -> Self {
         s.alert_engine.clone()
+    }
+}
+impl FromRef<AppState> for Arc<LoginThrottle> {
+    fn from_ref(s: &AppState) -> Self {
+        s.login_throttle.clone()
     }
 }

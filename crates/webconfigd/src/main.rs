@@ -68,6 +68,7 @@ async fn main() -> anyhow::Result<()> {
     let update_backend = update_backend::make_backend(&sysroot);
     let systemd = systemd::make_client(&sysroot).await;
     let users_path = webconfig_dir.join("users.json");
+    let login_throttle = Arc::new(auth::LoginThrottle::new());
 
     let state = AppState {
         engine: engine.clone(),
@@ -78,6 +79,7 @@ async fn main() -> anyhow::Result<()> {
         update_backend,
         systemd,
         users_path,
+        login_throttle,
     };
 
     let static_dir = resolve_static_dir();

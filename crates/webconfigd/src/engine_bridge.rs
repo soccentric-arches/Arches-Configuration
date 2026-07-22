@@ -87,10 +87,7 @@ impl EngineBridge {
         F: FnOnce(&mut Config) -> Result<(), webconfig_engine::StoreError> + Send + 'static,
         Config: Send,
     {
-        let store = self.store.clone();
-        let file = tokio::task::spawn_blocking(move || store.update(f))
-            .await
-            .map_err(|_| ApiError::Internal)??;
+        let file = self.store.update(f)?;
         Ok(file.config)
     }
 
@@ -123,11 +120,12 @@ impl EngineBridge {
         let applier_id = applier_id.to_string();
         let appliers = self.appliers.clone();
         let store = self.store.clone();
+        let applier_id_for_task = applier_id.clone();
         let outcome = tokio::task::spawn_blocking(move || -> Result<ApplyOutcome, ApiError> {
             let cfg = store.load()?.config;
             let a = appliers
                 .iter()
-                .find(|x| x.id() == applier_id)
+                .find(|x| x.id() == applier_id_for_task)
                 .ok_or_else(|| ApiError::NotFound)?;
             a.apply(&sys, &cfg).map_err(Into::into)
         })

@@ -3,7 +3,7 @@
 
 use axum::extract::State;
 use axum::response::sse::{Event, KeepAlive, Sse};
-use futures_util::stream::{self, Stream};
+use futures_util::stream::{self, Stream, StreamExt};
 use std::convert::Infallible;
 use std::time::Duration;
 

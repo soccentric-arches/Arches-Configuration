@@ -42,6 +42,7 @@ pub fn audit(app: &AppState, user: &str, action: &str, detail: Option<String>) {
 pub async fn username(session: &tower_sessions::Session) -> String {
     session
         .get::<String>("username")
+        .await
         .ok()
         .flatten()
         .unwrap_or_else(|| "unknown".to_string())

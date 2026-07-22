@@ -42,7 +42,7 @@ pub async fn csrf_guard(session: Session, req: Request, next: Next) -> Response 
 }
 
 fn is_safe(m: &Method) -> bool {
-    matches!(m, Method::GET | Method::HEAD | Method::OPTIONS)
+    matches!(*m, Method::GET | Method::HEAD | Method::OPTIONS)
 }
 
 #[cfg(test)]

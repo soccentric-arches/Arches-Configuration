@@ -117,7 +117,7 @@ pub async fn rollback(
 ) -> ApiResult<Json<serde_json::Value>> {
     role.require_admin("network.rollback")?;
     let user = username(&session).await;
-    app.engine.confirm().await; // clear pending
+    app.engine.confirm_pending().await.ok(); // clear pending
     app.engine.rollback("networkd").await?;
     app.engine.rollback("firewall").await.ok();
     audit(&app, &user, "network.rollback", None);

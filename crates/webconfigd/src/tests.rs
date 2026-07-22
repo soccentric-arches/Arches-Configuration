@@ -63,6 +63,7 @@ async fn build_app() -> (axum::Router, tempfile::TempDir) {
         update_backend: crate::update_backend::make_backend(&sysroot),
         systemd: crate::systemd::make_client(&sysroot).await,
         users_path: webconfig_dir.join("users.json"),
+        login_throttle: Arc::new(crate::auth::LoginThrottle::new()),
     };
 
     // Static dir: a tempdir is fine; API routes don't depend on it.

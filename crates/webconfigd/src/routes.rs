@@ -23,7 +23,7 @@ pub fn build_router(state: AppState, static_dir: std::path::PathBuf) -> Router {
         .with_secure(false) // first-boot may be over plain HTTP; HTTPS enforced at TLS layer
         .with_same_site(SameSite::Lax)
         .with_http_only(true)
-        .with_path("/");
+        .with_path("/".to_string());
 
     // Public auth routes — usable before login / during first boot (spec §4.8).
     let auth_routes = Router::new()
