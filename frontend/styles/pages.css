@@ -41,7 +41,12 @@
 .tile-value {
   font-size: var(--text-2xl);
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
+}
+
+.content>.card:last-child,
+.content>.card-grid:last-child {
+  margin-bottom: 0;
 }
 
 .tile-sub {
@@ -187,11 +192,15 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-5);
-  padding: var(--space-4) 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: var(--space-4);
   background: var(--background);
+}
+
+.action-row>.btn {
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 
 .action-row-copy {
@@ -217,5 +226,15 @@
     align-items: flex-start;
     flex-direction: column;
     gap: var(--space-3);
+  }
+
+  .action-row>.btn {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .card-body>.btn {
+    width: 100%;
+    margin-left: 0;
   }
 }

@@ -37,6 +37,7 @@ pub enum IoKind {
     Fpga,
     Pru,
     Camera,
+    Display,
     Thermal,
     Net,
 }

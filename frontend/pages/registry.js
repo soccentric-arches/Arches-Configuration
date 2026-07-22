@@ -35,8 +35,7 @@ export const NAV = [
   { id: 'secure-boot', label: 'Secure Boot', icon: 'security', category: 'Security', key: 'r', loader: () => import('./secure-boot.js'), adminOnly: true },
   { id: 'users', label: 'Users & Groups', icon: 'users', category: 'Security', key: 'g', loader: () => import('./users.js'), adminOnly: true },
 
-  // Hardware: board inventory and individual peripheral controls.
-  { id: 'hardware', label: 'Hardware', icon: 'io', category: 'Hardware', key: 'h', loader: () => import('./hardware.js') },
+  // Hardware: individual peripheral controls.
   { id: 'display', label: 'Display', icon: 'camera', category: 'Hardware', key: 'i', loader: () => import('./display.js') },
   { id: 'leds', label: 'Board LEDs', icon: 'io', category: 'Hardware', key: '1', loader: () => import('./leds.js'), adminOnly: true },
   { id: 'gpio', label: 'GPIO', icon: 'io', category: 'Hardware', key: 'd', loader: () => import('./gpio.js'), adminOnly: true },

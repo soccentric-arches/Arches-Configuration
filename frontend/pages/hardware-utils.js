@@ -10,6 +10,7 @@ export async function saveIo(api, data, updates) {
         can: data.config && data.config.can || [],
         gpio: data.config && data.config.gpio || [],
         mcu: data.config && data.config.mcu || null,
+        board_leds: data.config && data.config.board_leds || {},
         ...updates,
     });
 }

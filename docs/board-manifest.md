@@ -40,7 +40,7 @@ the configured `WEBCONFIG_PLATFORM` (dev/CI only).
 ### `IoKind` (fixed enum, lowercase)
 
 `serial` · `can` · `gpio` · `i2c` · `spi` · `mcu` · `fpga` · `pru` · `camera` ·
-`thermal` · `net`
+`display` · `thermal` · `net`
 
 `caps` is intentionally free-form JSON so new platform quirks (GPIO-switchable
 CAN termination, an MCU's `settings_schema` id, etc.) need **no code change**.

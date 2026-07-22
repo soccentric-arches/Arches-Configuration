@@ -20,6 +20,7 @@ export async function render(api, store) {
 
     const mcuData = await api.get('/api/v1/io/mcu').catch(() => ({ config: data.config && data.config.mcu }));
     const mcuCfg = mcuData.config || (data.config && data.config.mcu) || {};
+    const enabled = Toggle({ label: 'Enable companion MCU', checked: mcuCfg.enabled !== false });
     const version = Field({ label: 'Firmware version' });
     const signed = Toggle({ label: 'Package is signed', checked: true });
     let schemaForm = null;
@@ -44,13 +45,14 @@ export async function render(api, store) {
                 store.toast('Firmware staged', 'success');
             },
         }, 'Flash firmware'))),
-    }, settings, el('div', { class: 'field-row' }, version.wrap, signed.wrap));
+    }, enabled.wrap, settings, el('div', { class: 'field-row' }, version.wrap, signed.wrap));
 
     const saveSettings = async () => {
         const config = data.config || {};
         await api.put('/api/v1/io', {
             serial: config.serial || [], can: config.can || [], gpio: config.gpio || [],
-            mcu: { kind: mcuCfg.kind || 'stm32', firmware_version: mcuCfg.firmware_version, settings: schemaForm ? schemaForm.getValue() : mcuCfg.settings || {} },
+            mcu: { kind: mcuCfg.kind || 'stm32', enabled: enabled.get(), firmware_version: mcuCfg.firmware_version, settings: schemaForm ? schemaForm.getValue() : mcuCfg.settings || {} },
+            board_leds: config.board_leds || {},
         });
         store.toast('MCU settings saved', 'success');
     };

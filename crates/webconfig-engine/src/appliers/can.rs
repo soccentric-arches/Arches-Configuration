@@ -140,6 +140,7 @@ mod tests {
     fn can(name: &str, bitrate: u32, fd: bool, db: u32) -> CanInterface {
         CanInterface {
             name: name.into(),
+            enabled: true,
             bitrate,
             fd,
             data_bitrate: db,

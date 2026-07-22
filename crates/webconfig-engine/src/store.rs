@@ -604,11 +604,43 @@ pub mod io {
         pub gpio: Vec<GpioPin>,
         #[serde(default)]
         pub mcu: Option<McuConfig>,
+        #[serde(default)]
+        pub board_leds: BoardLedConfig,
+    }
+
+    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+    pub struct BoardLedConfig {
+        #[serde(default = "default_enabled")]
+        pub enabled: bool,
+        #[serde(default)]
+        pub system_led: Option<String>,
+        #[serde(default)]
+        pub os_led: Option<String>,
+        #[serde(default)]
+        pub hardware_led: Option<String>,
+        #[serde(default)]
+        pub app: AppLedConfig,
+    }
+
+    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+    pub struct AppLedConfig {
+        #[serde(default)]
+        pub enabled: bool,
+        #[serde(default)]
+        pub led: Option<String>,
+        #[serde(default)]
+        pub service: Option<String>,
+    }
+
+    fn default_enabled() -> bool {
+        true
     }
 
     #[derive(Debug, Clone, Default, Serialize, Deserialize)]
     pub struct SerialPort {
         pub device: String,
+        #[serde(default = "default_enabled")]
+        pub enabled: bool,
         #[serde(default)]
         pub baud: u32,
         #[serde(default)]
@@ -625,6 +657,8 @@ pub mod io {
     #[derive(Debug, Clone, Default, Serialize, Deserialize)]
     pub struct CanInterface {
         pub name: String,
+        #[serde(default = "default_enabled")]
+        pub enabled: bool,
         #[serde(default)]
         pub bitrate: u32,
         #[serde(default)]
@@ -642,6 +676,8 @@ pub mod io {
     #[derive(Debug, Clone, Default, Serialize, Deserialize)]
     pub struct GpioPin {
         pub name: String,
+        #[serde(default = "default_enabled")]
+        pub enabled: bool,
         #[serde(default)]
         pub direction: String, // "in" | "out"
         #[serde(default)]
@@ -653,6 +689,8 @@ pub mod io {
     #[derive(Debug, Clone, Default, Serialize, Deserialize)]
     pub struct McuConfig {
         pub kind: String, // "stm32" | "picow"
+        #[serde(default = "default_enabled")]
+        pub enabled: bool,
         #[serde(default)]
         pub firmware_version: Option<String>,
         #[serde(default)]

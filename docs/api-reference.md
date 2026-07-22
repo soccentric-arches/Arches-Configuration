@@ -150,8 +150,8 @@ Base URL: `https://<device>:8443/api/v1`. All responses are JSON.
 
 | Method | Path | Role | Notes |
 |---|---|---|---|
-| GET | `/io` | any | `{manifest, config, tiles}`. |
-| PUT | `/io` | **[admin]** | `IoConfig` (rejects serial not in manifest; owner-conflict guard). |
+| GET | `/io` | any | `{manifest, config, tiles}`. `config.board_leds` contains system, OS, hardware, and optional application LED assignments. |
+| PUT | `/io` | **[admin]** | `IoConfig` (rejects serial not in manifest; owner-conflict guard). `board_leds` controls the automatic status policy. |
 | POST | `/io/can/apply` | **[admin]** | apply CAN. |
 | POST | `/io/gpio/:name/toggle` | **[op+]** | manifest-named pins only. |
 | POST | `/io/i2c/scan?bus=` | **[admin]** | `{bus, addresses}`. |

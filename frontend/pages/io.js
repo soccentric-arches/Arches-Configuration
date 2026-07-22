@@ -33,12 +33,13 @@ export async function render(api, store) {
   const serialRows = {};
   const serialSection = serialPeripherals.length ? el('div', { class: 'card-grid' }, ...serialPeripherals.map((p) => {
     const existing = (cfg.serial || []).find(s => s.device === p.device) || {};
+    const enabled = Toggle({ label: 'Enable serial port', checked: existing.enabled !== false });
     const baud = Field({ label: 'Baud', type: 'number', value: existing.baud || 115200 });
     const mode = Field({ label: 'Mode', type: 'select', value: existing.mode || (p.caps && p.caps.modes && p.caps.modes[0]) || 'rs232', options: (p.caps && p.caps.modes || ['rs232']).map(m => ({ value: m, label: m.toUpperCase() })) });
     const owner = Field({ label: 'Owner', type: 'select', value: existing.owner || 'unassigned', options: ['unassigned', 'console', 'customer', 'modbus'].map(v => ({ value: v, label: v })) });
-    serialRows[p.device] = { baud, mode, owner };
+    serialRows[p.device] = { enabled, baud, mode, owner };
     return el('div', { class: 'card' }, el('div', { class: 'card-header' }, el('div', {}, el('h4', {}, p.human_name || p.device), el('div', { class: 'card-header-sub' }, 'Serial port communication settings.'))),
-      el('div', { class: 'card-body' }, baud.wrap, mode.wrap, owner.wrap));
+      el('div', { class: 'card-body' }, enabled.wrap, baud.wrap, mode.wrap, owner.wrap));
   })) : EmptyState({ title: 'No serial ports on this board' });
 
   // ---------- CAN ----------
@@ -46,14 +47,15 @@ export async function render(api, store) {
   const canRows = {};
   const canSection = canPeripherals.length ? el('div', { class: 'card-grid' }, ...canPeripherals.map((p) => {
     const existing = (cfg.can || []).find(c => c.name === p.device) || {};
+    const enabled = Toggle({ label: 'Enable CAN interface', checked: existing.enabled !== false });
     const bitrate = Field({ label: 'Bitrate', type: 'number', value: existing.bitrate || 500000 });
     const fd = Toggle({ label: 'CAN FD', checked: existing.fd });
     const dataBitrate = Field({ label: 'FD data bitrate', type: 'number', value: existing.data_bitrate || 2000000 });
     const listenOnly = Toggle({ label: 'Listen only', checked: existing.listen_only });
     const upOnBoot = Toggle({ label: 'Up on boot', checked: existing.up_on_boot !== false });
-    canRows[p.device] = { bitrate, fd, dataBitrate, listenOnly, upOnBoot };
+    canRows[p.device] = { enabled, bitrate, fd, dataBitrate, listenOnly, upOnBoot };
     return el('div', { class: 'card' }, el('div', { class: 'card-header' }, el('div', {}, el('h4', {}, p.human_name || p.device), el('div', { class: 'card-header-sub' }, 'CAN bus speed, mode, and startup settings.'))),
-      el('div', { class: 'card-body' }, bitrate.wrap, fd.wrap, dataBitrate.wrap, listenOnly.wrap, upOnBoot.wrap));
+      el('div', { class: 'card-body' }, enabled.wrap, bitrate.wrap, fd.wrap, dataBitrate.wrap, listenOnly.wrap, upOnBoot.wrap));
   })) : EmptyState({ title: 'No CAN interfaces on this board' });
   const canFooter = canPeripherals.length ? ActionList(ActionRow('Apply CAN', 'Apply the configured CAN bitrate, mode, and startup settings to the interfaces.', Button({
     variant: 'outline',
@@ -66,11 +68,13 @@ export async function render(api, store) {
   const gpioSection = gpioPeripherals.length ? el('div', { class: 'card-grid' }, ...gpioPeripherals.map((p) => {
     const existing = (cfg.gpio || []).find(g => g.name === p.id) || {};
     const direction = (p.caps && p.caps.direction) || existing.direction || 'out';
+    const enabled = Toggle({ label: 'Enable GPIO pin', checked: existing.enabled !== false });
     const initial = Toggle({ label: 'Initial state (on boot)', checked: existing.initial_state === true });
-    gpioRows[p.id] = { direction, activeLow: (p.caps && p.caps.active_low) || false, initial };
+    gpioRows[p.id] = { enabled, direction, activeLow: (p.caps && p.caps.active_low) || false, initial };
     return el('div', { class: 'card' },
       el('div', { class: 'card-header' }, el('div', {}, el('h4', {}, p.human_name || p.id), el('div', { class: 'card-header-sub' }, 'GPIO direction and startup behavior.')), Badge(direction, 'neutral')),
       el('div', { class: 'card-body' },
+        enabled.wrap,
         direction === 'out' ? initial.wrap : el('p', { class: 'muted' }, 'Input pin'),
         direction === 'out' ? Button({
           variant: 'outline', size: 'sm', title: 'Set this output pin high',
@@ -103,17 +107,17 @@ export async function render(api, store) {
       el('span', { class: 'muted' }, Array.isArray(v) ? (v.map(x => (typeof x === 'object' ? (x.human_name || x.id || JSON.stringify(x)) : x)).join(', ') || 'none') : String(v))))) : null;
 
   async function save() {
-    const serial = serialPeripherals.map(p => ({ device: p.device, baud: Number(serialRows[p.device].baud.get()) || 115200, mode: serialRows[p.device].mode.get(), owner: serialRows[p.device].owner.get() }));
+    const serial = serialPeripherals.map(p => ({ device: p.device, enabled: serialRows[p.device].enabled.get(), baud: Number(serialRows[p.device].baud.get()) || 115200, mode: serialRows[p.device].mode.get(), owner: serialRows[p.device].owner.get() }));
     const can = canPeripherals.map(p => ({
-      name: p.device, bitrate: Number(canRows[p.device].bitrate.get()) || 500000, fd: canRows[p.device].fd.get(),
+      name: p.device, enabled: canRows[p.device].enabled.get(), bitrate: Number(canRows[p.device].bitrate.get()) || 500000, fd: canRows[p.device].fd.get(),
       data_bitrate: Number(canRows[p.device].dataBitrate.get()) || 0, listen_only: canRows[p.device].listenOnly.get(),
       restart_ms: (cfg.can || []).find(c => c.name === p.device)?.restart_ms || 100, up_on_boot: canRows[p.device].upOnBoot.get(),
     }));
     const gpio = gpioPeripherals.map(p => ({
-      name: p.id, direction: gpioRows[p.id].direction, active_low: gpioRows[p.id].activeLow,
+      name: p.id, enabled: gpioRows[p.id].enabled.get(), direction: gpioRows[p.id].direction, active_low: gpioRows[p.id].activeLow,
       initial_state: gpioRows[p.id].direction === 'out' ? gpioRows[p.id].initial.get() : null,
     }));
-    await api.put('/api/v1/io', { serial, can, gpio, mcu: cfg.mcu || null });
+    await api.put('/api/v1/io', { serial, can, gpio, mcu: cfg.mcu || null, board_leds: cfg.board_leds || {} });
     store.toast('Hardware configuration saved', 'success');
   }
 
