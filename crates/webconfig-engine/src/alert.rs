@@ -131,6 +131,19 @@ fn resolve_metric(metric: &str, vitals: &Vitals) -> Option<f64> {
             .fold(f64::NEG_INFINITY, f64::max)
             .into_option();
     }
+    // `temp.throttled` — 1.0 if any thermal zone is actively throttling (a
+    // cooling device has cur_state > 0), else 0.0. Backs the per-platform
+    // throttling default pack (spec §4.7, Arches). Must be checked BEFORE the
+    // `temp.<zone>` prefix branch, which would otherwise treat "throttled" as
+    // a zone name.
+    if metric == "temp.throttled" {
+        return Some(
+            vitals
+                .temperatures
+                .iter()
+                .any(|z| z.throttled) as u8 as f64,
+        );
+    }
     if let Some(zone) = metric.strip_prefix("temp.") {
         return vitals
             .temperatures
@@ -152,17 +165,6 @@ fn resolve_metric(metric: &str, vitals: &Vitals) -> Option<f64> {
         }
         let used = vitals.mem_total_kb.saturating_sub(vitals.mem_available_kb);
         return Some(used as f64 * 100.0 / vitals.mem_total_kb as f64);
-    }
-    // `temp.throttled` — 1.0 if any thermal zone is actively throttling (a
-    // cooling device has cur_state > 0), else 0.0. Backs the per-platform
-    // throttling default pack (spec §4.7, Arches).
-    if metric == "temp.throttled" {
-        return Some(
-            vitals
-                .temperatures
-                .iter()
-                .any(|z| z.throttled) as u8 as f64,
-        );
     }
     // `boot.watchdog` — 1.0 if the last boot reason indicates a hardware/
     // watchdog reset, else 0.0. Backs the watchdog-reset default pack

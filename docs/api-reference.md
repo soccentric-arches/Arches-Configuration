@@ -130,9 +130,9 @@ Base URL: `https://<device>:8443/api/v1`. All responses are JSON.
 
 | Method | Path | Role | Notes |
 |---|---|---|---|
-| GET | `/alerts` | any | `{rules, webhooks, mqtt_event_topic, history}`. |
-| PUT | `/alerts` | **[admin]** | `AlertsConfig` (rules validated). |
-| GET | `/alerts/history` | any | `[{ts, rule_id, state, value}]`. |
+| GET | `/alerts` | any | `{enabled, rules, default_rules, webhooks, mqtt_event_topic, history}`. `default_rules` are the read-only per-platform rule packs shipped in the board manifest (Arches: throttling; all: disk-full, watchdog-reset) — merged with `rules` at evaluation time; override/disable a default by adding a same-id rule. |
+| PUT | `/alerts` | **[admin]** | `AlertsConfig` (rules validated). Each rule carries `actions` (`ui`, `webhook`, `mqtt`); fired/cleared events are POSTed to each `webhooks` URL and published to `<mqtt_event_topic>/<rule_id>` on the configured MQTT broker. |
+| GET | `/alerts/history` | any | `[{ts, rule_id, state, value}]` — ring-buffer, viewable + exportable (also included in `/updates/diagnostics`). |
 
 ## Security (§4.8)
 

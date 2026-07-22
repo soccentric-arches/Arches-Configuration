@@ -12,7 +12,10 @@ use crate::auth::AuthRole;
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 
-/// `GET /api/v1/alerts` — rules + firing state + history.
+/// `GET /api/v1/alerts` — rules + firing state + history + the per-platform
+/// default rule packs shipped in the board manifest (spec §4.7). Defaults are
+/// read-only here; they are merged with `rules` at evaluation time, and an
+/// operator overrides or disables one by adding a same-id rule to `rules`.
 pub async fn get(
     State(app): State<AppState>,
     _role: AuthRole,
@@ -22,7 +25,9 @@ pub async fn get(
         .read_all()
         .unwrap_or_default();
     Ok(Json(serde_json::json!({
+        "enabled": cfg.alerts.enabled,
         "rules": cfg.alerts.rules,
+        "default_rules": app.manifest.default_alert_rules,
         "webhooks": cfg.alerts.webhooks,
         "mqtt_event_topic": cfg.alerts.mqtt_event_topic,
         "history": history,

@@ -1,4 +1,6 @@
-// Alerts page (spec §4.7): threshold rules with duration + history.
+// Alerts page (spec §4.7): threshold rules with duration + history, plus
+// webhook POST / MQTT event-topic push actions and the per-platform default
+// rule packs shipped in the board manifest.
 
 import { el } from '../core/dom.js';
 import { Card } from '../components/card.js';
@@ -12,8 +14,21 @@ import { ActionList, ActionRow } from '../components/action-row.js';
 export async function render(api, store) {
   const data = await api.get('/api/v1/alerts');
   const rules = (data.rules || []).slice();
+  const webhooks = (data.webhooks || []).slice();
+  let mqttEventTopic = data.mqtt_event_topic || '';
   const enabled = Toggle({ label: 'Enable alerting', checked: data.enabled === true });
 
+  // ---------- Default rule packs (read-only, from the board manifest) ----
+  const defaults = data.default_rules || [];
+  const defaultsCard = Card({
+    title: 'Built-in default rules',
+    subtitle: 'Per-platform rule packs shipped with the image (spec §4.7). They are always active unless you override or disable one by id below.',
+  }, defaults.length
+    ? Table({ columns: ['ID', 'Metric', 'Op', 'Threshold', 'Hold (s)', 'Actions'] },
+        defaults.map(r => [r.id, r.metric, r.comparison, String(r.threshold), String(r.duration_secs || 0), (r.actions || []).join(', ')])).element
+    : EmptyState({ title: 'No default rule packs for this platform' }));
+
+  // ---------- Rules table ----------------------------------------------
   const tableHost = el('div');
   function renderRules() {
     const rows = rules.map((r, idx) => {
@@ -32,33 +47,67 @@ export async function render(api, store) {
   }
   renderRules();
 
+  // ---------- Add-rule form (with per-rule push actions) ----------------
   const id = Field({ label: 'ID' });
   const metric = Field({ label: 'Metric', value: 'temp' });
   const op = Field({ label: 'Comparison', type: 'select', value: '>', options: ['>', '<', '>=', '<=', '==', '!='].map(v => ({ value: v, label: v })) });
   const thr = Field({ label: 'Threshold', type: 'number', value: '85' });
   const dur = Field({ label: 'Hold (s)', type: 'number', value: '60' });
+  const actUi = Toggle({ label: 'UI + event log (always)', checked: true });
+  const actWebhook = Toggle({ label: 'Webhook POST', checked: false });
+  const actMqtt = Toggle({ label: 'MQTT event topic', checked: false });
 
-  const addCard = Card({ title: 'Add rule', subtitle: 'Define a metric threshold and how long it must hold before an alert fires.' },
+  const addCard = Card({ title: 'Add rule', subtitle: 'Define a metric threshold and how long it must hold before an alert fires. UI red-state + event log always apply; enable webhook/MQTT for push notifications.' },
     el('div', { class: 'field-row' }, id.wrap, metric.wrap, op.wrap, thr.wrap, dur.wrap),
+    el('div', { class: 'field-row' }, actUi.wrap, actWebhook.wrap, actMqtt.wrap),
     ActionList(ActionRow('Add alert rule', 'Add this threshold rule to the local list; save it below to activate it.', Button({
       variant: 'outline',
       onClick: () => {
         if (!id.get()) { store.toast('ID is required', 'error'); return; }
-        rules.push({ id: id.get(), enabled: true, metric: metric.get(), comparison: op.get(), threshold: Number(thr.get()), duration_secs: Number(dur.get()) || 0, actions: ['ui'] });
+        const actions = [];
+        if (actUi.get()) actions.push('ui');
+        if (actWebhook.get()) actions.push('webhook');
+        if (actMqtt.get()) actions.push('mqtt');
+        rules.push({ id: id.get(), enabled: true, metric: metric.get(), comparison: op.get(), threshold: Number(thr.get()), duration_secs: Number(dur.get()) || 0, actions });
         renderRules();
         id.set(''); thr.set('85'); dur.set('60');
       },
     }, 'Add to list'))));
 
+  // ---------- Notification targets (webhook + MQTT event topic) ---------
+  const webhookHost = el('div', { class: 'stack' });
+  const newHook = Field({ label: 'Webhook URL', placeholder: 'https://hooks.example.com/alerts' });
+  function renderWebhooks() {
+    webhookHost.replaceChildren(webhooks.length
+      ? el('div', { class: 'list-stack' }, ...webhooks.map((url, idx) => el('div', { class: 'row list-row' },
+          el('div', { class: 'mono', style: 'font-size:13px;word-break:break-all' }, url),
+          Button({ variant: 'link', size: 'sm', onClick: () => { webhooks.splice(idx, 1); renderWebhooks(); } }, 'Remove'))))
+      : EmptyState({ title: 'No webhook targets' }));
+  }
+  renderWebhooks();
+  const mqttTopic = Field({ label: 'MQTT event topic base', value: mqttEventTopic, placeholder: 'soccentric/events', help: 'Fired events are published to <base>/<rule_id>.' });
+  mqttTopic.input.addEventListener('change', () => { mqttEventTopic = mqttTopic.get(); });
+
+  const notifyCard = Card({
+    title: 'Notification targets',
+    subtitle: 'Where push actions deliver fired/cleared events (spec §4.7). Webhook targets receive a JSON POST; MQTT events publish to the broker configured under Services → MQTT.',
+  }, webhookHost, el('div', { class: 'field-row' }, newHook.wrap, Button({ variant: 'outline', onClick: () => {
+    const u = newHook.get().trim();
+    if (!u) { store.toast('Enter a webhook URL', 'error'); return; }
+    webhooks.push(u); newHook.set(''); renderWebhooks();
+  } }, 'Add webhook')), mqttTopic.wrap);
+
+  // ---------- Save ------------------------------------------------------
   const rulesCard = Card({
     title: 'Alert rules', subtitle: 'Review the pending threshold rules before saving them to the device.', footer: ActionList(ActionRow('Save all rules', 'Persist the current alert rules and notification settings.', Button({
       onClick: async () => {
-        await api.put('/api/v1/alerts', { enabled: enabled.get(), rules, webhooks: data.webhooks || [], mqtt_event_topic: data.mqtt_event_topic || null });
+        await api.put('/api/v1/alerts', { enabled: enabled.get(), rules, webhooks, mqtt_event_topic: mqttEventTopic || null });
         store.toast('Alert rules saved', 'success');
       },
     }, 'Save all'))),
   }, enabled.wrap, tableHost);
 
+  // ---------- History ---------------------------------------------------
   const historyItems = (data.history || []).slice(-20).reverse();
   const historyCard = Card({ title: 'Recent events', subtitle: 'The most recent alert transitions recorded by the daemon.' },
     historyItems.length
@@ -68,5 +117,5 @@ export async function render(api, store) {
 
   return el('div', {},
     el('div', { class: 'page-header' }, el('h1', {}, 'Alarms'), el('p', {}, 'Threshold rules and alarm firing history.')),
-    rulesCard, addCard, historyCard);
+    defaultsCard, rulesCard, addCard, notifyCard, historyCard);
 }

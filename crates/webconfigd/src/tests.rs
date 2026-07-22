@@ -56,6 +56,26 @@ async fn build_app_with(schema: Schema) -> (axum::Router, tempfile::TempDir) {
             ..Default::default()
         }],
         service_allowlist: vec!["sshd.service".into()],
+        default_alert_rules: vec![
+            webconfig_engine::store::alerts::AlertRule {
+                id: "disk-full".into(),
+                enabled: true,
+                metric: "disk.pct".into(),
+                comparison: ">".into(),
+                threshold: 90.0,
+                duration_secs: 60,
+                actions: vec!["ui".into()],
+            },
+            webconfig_engine::store::alerts::AlertRule {
+                id: "watchdog-reset".into(),
+                enabled: true,
+                metric: "boot.watchdog".into(),
+                comparison: ">".into(),
+                threshold: 0.0,
+                duration_secs: 0,
+                actions: vec!["ui".into()],
+            },
+        ],
         ..Default::default()
     };
 
@@ -510,4 +530,69 @@ async fn updates_diagnostics_bundle_carries_journal_and_network_state() {
     assert!(v.get("dmesg").is_some());
     assert!(v.get("alert_history").is_some());
     assert!(v.get("audit").is_some());
+}
+
+#[tokio::test]
+async fn alerts_expose_default_packs_and_persist_push_targets() {
+    // Spec §4.7: GET /alerts surfaces the per-platform default rule packs
+    // (read-only) and the user-configured rules + push targets; PUT /alerts
+    // persists a user rule, webhook targets, and the MQTT event topic.
+    let (app, _dir) = build_app().await;
+    let (cookie, csrf) = boot_admin(&app).await;
+
+    // Defaults shipped in the manifest are visible.
+    let (st, _, body) = send(&app, "GET", "/api/v1/alerts", Some(&cookie), None, None).await;
+    assert_eq!(st, StatusCode::OK);
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let defaults = v["default_rules"].as_array().expect("default_rules present");
+    assert!(
+        defaults.iter().any(|r| r["id"] == "disk-full"),
+        "default pack must include disk-full: {defaults:?}"
+    );
+    assert!(
+        defaults.iter().any(|r| r["id"] == "watchdog-reset"),
+        "default pack must include watchdog-reset: {defaults:?}"
+    );
+
+    // Persist a user rule with webhook + mqtt actions and the push targets.
+    let payload = serde_json::json!({
+        "enabled": true,
+        "rules": [{
+            "id": "hot", "enabled": true, "metric": "temp",
+            "comparison": ">", "threshold": 85.0, "duration_secs": 60,
+            "actions": ["ui", "webhook", "mqtt"]
+        }],
+        "webhooks": ["https://hooks.example.com/alerts"],
+        "mqtt_event_topic": "soccentric/events"
+    })
+    .to_string();
+    let (st, _, _) = send(
+        &app,
+        "PUT",
+        "/api/v1/alerts",
+        Some(&cookie),
+        Some(&csrf),
+        Some(&payload),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+
+    // Reload — user rule, webhooks, and mqtt topic are persisted.
+    let (st, _, body) = send(&app, "GET", "/api/v1/alerts", Some(&cookie), None, None).await;
+    assert_eq!(st, StatusCode::OK);
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(v["enabled"], true);
+    assert_eq!(v["mqtt_event_topic"], "soccentric/events");
+    assert_eq!(v["webhooks"][0], "https://hooks.example.com/alerts");
+    let hot = v["rules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["id"] == "hot")
+        .expect("user rule persisted");
+    assert_eq!(hot["metric"], "temp");
+    assert_eq!(hot["threshold"], 85.0);
+    let actions = hot["actions"].as_array().unwrap();
+    assert!(actions.iter().any(|a| a == "webhook"));
+    assert!(actions.iter().any(|a| a == "mqtt"));
 }

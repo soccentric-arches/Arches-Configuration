@@ -8,6 +8,7 @@
 #![forbid(unsafe_code)]
 
 mod api;
+mod alert_dispatch;
 mod auth;
 mod bootstrap;
 mod csrf;

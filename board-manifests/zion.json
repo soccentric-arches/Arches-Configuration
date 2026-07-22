@@ -29,5 +29,9 @@
   "dashboard_tiles": [
     { "id": "fpga", "title": "Active bitstream", "metrics": ["zion.bitstream", "zion.pl_status"], "render": "state" },
     { "id": "thermal", "title": "PL temperature", "metrics": ["thermal.temp"], "render": "sparkline" }
+  ],
+  "default_alert_rules": [
+    { "id": "disk-full", "enabled": true, "metric": "disk.pct", "comparison": ">", "threshold": 90, "duration_secs": 60, "actions": ["ui"] },
+    { "id": "watchdog-reset", "enabled": true, "metric": "boot.watchdog", "comparison": ">", "threshold": 0, "duration_secs": 0, "actions": ["ui"] }
   ]
 }

@@ -30,5 +30,9 @@
   "dashboard_tiles": [
     { "id": "thermal", "title": "Core temperature", "metrics": ["thermal.temp", "thermal.throttled"], "render": "sparkline" },
     { "id": "net", "title": "Ethernet links", "metrics": ["net.eth0", "net.eth1"], "render": "state" }
+  ],
+  "default_alert_rules": [
+    { "id": "disk-full", "enabled": true, "metric": "disk.pct", "comparison": ">", "threshold": 90, "duration_secs": 60, "actions": ["ui"] },
+    { "id": "watchdog-reset", "enabled": true, "metric": "boot.watchdog", "comparison": ">", "threshold": 0, "duration_secs": 0, "actions": ["ui"] }
   ]
 }

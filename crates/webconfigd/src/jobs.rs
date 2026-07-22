@@ -2,9 +2,10 @@
 
 use std::sync::Arc;
 
-use webconfig_engine::alert::AlertEngine;
+use webconfig_engine::alert::{merge_defaults, AlertEngine};
 use webconfig_engine::manifest::BoardManifest;
 
+use crate::alert_dispatch::dispatch_event;
 use crate::bootstrap;
 use crate::engine_bridge::EngineBridge;
 
@@ -24,16 +25,32 @@ pub(crate) async fn run_alert_timer(
             Err(_) => continue,
         };
         let vitals = webconfig_engine::monitoring::read_vitals(&engine.sysroot);
+        // Merge per-platform default rule packs with the user-configured rules
+        // (spec §4.7). User rules override defaults by id; defaults ship in the
+        // board manifest (Arches: throttling; all: disk-full, watchdog-reset).
+        let rules = merge_defaults(&manifest.default_alert_rules, &config.alerts.rules);
         let events = alert_engine
             .lock()
             .await
-            .evaluate(&config.alerts.rules, &vitals, tick);
+            .evaluate(&rules, &vitals, tick);
         for event in events {
             tracing::info!(rule = %event.rule_id, state = ?event.state, "alert");
+            // Event log (always) — append to the ring-buffer history.
             if let Err(error) = history.record(&event) {
                 tracing::warn!(error = %error, "alert history write failed");
             }
+            // Push actions (spec §4.7): webhook POST + MQTT event topic. UI
+            // red-state is derived by the dashboard from this history. Look up
+            // the effective rule (merged set) to read its actions.
+            if let Some(rule) = rules.iter().find(|r| r.id == event.rule_id) {
+                dispatch_event(
+                    &engine.sysroot,
+                    &config.alerts,
+                    &config.services.mqtt,
+                    rule,
+                    &event,
+                );
+            }
         }
-        let _ = &manifest; // platform default rule packs will be merged here
     }
 }
