@@ -46,7 +46,12 @@ pub async fn start(
     role.require_mutate_apps("services.start")?;
     guard_allowed(&app, &unit)?;
     app.systemd.start(&unit).await.ok();
-    audit(&app, &username(&session).await, "services.start", Some(unit.clone()));
+    audit(
+        &app,
+        &username(&session).await,
+        "services.start",
+        Some(unit.clone()),
+    );
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
@@ -59,7 +64,12 @@ pub async fn stop(
     role.require_mutate_apps("services.stop")?;
     guard_allowed(&app, &unit)?;
     app.systemd.stop(&unit).await.ok();
-    audit(&app, &username(&session).await, "services.stop", Some(unit.clone()));
+    audit(
+        &app,
+        &username(&session).await,
+        "services.stop",
+        Some(unit.clone()),
+    );
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
@@ -72,7 +82,12 @@ pub async fn restart(
     role.require_mutate_apps("services.restart")?;
     guard_allowed(&app, &unit)?;
     app.systemd.restart(&unit).await.ok();
-    audit(&app, &username(&session).await, "services.restart", Some(unit.clone()));
+    audit(
+        &app,
+        &username(&session).await,
+        "services.restart",
+        Some(unit.clone()),
+    );
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
@@ -102,7 +117,9 @@ pub async fn set_enabled(
         "services.set_enabled",
         Some(format!("{unit}={}", req.enabled)),
     );
-    Ok(Json(serde_json::json!({ "unit": unit, "enabled": req.enabled })))
+    Ok(Json(
+        serde_json::json!({ "unit": unit, "enabled": req.enabled }),
+    ))
 }
 
 /// `GET /api/v1/services/:unit/journal` — last ~20 lines when failed (spec §4.3).
@@ -112,7 +129,11 @@ pub async fn journal(
     Path(unit): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
     guard_allowed(&app, &unit)?;
-    let tail = app.systemd.journal_tail(&unit, 20).await.unwrap_or_default();
+    let tail = app
+        .systemd
+        .journal_tail(&unit, 20)
+        .await
+        .unwrap_or_default();
     Ok(Json(serde_json::json!({ "unit": unit, "tail": tail })))
 }
 
@@ -140,12 +161,10 @@ pub async fn put_mqtt(
 ) -> ApiResult<Json<MqttConfig>> {
     role.require_mutate_apps("services.mqtt.put")?;
     let user = username(&session).await;
-    let cfg = app
-        .engine
-        .update(|c| {
-            c.services.mqtt = req.clone();
-            Ok(())
-        })?;
+    let cfg = app.engine.update(|c| {
+        c.services.mqtt = req.clone();
+        Ok(())
+    })?;
     audit(&app, &user, "services.mqtt.put", None);
     Ok(Json(cfg.services.mqtt))
 }
@@ -162,12 +181,7 @@ pub async fn test_mqtt(
     }
     // Best-effort TCP connect to the broker; full MQTT handshake is out of
     // scope for v1 and would pull a broker client crate (spec §7: state it).
-    let ok = std::net::TcpStream::connect(format!(
-        "{}:{}",
-        host,
-        m.port.unwrap_or(1883)
-    ))
-    .is_ok();
+    let ok = std::net::TcpStream::connect(format!("{}:{}", host, m.port.unwrap_or(1883))).is_ok();
     Ok(Json(serde_json::json!({ "reachable": ok })))
 }
 
@@ -216,11 +230,10 @@ pub async fn put_app_settings(
 ) -> ApiResult<Json<serde_json::Value>> {
     role.require_mutate_apps("apps.settings.put")?;
     let user = username(&session).await;
-    app.engine
-        .update(|c| {
-            c.app_settings.insert(id.clone(), req.clone());
-            Ok(())
-        })?;
+    app.engine.update(|c| {
+        c.app_settings.insert(id.clone(), req.clone());
+        Ok(())
+    })?;
     audit(&app, &user, "apps.settings.put", Some(id.clone()));
     Ok(Json(req))
 }

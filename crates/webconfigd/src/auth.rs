@@ -119,10 +119,7 @@ pub async fn logout(session: Session) -> ApiResult<impl IntoResponse> {
 }
 
 /// `GET /api/v1/auth/whoami` — current user + role + CSRF token (spec §4.8).
-pub async fn whoami(
-    State(app): State<AppState>,
-    session: Session,
-) -> ApiResult<impl IntoResponse> {
+pub async fn whoami(State(app): State<AppState>, session: Session) -> ApiResult<impl IntoResponse> {
     let username: Option<String> = session.get(SK_USER).ok().flatten();
     let role: Option<String> = session.get(SK_ROLE).ok().flatten();
     let csrf = csrf_token_from_session(&session).await;

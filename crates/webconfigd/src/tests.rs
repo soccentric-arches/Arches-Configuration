@@ -18,8 +18,8 @@ use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use tower::ServiceExt;
 
-use webconfig_engine::audit::AuditLog;
 use webconfig_engine::alert::AlertEngine;
+use webconfig_engine::audit::AuditLog;
 use webconfig_engine::manifest::{BoardManifest, IoKind};
 use webconfig_engine::schema::Schema;
 use webconfig_engine::{ConfigStore, Sysroot};
@@ -130,9 +130,14 @@ async fn first_boot_gate_blocks_protected_routes_until_admin_created() {
 
     // Login is refused before first boot (no admin yet).
     let (st, _, _) = send(
-        &app, "POST", "/api/v1/auth/login", None, None,
+        &app,
+        "POST",
+        "/api/v1/auth/login",
+        None,
+        None,
         Some(r#"{"username":"admin","password":"whatever1"}"#),
-    ).await;
+    )
+    .await;
     assert_eq!(st, StatusCode::SERVICE_UNAVAILABLE); // NotReady
 }
 
@@ -141,14 +146,27 @@ async fn first_boot_creates_admin_and_authenticates() {
     let (app, _dir) = build_app().await;
 
     let (st, ck, _) = send(
-        &app, "POST", "/api/v1/auth/first-boot", None, None,
+        &app,
+        "POST",
+        "/api/v1/auth/first-boot",
+        None,
+        None,
         Some(r#"{"username":"admin","password":"password1"}"#),
-    ).await;
+    )
+    .await;
     assert_eq!(st, StatusCode::OK);
     let cookie = ck.expect("first-boot sets a session cookie");
 
     // Now whoami reports an authenticated admin.
-    let (st, _, text) = send(&app, "GET", "/api/v1/auth/whoami", Some(&cookie), None, None).await;
+    let (st, _, text) = send(
+        &app,
+        "GET",
+        "/api/v1/auth/whoami",
+        Some(&cookie),
+        None,
+        None,
+    )
+    .await;
     assert_eq!(st, StatusCode::OK);
     let v: serde_json::Value = serde_json::from_str(&text).unwrap();
     assert_eq!(v["username"], "admin");
@@ -171,9 +189,14 @@ async fn first_boot_creates_admin_and_authenticates() {
 async fn csrf_guard_rejects_mutations_without_token() {
     let (app, _dir) = build_app().await;
     let (_, ck, _) = send(
-        &app, "POST", "/api/v1/auth/first-boot", None, None,
+        &app,
+        "POST",
+        "/api/v1/auth/first-boot",
+        None,
+        None,
         Some(r#"{"username":"admin","password":"password1"}"#),
-    ).await;
+    )
+    .await;
     let cookie = ck.unwrap();
 
     // PUT /system with a session but NO csrf token → rejected by csrf_guard
@@ -191,35 +214,76 @@ async fn viewer_role_cannot_mutate_admin_only_routes() {
 
     // Bootstrap admin.
     let (_, admin_ck, _) = send(
-        &app, "POST", "/api/v1/auth/first-boot", None, None,
+        &app,
+        "POST",
+        "/api/v1/auth/first-boot",
+        None,
+        None,
         Some(r#"{"username":"admin","password":"password1"}"#),
-    ).await;
+    )
+    .await;
     let admin_cookie = admin_ck.unwrap();
-    let (_, _, text) = send(&app, "GET", "/api/v1/auth/whoami", Some(&admin_cookie), None, None).await;
+    let (_, _, text) = send(
+        &app,
+        "GET",
+        "/api/v1/auth/whoami",
+        Some(&admin_cookie),
+        None,
+        None,
+    )
+    .await;
     let admin_csrf = serde_json::from_str::<serde_json::Value>(&text).unwrap()["csrf"]
-        .as_str().unwrap().to_string();
+        .as_str()
+        .unwrap()
+        .to_string();
 
     // Admin creates a viewer.
     let (st, _, _) = send(
-        &app, "POST", "/api/v1/system/users", Some(&admin_cookie), Some(&admin_csrf),
+        &app,
+        "POST",
+        "/api/v1/system/users",
+        Some(&admin_cookie),
+        Some(&admin_csrf),
         Some(r#"{"username":"watcher","password":"password1","role":"viewer"}"#),
-    ).await;
+    )
+    .await;
     assert_eq!(st, StatusCode::OK);
 
     // Viewer logs in on its own session.
     let (st, viewer_ck, _) = send(
-        &app, "POST", "/api/v1/auth/login", None, None,
+        &app,
+        "POST",
+        "/api/v1/auth/login",
+        None,
+        None,
         Some(r#"{"username":"watcher","password":"password1"}"#),
-    ).await;
+    )
+    .await;
     assert_eq!(st, StatusCode::OK);
     let viewer_cookie = viewer_ck.unwrap();
-    let (_, _, text) = send(&app, "GET", "/api/v1/auth/whoami", Some(&viewer_cookie), None, None).await;
+    let (_, _, text) = send(
+        &app,
+        "GET",
+        "/api/v1/auth/whoami",
+        Some(&viewer_cookie),
+        None,
+        None,
+    )
+    .await;
     let v: serde_json::Value = serde_json::from_str(&text).unwrap();
     assert_eq!(v["role"], "viewer");
     let viewer_csrf = v["csrf"].as_str().unwrap().to_string();
 
     // Viewer can read system (any authenticated role).
-    let (st, _, _) = send(&app, "GET", "/api/v1/system", Some(&viewer_cookie), None, None).await;
+    let (st, _, _) = send(
+        &app,
+        "GET",
+        "/api/v1/system",
+        Some(&viewer_cookie),
+        None,
+        None,
+    )
+    .await;
     assert_eq!(st, StatusCode::OK);
 
     // Viewer cannot PUT /system (admin only) even with a valid csrf token.
@@ -279,7 +343,10 @@ async fn confirm_pending_clears_on_explicit_confirm() {
 
     // Explicit confirm before the window expires → stands, no rollback.
     let confirmed = bridge.confirm_pending().await.unwrap();
-    assert!(confirmed, "confirm_pending reports a consumed pending apply");
+    assert!(
+        confirmed,
+        "confirm_pending reports a consumed pending apply"
+    );
     let rolled = bridge.tick_confirm().await;
     assert!(!rolled, "confirmed apply must not be rolled back");
 }

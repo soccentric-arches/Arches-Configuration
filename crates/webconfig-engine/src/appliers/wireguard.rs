@@ -9,7 +9,7 @@
 use std::os::unix::fs::PermissionsExt;
 use std::sync::Mutex;
 
-use crate::applier::{Applier, ApplyError, ApplyOutcome, FileBackup, run_cmd};
+use crate::applier::{run_cmd, Applier, ApplyError, ApplyOutcome, FileBackup};
 use crate::store::Config;
 use crate::sysroot::Sysroot;
 
@@ -40,7 +40,10 @@ impl WireGuardApplier {
         s.push_str("[Interface]\n");
         s.push_str(&format!("PrivateKey = {private_key}\n"));
         if config.security.wireguard.port > 0 {
-            s.push_str(&format!("ListenPort = {}\n", config.security.wireguard.port));
+            s.push_str(&format!(
+                "ListenPort = {}\n",
+                config.security.wireguard.port
+            ));
         }
         for p in &config.security.wireguard.peers {
             s.push_str("\n[Peer]\n");
@@ -125,7 +128,10 @@ impl Applier for WireGuardApplier {
             *self.backup.lock().unwrap() = Some(prior);
             if sysroot.is_real_root() {
                 run_cmd("wg-quick", &["down", "wg0"]).ok(); // ignore if down
-                run_cmd("wg-quick", &["up", path.to_str().unwrap_or("/etc/wireguard/wg0.conf")])?;
+                run_cmd(
+                    "wg-quick",
+                    &["up", path.to_str().unwrap_or("/etc/wireguard/wg0.conf")],
+                )?;
             }
         } else {
             std::fs::write(&path, "# WireGuard disabled by WebConfig\n")?;

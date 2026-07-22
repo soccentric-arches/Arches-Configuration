@@ -10,9 +10,9 @@
 
 use std::sync::Mutex;
 
-use crate::applier::{Applier, ApplyError, ApplyOutcome, FileBackup, run_cmd};
-use crate::store::Config;
+use crate::applier::{run_cmd, Applier, ApplyError, ApplyOutcome, FileBackup};
 use crate::store::io::CanInterface;
+use crate::store::Config;
 use crate::sysroot::Sysroot;
 
 pub struct CanApplier {

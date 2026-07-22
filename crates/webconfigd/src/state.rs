@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use axum::extract::FromRef;
 
-use webconfig_engine::audit::AuditLog;
 use webconfig_engine::alert::AlertEngine;
+use webconfig_engine::audit::AuditLog;
 use webconfig_engine::manifest::BoardManifest;
 use webconfig_engine::schema::Schema;
 use webconfig_engine::users::UserStore;

@@ -13,7 +13,10 @@ use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 
 /// `GET /api/v1/io` — manifest-driven I/O + current config (spec §4.9).
-pub async fn get(State(app): State<AppState>, _role: AuthRole) -> ApiResult<Json<serde_json::Value>> {
+pub async fn get(
+    State(app): State<AppState>,
+    _role: AuthRole,
+) -> ApiResult<Json<serde_json::Value>> {
     Ok(Json(serde_json::json!({
         "manifest": app.manifest.peripherals,
         "config": app.engine.load()?.io,
@@ -35,21 +38,31 @@ pub async fn put(
     for s in &req.serial {
         if s.owner != "unassigned" {
             if !owners.insert(s.owner.clone()) {
-                return Err(ApiError::Conflict(format!("serial owner {} claimed twice", s.owner)));
+                return Err(ApiError::Conflict(format!(
+                    "serial owner {} claimed twice",
+                    s.owner
+                )));
             }
         }
         // Reject ports not in the manifest.
-        if !app.manifest.has(&s.device.replace("/dev/", "")) && !app.manifest.peripherals.iter().any(|p| p.device == s.device) {
-            return Err(ApiError::BadRequest(format!("serial {} not in manifest", s.device)));
+        if !app.manifest.has(&s.device.replace("/dev/", ""))
+            && !app
+                .manifest
+                .peripherals
+                .iter()
+                .any(|p| p.device == s.device)
+        {
+            return Err(ApiError::BadRequest(format!(
+                "serial {} not in manifest",
+                s.device
+            )));
         }
     }
     let user = username(&session).await;
-    let cfg = app
-        .engine
-        .update(|c| {
-            c.io = req.clone();
-            Ok(())
-        })?;
+    let cfg = app.engine.update(|c| {
+        c.io = req.clone();
+        Ok(())
+    })?;
     audit(&app, &user, "io.put", None);
     Ok(Json(cfg.io))
 }
@@ -90,7 +103,12 @@ pub async fn toggle_gpio(
     } else {
         0
     };
-    audit(&app, &username(&session).await, "io.gpio.toggle", Some(name.clone()));
+    audit(
+        &app,
+        &username(&session).await,
+        "io.gpio.toggle",
+        Some(name.clone()),
+    );
     Ok(Json(serde_json::json!({ "pin": name, "value": value })))
 }
 
@@ -110,8 +128,8 @@ pub async fn i2c_scan(
         return Err(ApiError::BadRequest("i2c bus not in manifest".into()));
     }
     let addrs = if app.engine.sysroot.is_real_root() {
-        let out = webconfig_engine::applier::run_cmd("i2cdetect", &["-y", &q.bus])
-            .unwrap_or_default();
+        let out =
+            webconfig_engine::applier::run_cmd("i2cdetect", &["-y", &q.bus]).unwrap_or_default();
         // Parse hex addresses from the i2cdetect table.
         out.lines()
             .flat_map(|l| l.split_whitespace().skip(1))
@@ -120,7 +138,9 @@ pub async fn i2c_scan(
     } else {
         Vec::new()
     };
-    Ok(Json(serde_json::json!({ "bus": q.bus, "addresses": addrs })))
+    Ok(Json(
+        serde_json::json!({ "bus": q.bus, "addresses": addrs }),
+    ))
 }
 
 #[derive(serde::Deserialize)]
@@ -162,7 +182,9 @@ pub async fn mcu_firmware(
     }
     let user = username(&session).await;
     audit(&app, &user, "io.mcu.firmware", Some(req.version.clone()));
-    Ok(Json(serde_json::json!({ "flashed": app.engine.sysroot.is_real_root(), "version": req.version })))
+    Ok(Json(
+        serde_json::json!({ "flashed": app.engine.sysroot.is_real_root(), "version": req.version }),
+    ))
 }
 
 #[derive(serde::Deserialize)]

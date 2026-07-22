@@ -15,7 +15,7 @@
 
 use std::sync::Mutex;
 
-use crate::applier::{Applier, ApplyError, ApplyOutcome, run_cmd};
+use crate::applier::{run_cmd, Applier, ApplyError, ApplyOutcome};
 use crate::store::Config;
 use crate::sysroot::Sysroot;
 
@@ -103,8 +103,7 @@ impl Applier for TimeApplier {
             if config.system.time.ntp_enabled {
                 return Err(ApplyError::Validation {
                     stage: crate::applier::ApplyStage::Validate,
-                    message: "manual_datetime set while NTP enabled — disable NTP first"
-                        .into(),
+                    message: "manual_datetime set while NTP enabled — disable NTP first".into(),
                 });
             }
         }

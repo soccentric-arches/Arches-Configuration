@@ -189,7 +189,11 @@ fn read_net_stats(sysroot: &Sysroot) -> Vec<NetStats> {
         }
         let rx = read_u64_file(&base.join(&iface).join("statistics/rx_bytes"));
         let tx = read_u64_file(&base.join(&iface).join("statistics/tx_bytes"));
-        out.push(NetStats { iface, rx_bytes: rx, tx_bytes: tx });
+        out.push(NetStats {
+            iface,
+            rx_bytes: rx,
+            tx_bytes: tx,
+        });
     }
     out
 }
@@ -238,18 +242,22 @@ mod tests {
         )
         .unwrap();
         std::fs::create_dir_all(sys.root().join("sys-block-usage")).unwrap();
-        std::fs::write(
-            sys.root().join("sys-block-usage/_"),
-            "1000000 400000\n",
-        )
-        .unwrap();
+        std::fs::write(sys.root().join("sys-block-usage/_"), "1000000 400000\n").unwrap();
         // /sys/class/thermal
         std::fs::create_dir_all(sys.join("/sys/class/thermal/thermal_zone0")).unwrap();
         std::fs::write(sys.join("/sys/class/thermal/thermal_zone0/temp"), "55000\n").unwrap();
         // /sys/class/net
         std::fs::create_dir_all(sys.join("/sys/class/net/eth0/statistics")).unwrap();
-        std::fs::write(sys.join("/sys/class/net/eth0/statistics/rx_bytes"), "1024\n").unwrap();
-        std::fs::write(sys.join("/sys/class/net/eth0/statistics/tx_bytes"), "2048\n").unwrap();
+        std::fs::write(
+            sys.join("/sys/class/net/eth0/statistics/rx_bytes"),
+            "1024\n",
+        )
+        .unwrap();
+        std::fs::write(
+            sys.join("/sys/class/net/eth0/statistics/tx_bytes"),
+            "2048\n",
+        )
+        .unwrap();
         (d, sys)
     }
 

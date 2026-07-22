@@ -91,7 +91,10 @@ mod tests {
     #[test]
     fn join_strips_leading_slash_for_tempdir_root() {
         let s = Sysroot::at("/tmp/fake");
-        assert_eq!(s.join("/etc/hostname"), PathBuf::from("/tmp/fake/etc/hostname"));
+        assert_eq!(
+            s.join("/etc/hostname"),
+            PathBuf::from("/tmp/fake/etc/hostname")
+        );
     }
 
     #[test]

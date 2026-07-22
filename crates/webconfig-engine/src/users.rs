@@ -120,9 +120,11 @@ impl UserStore {
 
     /// Verify credentials and return the user's role on success.
     pub fn authenticate(&self, username: &str, password: &str) -> Result<Role, UserError> {
-        let user = self.find(username).ok_or(UserError::NotFound(username.into()))?;
-        let parsed = PasswordHash::new(&user.password_hash)
-            .map_err(|e| UserError::Hash(e.to_string()))?;
+        let user = self
+            .find(username)
+            .ok_or(UserError::NotFound(username.into()))?;
+        let parsed =
+            PasswordHash::new(&user.password_hash).map_err(|e| UserError::Hash(e.to_string()))?;
         Argon2::default()
             .verify_password(password.as_bytes(), &parsed)
             .map_err(|_| UserError::InvalidCredentials)?;
@@ -130,12 +132,7 @@ impl UserStore {
     }
 
     /// Create a user with an argon2 hash of `password`.
-    pub fn add(
-        &mut self,
-        username: &str,
-        password: &str,
-        role: Role,
-    ) -> Result<(), UserError> {
+    pub fn add(&mut self, username: &str, password: &str, role: Role) -> Result<(), UserError> {
         if self.find(username).is_some() {
             return Err(UserError::Exists(username.into()));
         }
@@ -184,7 +181,10 @@ impl UserStore {
     }
 
     pub fn remove(&mut self, username: &str) -> Result<(), UserError> {
-        let is_admin = self.find(username).map(|u| u.role == Role::Admin).unwrap_or(false);
+        let is_admin = self
+            .find(username)
+            .map(|u| u.role == Role::Admin)
+            .unwrap_or(false);
         if is_admin && self.admin_count() <= 1 {
             return Err(UserError::LastAdmin);
         }
@@ -224,7 +224,10 @@ mod tests {
         store.save(&path).unwrap();
 
         let loaded = UserStore::load(&path).unwrap();
-        assert_eq!(loaded.authenticate("admin", "correct horse").unwrap(), Role::Admin);
+        assert_eq!(
+            loaded.authenticate("admin", "correct horse").unwrap(),
+            Role::Admin
+        );
         assert!(loaded.authenticate("admin", "wrong").is_err());
         assert!(loaded.authenticate("nobody", "x").is_err());
     }
@@ -244,7 +247,10 @@ mod tests {
     fn duplicate_user_rejected() {
         let mut store = UserStore::default();
         store.add("u", "pw", Role::Viewer).unwrap();
-        assert!(matches!(store.add("u", "pw", Role::Viewer), Err(UserError::Exists(_))));
+        assert!(matches!(
+            store.add("u", "pw", Role::Viewer),
+            Err(UserError::Exists(_))
+        ));
     }
 
     #[test]

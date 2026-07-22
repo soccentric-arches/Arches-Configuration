@@ -49,10 +49,12 @@ async fn main() -> anyhow::Result<()> {
     std::fs::create_dir_all(&webconfig_dir).ok();
 
     // Schema engine: load from /usr/share/webconfig/schemas, else permissive.
-    let schema = Arc::new(Schema::load_dir(&share.join("schemas")).unwrap_or_else(|e| {
-        tracing::warn!(error = %e, "schema load failed — permissive");
-        Schema::default_permissive()
-    }));
+    let schema = Arc::new(
+        Schema::load_dir(&share.join("schemas")).unwrap_or_else(|e| {
+            tracing::warn!(error = %e, "schema load failed — permissive");
+            Schema::default_permissive()
+        }),
+    );
 
     // Board manifest: load from share dir, else seed from the embedded example
     // for the configured platform so dev/CI has data (spec §3 platform layer).
@@ -87,7 +89,11 @@ async fn main() -> anyhow::Result<()> {
 
     // Alert evaluation timer (spec §4.7): rule evaluation on the same data the
     // dashboard reads, on a timer inside the daemon — no extra process.
-    tokio::spawn(alert_timer(engine.clone(), manifest.clone(), alert_engine.clone()));
+    tokio::spawn(alert_timer(
+        engine.clone(),
+        manifest.clone(),
+        alert_engine.clone(),
+    ));
 
     // TLS: ensure a per-device self-signed cert on first boot (spec §4.8).
     let cert = webconfig_dir.join("cert.pem");
@@ -95,8 +101,7 @@ async fn main() -> anyhow::Result<()> {
     let hostname = std::env::var("WEBCONFIG_HOSTNAME").ok();
     tls::ensure_self_signed(&cert, &key, hostname.as_deref())
         .map_err(|e| anyhow::anyhow!("tls init: {e}"))?;
-    let acceptor = tls::acceptor(&cert, &key)
-        .map_err(|e| anyhow::anyhow!("tls acceptor: {e}"))?;
+    let acceptor = tls::acceptor(&cert, &key).map_err(|e| anyhow::anyhow!("tls acceptor: {e}"))?;
     let acceptor = TlsAcceptor::from(acceptor);
 
     let port: u16 = std::env::var("WEBCONFIG_PORT")
@@ -104,7 +109,10 @@ async fn main() -> anyhow::Result<()> {
         .and_then(|p| p.parse().ok())
         .unwrap_or(8443);
     let addr = format!("0.0.0.0:{port}");
-    tracing::info!("webconfigd listening on https://{addr} (platform={})", manifest.platform);
+    tracing::info!(
+        "webconfigd listening on https://{addr} (platform={})",
+        manifest.platform
+    );
 
     let listener = TcpListener::bind(&addr).await?;
     loop {
@@ -171,10 +179,7 @@ async fn alert_timer(
     manifest: Arc<BoardManifest>,
     alert_engine: Arc<tokio::sync::Mutex<AlertEngine>>,
 ) {
-    let history = AlertHistory::new(
-        engine.sysroot.webconfig_dir().join("alert.jsonl"),
-        1000,
-    );
+    let history = AlertHistory::new(engine.sysroot.webconfig_dir().join("alert.jsonl"), 1000);
     let mut tick: u64 = 0;
     loop {
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
@@ -184,7 +189,10 @@ async fn alert_timer(
             Err(_) => continue,
         };
         let vitals = webconfig_engine::monitoring::read_vitals(&engine.sysroot);
-        let events = alert_engine.lock().await.evaluate(&cfg.alerts.rules, &vitals, tick);
+        let events = alert_engine
+            .lock()
+            .await
+            .evaluate(&cfg.alerts.rules, &vitals, tick);
         for ev in events {
             tracing::info!(rule = %ev.rule_id, state = ?ev.state, "alert");
             if let Err(e) = history.record(&ev) {

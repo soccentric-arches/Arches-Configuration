@@ -28,12 +28,10 @@ pub async fn put(
 ) -> ApiResult<Json<serde_json::Value>> {
     role.require_admin("system.put")?;
     let user = username(&session).await;
-    let cfg = app
-        .engine
-        .update(|c| {
-            c.system = req.clone();
-            Ok(())
-        })?;
+    let cfg = app.engine.update(|c| {
+        c.system = req.clone();
+        Ok(())
+    })?;
     audit(&app, &user, "system.put", None);
     Ok(Json(serde_json::to_value(&cfg.system).unwrap_or_default()))
 }
@@ -54,12 +52,10 @@ pub async fn apply(
 }
 
 /// `GET /api/v1/system/info` — read-only device info (spec §4.1).
-pub async fn info(
-    State(app): State<AppState>,
-) -> ApiResult<Json<serde_json::Value>> {
+pub async fn info(State(app): State<AppState>) -> ApiResult<Json<serde_json::Value>> {
     let m = &app.manifest;
-    let os_release = std::fs::read_to_string(app.engine.sysroot.join("/etc/os-release"))
-        .unwrap_or_default();
+    let os_release =
+        std::fs::read_to_string(app.engine.sysroot.join("/etc/os-release")).unwrap_or_default();
     let mut kv = std::collections::BTreeMap::new();
     for line in os_release.lines() {
         if let Some((k, v)) = line.split_once('=') {
@@ -126,7 +122,9 @@ pub async fn factory_reset(
         return Err(ApiError::BadRequest("type RESET to confirm".into()));
     }
     if req.mode != "settings" && req.mode != "settings+users" {
-        return Err(ApiError::BadRequest("mode must be settings|settings+users".into()));
+        return Err(ApiError::BadRequest(
+            "mode must be settings|settings+users".into(),
+        ));
     }
     let user = username(&session).await;
     audit(&app, &user, "system.factory-reset", Some(req.mode.clone()));
@@ -144,7 +142,9 @@ pub async fn factory_reset(
     if app.engine.sysroot.is_real_root() {
         let _ = webconfig_engine::applier::run_cmd("systemctl", &["reboot"]);
     }
-    Ok(Json(serde_json::json!({ "factory_reset": true, "mode": req.mode })))
+    Ok(Json(
+        serde_json::json!({ "factory_reset": true, "mode": req.mode }),
+    ))
 }
 
 // --- User management (spec §4.1) ------------------------------------------
@@ -194,7 +194,12 @@ pub async fn create_user(
         .add(&req.username, &req.password, parsed)
         .map_err(|e| ApiError::Conflict(e.to_string()))?;
     app.save_users(&store).map_err(|_| ApiError::Internal)?;
-    audit(&app, &username(&session).await, "users.create", Some(req.username.clone()));
+    audit(
+        &app,
+        &username(&session).await,
+        "users.create",
+        Some(req.username.clone()),
+    );
     Ok(Json(UserPublic {
         username: req.username,
         role: parsed.as_str().to_string(),
@@ -214,7 +219,12 @@ pub async fn delete_user(
         .remove(&name)
         .map_err(|e| ApiError::Conflict(e.to_string()))?;
     app.save_users(&store).map_err(|_| ApiError::Internal)?;
-    audit(&app, &username(&session).await, "users.delete", Some(name.clone()));
+    audit(
+        &app,
+        &username(&session).await,
+        "users.delete",
+        Some(name.clone()),
+    );
     Ok(Json(serde_json::json!({ "deleted": name })))
 }
 
@@ -238,7 +248,12 @@ pub async fn set_role(
         .set_role(&name, parsed)
         .map_err(|e| ApiError::Conflict(e.to_string()))?;
     app.save_users(&store).map_err(|_| ApiError::Internal)?;
-    audit(&app, &username(&session).await, "users.set_role", Some(name.clone()));
+    audit(
+        &app,
+        &username(&session).await,
+        "users.set_role",
+        Some(name.clone()),
+    );
     Ok(Json(serde_json::json!({ "user": name, "role": req.role })))
 }
 
@@ -262,7 +277,12 @@ pub async fn change_password(
     let mut store = app.load_users().map_err(|_| ApiError::Internal)?;
     store.set_password(&name, &req.password)?;
     app.save_users(&store).map_err(|_| ApiError::Internal)?;
-    audit(&app, &username(&session).await, "users.change_password", Some(name.clone()));
+    audit(
+        &app,
+        &username(&session).await,
+        "users.change_password",
+        Some(name.clone()),
+    );
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
@@ -283,7 +303,12 @@ pub async fn root_password(
     if req.password.len() < 8 {
         return Err(ApiError::BadRequest("password >= 8 chars".into()));
     }
-    audit(&app, &username(&session).await, "system.root_password", None);
+    audit(
+        &app,
+        &username(&session).await,
+        "system.root_password",
+        None,
+    );
     if app.engine.sysroot.is_real_root() {
         use std::io::Write;
         let mut child = std::process::Command::new("chpasswd")

@@ -32,9 +32,10 @@ impl IntoResponse for ApiError {
             ApiError::NotFound => (StatusCode::NOT_FOUND, "not found".to_string()),
             ApiError::BadRequest(m) => (StatusCode::BAD_REQUEST, m.clone()),
             ApiError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized".to_string()),
-            ApiError::Forbidden(role, action) => {
-                (StatusCode::FORBIDDEN, format!("role {role} may not {action}"))
-            }
+            ApiError::Forbidden(role, action) => (
+                StatusCode::FORBIDDEN,
+                format!("role {role} may not {action}"),
+            ),
             ApiError::Conflict(m) => (StatusCode::CONFLICT, m.clone()),
             ApiError::NotReady(m) => (StatusCode::SERVICE_UNAVAILABLE, m.clone()),
             ApiError::Engine(m) => (StatusCode::UNPROCESSABLE_ENTITY, m.clone()),
@@ -64,7 +65,9 @@ impl From<webconfig_engine::StoreError> for ApiError {
 impl From<webconfig_engine::ApplyError> for ApiError {
     fn from(e: webconfig_engine::ApplyError) -> Self {
         match e {
-            webconfig_engine::ApplyError::Validation { message, .. } => ApiError::BadRequest(message),
+            webconfig_engine::ApplyError::Validation { message, .. } => {
+                ApiError::BadRequest(message)
+            }
             other => ApiError::Engine(other.to_string()),
         }
     }
@@ -83,7 +86,9 @@ impl From<webconfig_engine::users::UserError> for ApiError {
             webconfig_engine::users::UserError::Exists(_) => ApiError::Conflict(e.to_string()),
             webconfig_engine::users::UserError::LastAdmin => ApiError::Conflict(e.to_string()),
             webconfig_engine::users::UserError::InvalidCredentials => ApiError::Unauthorized,
-            webconfig_engine::users::UserError::InvalidRole(_) => ApiError::BadRequest(e.to_string()),
+            webconfig_engine::users::UserError::InvalidRole(_) => {
+                ApiError::BadRequest(e.to_string())
+            }
             other => ApiError::BadRequest(other.to_string()),
         }
     }

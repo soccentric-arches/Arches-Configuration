@@ -59,7 +59,12 @@ impl AlertEngine {
     /// Evaluate all rules against `vitals` at wall-clock `now_secs` (supplied
     /// by caller). Returns the set of events to log/emit this tick (fires and
     /// clears). Pure function of inputs + internal state; no I/O.
-    pub fn evaluate(&mut self, rules: &[AlertRule], vitals: &Vitals, now_secs: u64) -> Vec<AlertEvent> {
+    pub fn evaluate(
+        &mut self,
+        rules: &[AlertRule],
+        vitals: &Vitals,
+        now_secs: u64,
+    ) -> Vec<AlertEvent> {
         let mut out = Vec::new();
         let mut seen: HashMap<String, ()> = HashMap::new();
         for rule in rules {
@@ -104,10 +109,7 @@ impl AlertEngine {
     }
 
     pub fn is_firing(&self, rule_id: &str) -> bool {
-        self.states
-            .get(rule_id)
-            .map(|s| s.firing)
-            .unwrap_or(false)
+        self.states.get(rule_id).map(|s| s.firing).unwrap_or(false)
     }
 }
 
@@ -136,7 +138,12 @@ fn resolve_metric(metric: &str, vitals: &Vitals) -> Option<f64> {
             .map(|z| z.temp_millideg_c as f64 / 1000.0);
     }
     if metric == "disk.pct" {
-        return vitals.mounts.iter().map(used_pct).fold(0.0_f64, f64::max).into_option();
+        return vitals
+            .mounts
+            .iter()
+            .map(used_pct)
+            .fold(0.0_f64, f64::max)
+            .into_option();
     }
     if metric == "memory.pct" {
         if vitals.mem_total_kb == 0 {
@@ -192,7 +199,10 @@ impl AlertHistory {
         if let Some(parent) = self.path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let mut f = OpenOptions::new().create(true).append(true).open(&self.path)?;
+        let mut f = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.path)?;
         writeln!(f, "{}", serde_json::to_string(event)?)?;
         drop(f);
         self.trim()?;
@@ -318,7 +328,7 @@ mod tests {
         let rules = vec![rule("hot", "temp", ">", 85.0, 60)];
         eng.evaluate(&rules, &vitals(90.0), 0);
         eng.evaluate(&rules, &vitals(90.0), 60); // fires
-        // brief dip then back up — must hold a fresh 60s, not refire instantly
+                                                 // brief dip then back up — must hold a fresh 60s, not refire instantly
         eng.evaluate(&rules, &vitals(40.0), 61); // clear
         let e = eng.evaluate(&rules, &vitals(90.0), 62);
         assert!(e.is_empty(), "should not refire immediately");

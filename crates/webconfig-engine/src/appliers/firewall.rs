@@ -7,7 +7,7 @@
 
 use std::sync::Mutex;
 
-use crate::applier::{Applier, ApplyError, ApplyOutcome, FileBackup, run_cmd};
+use crate::applier::{run_cmd, Applier, ApplyError, ApplyOutcome, FileBackup};
 use crate::store::Config;
 use crate::sysroot::Sysroot;
 
@@ -133,7 +133,13 @@ impl Applier for FirewallApplier {
         if sysroot.is_real_root() {
             // `nft -f` the generated file. On failure, restore the prior file
             // before returning so we never leave a broken ruleset in place.
-            if let Err(e) = run_cmd("nft", &["-f", path.to_str().unwrap_or("/etc/nftables.d/webconfig.nft")]) {
+            if let Err(e) = run_cmd(
+                "nft",
+                &[
+                    "-f",
+                    path.to_str().unwrap_or("/etc/nftables.d/webconfig.nft"),
+                ],
+            ) {
                 let _ = self.backup.lock().unwrap().take().unwrap().restore();
                 return Err(e);
             }

@@ -134,7 +134,10 @@ impl EngineBridge {
         .await
         .map_err(|_| ApiError::Internal)??;
 
-        if let ApplyOutcome::Provisional { confirm_window_secs } = &outcome {
+        if let ApplyOutcome::Provisional {
+            confirm_window_secs,
+        } = &outcome
+        {
             self.confirm
                 .set(PendingConfirm {
                     applier_id: applier_id.clone(),

@@ -29,11 +29,7 @@ pub async fn events(
             serde_json::json!({ "tick": i }).to_string()
         };
         let kind = if i % 2 == 0 { "vitals" } else { "heartbeat" };
-        Ok::<_, Infallible>(
-            Event::default()
-                .event(kind)
-                .data(payload),
-        )
+        Ok::<_, Infallible>(Event::default().event(kind).data(payload))
     });
 
     Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15))))

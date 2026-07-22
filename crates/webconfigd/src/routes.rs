@@ -2,12 +2,14 @@
 //! assets, JSON REST, one SSE endpoint).
 
 use axum::middleware::{from_fn, from_fn_with_state};
-use axum::routing::{get, post, put, delete};
+use axum::routing::{delete, get, post, put};
 use axum::Router;
 use tower_http::services::{ServeDir, ServeFile};
 use tower_sessions::{MemoryStore, SameSite, SessionManagerLayer};
 
-use crate::api::{alerts, io, logs, meta, monitoring, network, security, services, system, updates};
+use crate::api::{
+    alerts, io, logs, meta, monitoring, network, security, services, system, updates,
+};
 use crate::auth;
 use crate::csrf;
 use crate::sse;
@@ -55,7 +57,10 @@ pub fn build_router(state: AppState, static_dir: std::path::PathBuf) -> Router {
         .route("/network/confirm", post(network::confirm))
         .route("/network/rollback", post(network::rollback))
         .route("/network/scan", get(network::scan))
-        .route("/network/connectivity-test", post(network::connectivity_test))
+        .route(
+            "/network/connectivity-test",
+            post(network::connectivity_test),
+        )
         // Services & Apps (§4.3)
         .route("/services", get(services::list))
         .route("/services/health", get(services::health_strip))
@@ -64,10 +69,16 @@ pub fn build_router(state: AppState, static_dir: std::path::PathBuf) -> Router {
         .route("/services/:unit/restart", post(services::restart))
         .route("/services/:unit/enabled", put(services::set_enabled))
         .route("/services/:unit/journal", get(services::journal))
-        .route("/services/mqtt", get(services::get_mqtt).put(services::put_mqtt))
+        .route(
+            "/services/mqtt",
+            get(services::get_mqtt).put(services::put_mqtt),
+        )
         .route("/services/mqtt/test", post(services::test_mqtt))
         .route("/schemas", get(services::schemas))
-        .route("/apps/:id/settings", get(services::get_app_settings).put(services::put_app_settings))
+        .route(
+            "/apps/:id/settings",
+            get(services::get_app_settings).put(services::put_app_settings),
+        )
         // Updates (§4.4)
         .route("/updates/slots", get(updates::slots))
         .route("/updates/install", post(updates::install))
@@ -129,7 +140,10 @@ pub fn build_router(state: AppState, static_dir: std::path::PathBuf) -> Router {
 /// A no-op-by-default middleware that sets a `Strict-Transport-Security` hint
 /// on HTTPS requests (spec §4.8). On plain HTTP (first-boot opt-in) it is
 /// inert. The actual redirect lives in the listener wiring.
-async fn http_to_https_hint(req: axum::extract::Request, next: axum::middleware::Next) -> axum::response::Response {
+async fn http_to_https_hint(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
     use axum::http::header;
     let mut resp = next.run(req).await;
     // Strict-Transport-Security on all responses (spec §4.8). The actual

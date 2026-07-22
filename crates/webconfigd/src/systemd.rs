@@ -104,7 +104,8 @@ impl ZbusSystemd {
 trait Manager {
     fn start_unit(&self, name: &str, mode: &str) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
     fn stop_unit(&self, name: &str, mode: &str) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
-    fn restart_unit(&self, name: &str, mode: &str) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
+    fn restart_unit(&self, name: &str, mode: &str)
+        -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
 }
 
 #[async_trait]
@@ -112,7 +113,11 @@ impl SystemdClient for ZbusSystemd {
     async fn status(&self, unit: &str) -> Result<UnitState, SystemdError> {
         let out = webconfig_engine::applier::run_cmd(
             "systemctl",
-            &["show", unit, "--property=LoadState,ActiveState,SubState,UnitFileState"],
+            &[
+                "show",
+                unit,
+                "--property=LoadState,ActiveState,SubState,UnitFileState",
+            ],
         )
         .map_err(|e| SystemdError::Dbus(e.to_string()))?;
         let mut load = String::new();

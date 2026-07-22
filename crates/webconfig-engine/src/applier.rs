@@ -51,7 +51,11 @@ pub enum ApplyError {
     #[error("dbus error: {0}")]
     Dbus(String),
     #[error("command `{cmd}` failed (exit {code:?}): {stderr}")]
-    Command { cmd: String, code: Option<i32>, stderr: String },
+    Command {
+        cmd: String,
+        code: Option<i32>,
+        stderr: String,
+    },
 }
 
 /// The applier trait, exactly as specified (spec §3). Synchronous; callers run

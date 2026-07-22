@@ -13,7 +13,10 @@ use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 
 /// `GET /api/v1/alerts` — rules + firing state + history.
-pub async fn get(State(app): State<AppState>, _role: AuthRole) -> ApiResult<Json<serde_json::Value>> {
+pub async fn get(
+    State(app): State<AppState>,
+    _role: AuthRole,
+) -> ApiResult<Json<serde_json::Value>> {
     let cfg = app.engine.load()?;
     let history = AlertHistory::new(app.engine.sysroot.webconfig_dir().join("alert.jsonl"), 1000)
         .read_all()
@@ -38,12 +41,10 @@ pub async fn put(
         validate_rule(r)?;
     }
     let user = username(&session).await;
-    let cfg = app
-        .engine
-        .update(|c| {
-            c.alerts = req.clone();
-            Ok(())
-        })?;
+    let cfg = app.engine.update(|c| {
+        c.alerts = req.clone();
+        Ok(())
+    })?;
     audit(&app, &user, "alerts.put", None);
     Ok(Json(serde_json::to_value(&cfg.alerts).unwrap_or_default()))
 }
@@ -52,11 +53,11 @@ fn validate_rule(r: &AlertRule) -> ApiResult<()> {
     if r.id.is_empty() {
         return Err(ApiError::BadRequest("rule id empty".into()));
     }
-    if !matches!(
-        r.comparison.as_str(),
-        ">" | "<" | ">=" | "<=" | "==" | "!="
-    ) {
-        return Err(ApiError::BadRequest(format!("rule {} bad comparison", r.id)));
+    if !matches!(r.comparison.as_str(), ">" | "<" | ">=" | "<=" | "==" | "!=") {
+        return Err(ApiError::BadRequest(format!(
+            "rule {} bad comparison",
+            r.id
+        )));
     }
     Ok(())
 }

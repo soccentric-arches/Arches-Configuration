@@ -55,12 +55,10 @@ pub async fn put(
 ) -> ApiResult<Json<serde_json::Value>> {
     role.require_admin("network.put")?;
     let user = username(&session).await;
-    let cfg = app
-        .engine
-        .update(|c| {
-            c.network = req.clone();
-            Ok(())
-        })?;
+    let cfg = app.engine.update(|c| {
+        c.network = req.clone();
+        Ok(())
+    })?;
     audit(&app, &user, "network.put", None);
     Ok(Json(serde_json::to_value(&cfg.network).unwrap_or_default()))
 }
@@ -78,11 +76,10 @@ pub async fn apply(
     app.engine.validate("firewall").await?;
     let outcome = apply_and_audit(&app, &user, "networkd").await?;
     let _ = apply_and_audit(&app, &user, "firewall").await?;
-    let provisional = matches!(
-        outcome,
-        webconfig_engine::ApplyOutcome::Provisional { .. }
-    );
-    let window = if let webconfig_engine::ApplyOutcome::Provisional { confirm_window_secs } = outcome
+    let provisional = matches!(outcome, webconfig_engine::ApplyOutcome::Provisional { .. });
+    let window = if let webconfig_engine::ApplyOutcome::Provisional {
+        confirm_window_secs,
+    } = outcome
     {
         confirm_window_secs
     } else {
@@ -103,7 +100,12 @@ pub async fn confirm(
     role.require_admin("network.confirm")?;
     let user = username(&session).await;
     let ok = app.engine.confirm_pending().await?;
-    audit(&app, &user, "network.confirm", Some(format!("confirmed={ok}")));
+    audit(
+        &app,
+        &user,
+        "network.confirm",
+        Some(format!("confirmed={ok}")),
+    );
     Ok(Json(serde_json::json!({ "confirmed": ok })))
 }
 
@@ -125,10 +127,7 @@ pub async fn rollback(
 /// `GET /api/v1/network/scan` — Wi-Fi scan (SSID/signal list, spec §4.2).
 /// On the real root shells out to `iw dev wlan0 scan`; fake sysroot returns
 /// the manifest-declared wlan0 + an empty list so the UI renders.
-pub async fn scan(
-    State(app): State<AppState>,
-    _role: AuthRole,
-) -> ApiResult<Json<Vec<WifiScan>>> {
+pub async fn scan(State(app): State<AppState>, _role: AuthRole) -> ApiResult<Json<Vec<WifiScan>>> {
     if app.engine.sysroot.is_real_root() {
         let out = webconfig_engine::applier::run_cmd("iw", &["dev", "wlan0", "scan"])
             .map_err(ApiError::from)?;
@@ -148,7 +147,11 @@ pub async fn scan(
                 }
             } else if let Some(s) = line.strip_prefix("signal: ") {
                 if let Some(c) = cur.as_mut() {
-                    c.signal_dbm = s.split_whitespace().next().and_then(|n| n.parse().ok()).unwrap_or(0);
+                    c.signal_dbm = s
+                        .split_whitespace()
+                        .next()
+                        .and_then(|n| n.parse().ok())
+                        .unwrap_or(0);
                 }
             }
         }

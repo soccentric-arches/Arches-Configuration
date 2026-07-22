@@ -261,7 +261,13 @@ mod tests {
     use super::*;
     use crate::store::network::Interface;
 
-    fn iface(name: &str, dhcp: bool, addr: Option<&str>, prefix: Option<u8>, gw: Option<&str>) -> Interface {
+    fn iface(
+        name: &str,
+        dhcp: bool,
+        addr: Option<&str>,
+        prefix: Option<u8>,
+        gw: Option<&str>,
+    ) -> Interface {
         Interface {
             name: name.into(),
             enabled: true,
@@ -277,7 +283,13 @@ mod tests {
 
     #[test]
     fn renders_network_unit_for_static_iface() {
-        let i = iface("eth0", false, Some("192.168.1.10"), Some(24), Some("192.168.1.1"));
+        let i = iface(
+            "eth0",
+            false,
+            Some("192.168.1.10"),
+            Some(24),
+            Some("192.168.1.1"),
+        );
         let out = NetworkdApplier::render(&i);
         assert!(out.contains("Name=eth0"));
         assert!(out.contains("Address=192.168.1.10/24"));
@@ -313,8 +325,12 @@ mod tests {
         let sys = Sysroot::at("/tmp/never");
         let a = NetworkdApplier::new();
         let mut c = Config::default();
-        c.network.interfaces.push(iface("eth0", false, Some("192.168.1.10"), Some(24), None));
-        c.network.interfaces.push(iface("eth1", false, Some("192.168.1.10"), Some(24), None));
+        c.network
+            .interfaces
+            .push(iface("eth0", false, Some("192.168.1.10"), Some(24), None));
+        c.network
+            .interfaces
+            .push(iface("eth1", false, Some("192.168.1.10"), Some(24), None));
         let err = a.validate(&sys, &c).unwrap_err();
         assert!(err.to_string().contains("duplicate IP"));
     }
@@ -326,11 +342,19 @@ mod tests {
         let a = NetworkdApplier::new();
         let mut c = Config::default();
         c.network.confirm_window_secs = 30;
-        c.network.interfaces.push(iface("eth0", false, Some("192.168.1.10"), Some(24), Some("192.168.1.1")));
+        c.network.interfaces.push(iface(
+            "eth0",
+            false,
+            Some("192.168.1.10"),
+            Some(24),
+            Some("192.168.1.1"),
+        ));
         let outcome = a.apply(&sys, &c).unwrap();
         assert!(matches!(
             outcome,
-            ApplyOutcome::Provisional { confirm_window_secs: 30 }
+            ApplyOutcome::Provisional {
+                confirm_window_secs: 30
+            }
         ));
         let f = sys.join("/etc/systemd/network/10-eth0.network");
         assert!(f.exists());
@@ -345,7 +369,9 @@ mod tests {
         let sys = Sysroot::at(dir.path());
         let a = NetworkdApplier::new();
         let mut c = Config::default();
-        c.network.interfaces.push(iface("eth0", true, None, None, None));
+        c.network
+            .interfaces
+            .push(iface("eth0", true, None, None, None));
         let outcome = a.apply(&sys, &c).unwrap();
         assert!(matches!(outcome, ApplyOutcome::Committed));
     }
@@ -353,9 +379,21 @@ mod tests {
     #[test]
     fn v4_subnet_check_examples() {
         use std::net::Ipv4Addr;
-        assert!(v4_in_subnet("192.168.1.10".parse().unwrap(), 24, "192.168.1.1".parse::<Ipv4Addr>().unwrap()));
-        assert!(!v4_in_subnet("192.168.1.10".parse().unwrap(), 24, "192.168.2.1".parse::<Ipv4Addr>().unwrap()));
-        assert!(v4_in_subnet("10.0.0.1".parse().unwrap(), 8, "10.255.255.254".parse::<Ipv4Addr>().unwrap()));
+        assert!(v4_in_subnet(
+            "192.168.1.10".parse().unwrap(),
+            24,
+            "192.168.1.1".parse::<Ipv4Addr>().unwrap()
+        ));
+        assert!(!v4_in_subnet(
+            "192.168.1.10".parse().unwrap(),
+            24,
+            "192.168.2.1".parse::<Ipv4Addr>().unwrap()
+        ));
+        assert!(v4_in_subnet(
+            "10.0.0.1".parse().unwrap(),
+            8,
+            "10.255.255.254".parse::<Ipv4Addr>().unwrap()
+        ));
     }
 
     #[test]

@@ -141,12 +141,27 @@ mod tests {
     #[test]
     fn every_platform_manifest_parses() {
         let cases: &[(&str, &str)] = &[
-            ("arches", include_str!("../../../board-manifests/arches.json")),
-            ("acadia", include_str!("../../../board-manifests/acadia.json")),
+            (
+                "arches",
+                include_str!("../../../board-manifests/arches.json"),
+            ),
+            (
+                "acadia",
+                include_str!("../../../board-manifests/acadia.json"),
+            ),
             ("zion", include_str!("../../../board-manifests/zion.json")),
-            ("pinnacle", include_str!("../../../board-manifests/pinnacle.json")),
-            ("joshua", include_str!("../../../board-manifests/joshua.json")),
-            ("sequoia", include_str!("../../../board-manifests/sequoia.json")),
+            (
+                "pinnacle",
+                include_str!("../../../board-manifests/pinnacle.json"),
+            ),
+            (
+                "joshua",
+                include_str!("../../../board-manifests/joshua.json"),
+            ),
+            (
+                "sequoia",
+                include_str!("../../../board-manifests/sequoia.json"),
+            ),
         ];
         for (platform, raw) in cases {
             let m: BoardManifest = serde_json::from_str(raw).unwrap();

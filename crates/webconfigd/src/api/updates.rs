@@ -72,7 +72,12 @@ pub async fn reboot_to_apply(
     session: Session,
 ) -> ApiResult<Json<serde_json::Value>> {
     role.require_admin("updates.reboot_to_apply")?;
-    audit(&app, &username(&session).await, "updates.reboot_to_apply", None);
+    audit(
+        &app,
+        &username(&session).await,
+        "updates.reboot_to_apply",
+        None,
+    );
     app.update_backend.reboot_to_apply().map_err(map_upd)?;
     Ok(Json(serde_json::json!({ "rebooting": true })))
 }
@@ -86,11 +91,15 @@ pub async fn ota_check(
     let cfg = app.engine.load()?.updates.ota;
     let url = cfg.server_url.unwrap_or_default();
     if url.is_empty() {
-        return Ok(Json(serde_json::json!({ "checked": false, "reason": "no server url" })));
+        return Ok(Json(
+            serde_json::json!({ "checked": false, "reason": "no server url" }),
+        ));
     }
     // v1: notify-only — we do not download/apply. Real check would query the
     // RAUC HawKD server; here we report the configured URL (spec §4.4).
-    Ok(Json(serde_json::json!({ "checked": true, "server_url": url, "update_available": null })))
+    Ok(Json(
+        serde_json::json!({ "checked": true, "server_url": url, "update_available": null }),
+    ))
 }
 
 /// `GET /api/v1/updates/backup` — download the config store as a file (spec

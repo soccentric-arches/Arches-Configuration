@@ -26,12 +26,10 @@ pub async fn put(
 ) -> ApiResult<Json<SecurityConfig>> {
     role.require_admin("security.put")?;
     let user = username(&session).await;
-    let cfg = app
-        .engine
-        .update(|c| {
-            c.security = req.clone();
-            Ok(())
-        })?;
+    let cfg = app.engine.update(|c| {
+        c.security = req.clone();
+        Ok(())
+    })?;
     audit(&app, &user, "security.put", None);
     Ok(Json(cfg.security))
 }
@@ -76,7 +74,9 @@ pub async fn wg_pubkey(
     } else {
         String::new()
     };
-    Ok(Json(serde_json::json!({ "public_key": pubkey, "has_private_key": has })))
+    Ok(Json(
+        serde_json::json!({ "public_key": pubkey, "has_private_key": has }),
+    ))
 }
 
 /// `POST /api/v1/security/csr` — generate a CSR (spec §4.8). Returns the PEM
@@ -87,7 +87,8 @@ pub async fn generate_csr(
     Json(req): Json<CsrRequest>,
 ) -> ApiResult<Json<serde_json::Value>> {
     role.require_admin("security.csr")?;
-    let (csr, key) = crate::tls::generate_csr(&req.cn).map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    let (csr, key) =
+        crate::tls::generate_csr(&req.cn).map_err(|e| ApiError::BadRequest(e.to_string()))?;
     audit(&app, &"", "security.csr", Some(req.cn.clone()));
     Ok(Json(serde_json::json!({ "csr": csr, "private_key": key })))
 }

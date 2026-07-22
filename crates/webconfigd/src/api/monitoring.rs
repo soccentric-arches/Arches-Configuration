@@ -24,7 +24,9 @@ pub async fn emmc_wear(
     Path(dev): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
     let wear = monitoring::read_emmc_wear(&app.engine.sysroot, &dev);
-    Ok(Json(serde_json::json!({ "dev": dev, "life_time_estimate": wear })))
+    Ok(Json(
+        serde_json::json!({ "dev": dev, "life_time_estimate": wear }),
+    ))
 }
 
 /// `GET /api/v1/monitoring/tiles` — platform tiles declared in the manifest

@@ -45,7 +45,10 @@ impl AuditLog {
             std::fs::create_dir_all(parent)?;
         }
         let line = serde_json::to_string(entry)?;
-        let mut f = OpenOptions::new().create(true).append(true).open(&self.path)?;
+        let mut f = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.path)?;
         writeln!(f, "{line}")?;
         drop(f);
         self.rotate_if_needed()?;

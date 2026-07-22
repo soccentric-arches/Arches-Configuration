@@ -5,8 +5,8 @@
 //! the mock so CI runs with no hardware (spec §6); the real root uses RAUC.
 
 pub use webconfig_engine::update::{
-    BundleManifest, InstallProgress, InstallStage, MockUpdateBackend, RaucUpdateBackend,
-    SlotStatus, UpdateBackend, UpdateError, check_compatibility,
+    check_compatibility, BundleManifest, InstallProgress, InstallStage, MockUpdateBackend,
+    RaucUpdateBackend, SlotStatus, UpdateBackend, UpdateError,
 };
 
 use std::sync::Arc;

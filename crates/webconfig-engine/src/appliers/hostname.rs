@@ -11,7 +11,7 @@
 
 use std::sync::Mutex;
 
-use crate::applier::{Applier, ApplyError, ApplyOutcome, FileBackup, run_cmd};
+use crate::applier::{run_cmd, Applier, ApplyError, ApplyOutcome, FileBackup};
 use crate::store::Config;
 use crate::sysroot::Sysroot;
 

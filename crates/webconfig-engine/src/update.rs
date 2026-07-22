@@ -85,10 +85,7 @@ pub trait UpdateBackend: Send + Sync {
     /// Verify the bundle signature + compatibility, returning the manifest.
     /// Does not flash. Compatibility: bundle platform must equal the device
     /// platform (spec §4.4 — Arches bundle never flashes onto Acadia).
-    fn verify_bundle(
-        &self,
-        bundle_path: &str,
-    ) -> Result<BundleManifest, UpdateError>;
+    fn verify_bundle(&self, bundle_path: &str) -> Result<BundleManifest, UpdateError>;
 
     /// Install a verified bundle to the inactive slot, invoking `on_progress`
     /// for each stage. The caller must have already called `verify_bundle`.
@@ -164,10 +161,7 @@ impl UpdateBackend for MockUpdateBackend {
             percent: 100,
             message: "done".into(),
         });
-        self.installs
-            .lock()
-            .unwrap()
-            .push(bundle_path.to_string());
+        self.installs.lock().unwrap().push(bundle_path.to_string());
         Ok(())
     }
 
@@ -354,7 +348,11 @@ mod tests {
         let bundle = dir.path().join("update.raucb");
         std::fs::write(&bundle, b"FAKE").unwrap();
         // Manifest platform intentionally differs from BUILD_PLATFORM.
-        let wrong = if BUILD_PLATFORM == "acadia" { "arches" } else { "acadia" };
+        let wrong = if BUILD_PLATFORM == "acadia" {
+            "arches"
+        } else {
+            "acadia"
+        };
         std::fs::write(
             format!("{}.manifest.json", bundle.display()),
             serde_json::to_string(&BundleManifest {

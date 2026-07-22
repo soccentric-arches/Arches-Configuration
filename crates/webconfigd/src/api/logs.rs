@@ -42,9 +42,10 @@ pub async fn read(
     args.push("-n".into());
     args.push(limit.to_string());
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    let out = webconfig_engine::applier::run_cmd("journalctl", &refs)
-        .map_err(ApiError::from)?;
-    Ok(Json(serde_json::json!({ "lines": out.lines().collect::<Vec<_>>() })))
+    let out = webconfig_engine::applier::run_cmd("journalctl", &refs).map_err(ApiError::from)?;
+    Ok(Json(
+        serde_json::json!({ "lines": out.lines().collect::<Vec<_>>() }),
+    ))
 }
 
 #[derive(serde::Deserialize, Default)]
@@ -61,7 +62,10 @@ pub struct LogsQuery {
 }
 
 /// `GET /api/v1/logs/config` — journald config (spec §4.6).
-pub async fn get_config(State(app): State<AppState>, _role: AuthRole) -> ApiResult<Json<LogsConfig>> {
+pub async fn get_config(
+    State(app): State<AppState>,
+    _role: AuthRole,
+) -> ApiResult<Json<LogsConfig>> {
     Ok(Json(app.engine.load()?.logs))
 }
 
@@ -75,12 +79,10 @@ pub async fn put_config(
 ) -> ApiResult<Json<LogsConfig>> {
     role.require_admin("logs.put")?;
     let user = username(&session).await;
-    let cfg = app
-        .engine
-        .update(|c| {
-            c.logs = req.clone();
-            Ok(())
-        })?;
+    let cfg = app.engine.update(|c| {
+        c.logs = req.clone();
+        Ok(())
+    })?;
     let _ = apply_and_audit(&app, &user, "journald").await?;
     Ok(Json(cfg.logs))
 }

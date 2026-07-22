@@ -13,10 +13,10 @@
 #![forbid(unsafe_code)]
 #![warn(missing_debug_implementations, rust_2018_idioms)]
 
+pub mod alert;
 pub mod applier;
 pub mod appliers;
 pub mod audit;
-pub mod alert;
 pub mod manifest;
 pub mod monitoring;
 pub mod schema;

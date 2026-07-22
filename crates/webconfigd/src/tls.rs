@@ -43,8 +43,9 @@ pub fn ensure_self_signed(
     // rcgen: generate a self-signed cert. We use the minimal params that build
     // on all three targets (ring provider, no OpenSSL).
     let params = {
-        let mut p = rcgen::CertificateParams::new(vec![hostname.unwrap_or("webconfig").to_string()])
-            .map_err(|e| TlsError::Rcgen(e.to_string()))?;
+        let mut p =
+            rcgen::CertificateParams::new(vec![hostname.unwrap_or("webconfig").to_string()])
+                .map_err(|e| TlsError::Rcgen(e.to_string()))?;
         p.distinguished_name = rcgen::DistinguishedName::new();
         p.distinguished_name
             .push(rcgen::DnType::CommonName, hostname.unwrap_or("webconfig"));
@@ -66,13 +67,12 @@ pub fn server_config(cert_path: &Path, key_path: &Path) -> Result<ServerConfig, 
     let cert_pem = std::fs::read(cert_path)?;
     let key_pem = std::fs::read(key_path)?;
 
-    let certs: Vec<CertificateDer<'static>> =
-        rustls_pemfile::certs(&mut cert_pem.as_slice())
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| TlsError::Pem(e.to_string()))?
-            .into_iter()
-            .map(CertificateDer::from)
-            .collect();
+    let certs: Vec<CertificateDer<'static>> = rustls_pemfile::certs(&mut cert_pem.as_slice())
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| TlsError::Pem(e.to_string()))?
+        .into_iter()
+        .map(CertificateDer::from)
+        .collect();
 
     let key = rustls_pemfile::private_key(&mut key_pem.as_slice())
         .map_err(|e| TlsError::Pem(e.to_string()))?
@@ -93,10 +93,12 @@ pub fn acceptor(cert_path: &Path, key_path: &Path) -> Result<Arc<ServerConfig>, 
 /// Generate a CSR (PEM) for a customer CA to sign (spec §4.8). Uses a fresh
 /// keypair; the private key is returned alongside so the caller can store it.
 pub fn generate_csr(cn: &str) -> Result<(String, String), TlsError> {
-    let mut params =
-        rcgen::CertificateParams::new(vec![cn.to_string()]).map_err(|e| TlsError::Rcgen(e.to_string()))?;
+    let mut params = rcgen::CertificateParams::new(vec![cn.to_string()])
+        .map_err(|e| TlsError::Rcgen(e.to_string()))?;
     params.distinguished_name = rcgen::DistinguishedName::new();
-    params.distinguished_name.push(rcgen::DnType::CommonName, cn);
+    params
+        .distinguished_name
+        .push(rcgen::DnType::CommonName, cn);
     params.alg = &rcgen::PKCS_ECDSA_P256_SHA256;
     let cert = params
         .self_signed()

@@ -16,9 +16,9 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::CONFIG_SCHEMA_VERSION;
 use crate::schema::Schema;
 use crate::sysroot::Sysroot;
+use crate::CONFIG_SCHEMA_VERSION;
 
 #[derive(Debug, Error)]
 pub enum StoreError {
@@ -620,13 +620,13 @@ mod tests {
         file.config.system.hostname = Some("arches-01".into());
         store.commit(&file).unwrap();
 
-        let reloaded = ConfigStore::new(
-            Sysroot::at(dir.path()),
-            Schema::default_permissive(),
-        )
-        .load()
-        .unwrap();
-        assert_eq!(reloaded.config.system.hostname.as_deref(), Some("arches-01"));
+        let reloaded = ConfigStore::new(Sysroot::at(dir.path()), Schema::default_permissive())
+            .load()
+            .unwrap();
+        assert_eq!(
+            reloaded.config.system.hostname.as_deref(),
+            Some("arches-01")
+        );
     }
 
     #[test]
@@ -643,7 +643,8 @@ mod tests {
         store.commit(&file).unwrap();
 
         // Backup should hold the previous ("first") value.
-        let bak = std::fs::read_to_string(dir.path().join("data/webconfig/config.json.bak")).unwrap();
+        let bak =
+            std::fs::read_to_string(dir.path().join("data/webconfig/config.json.bak")).unwrap();
         assert!(bak.contains("first"));
         let cur = std::fs::read_to_string(dir.path().join("data/webconfig/config.json")).unwrap();
         assert!(cur.contains("second"));

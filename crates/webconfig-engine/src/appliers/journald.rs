@@ -8,7 +8,7 @@
 
 use std::sync::Mutex;
 
-use crate::applier::{Applier, ApplyError, ApplyOutcome, FileBackup, run_cmd};
+use crate::applier::{run_cmd, Applier, ApplyError, ApplyOutcome, FileBackup};
 use crate::store::Config;
 use crate::sysroot::Sysroot;
 
@@ -51,14 +51,20 @@ impl JournaldApplier {
         if l.storage != "volatile" && l.storage != "persistent" && !l.storage.is_empty() {
             return Err(ApplyError::Validation {
                 stage: crate::applier::ApplyStage::Validate,
-                message: format!("logs.storage must be volatile|persistent, got {:?}", l.storage),
+                message: format!(
+                    "logs.storage must be volatile|persistent, got {:?}",
+                    l.storage
+                ),
             });
         }
         if let Some(rs) = &l.remote_syslog {
             if rs.protocol != "udp" && rs.protocol != "tcp" {
                 return Err(ApplyError::Validation {
                     stage: crate::applier::ApplyStage::Validate,
-                    message: format!("remote syslog protocol must be udp|tcp, got {:?}", rs.protocol),
+                    message: format!(
+                        "remote syslog protocol must be udp|tcp, got {:?}",
+                        rs.protocol
+                    ),
                 });
             }
             if rs.host.is_empty() {
