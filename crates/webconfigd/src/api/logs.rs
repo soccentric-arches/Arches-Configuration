@@ -137,15 +137,29 @@ pub async fn audit_log(
     Ok(Json(app.audit.read_all().unwrap_or_default()))
 }
 
-/// `GET /api/v1/logs/download` — full journal export (spec §4.6).
+/// `GET /api/v1/logs/download?unit=` — full journal export, or a per-unit
+/// export when `unit` is given (spec §4.6: "full journal export and per-unit
+/// export").
 pub async fn download(
     State(app): State<AppState>,
     _role: AuthRole,
+    axum::extract::Query(q): axum::extract::Query<DownloadQuery>,
 ) -> ApiResult<Json<serde_json::Value>> {
     if !app.engine.sysroot.is_real_root() {
-        return Ok(Json(serde_json::json!({ "export": "" })));
+        return Ok(Json(serde_json::json!({ "export": "", "unit": q.unit })));
     }
-    let out = webconfig_engine::applier::run_cmd("journalctl", &["--no-pager"])
-        .map_err(ApiError::from)?;
-    Ok(Json(serde_json::json!({ "export": out })))
+    let mut args: Vec<String> = vec!["--no-pager".into()];
+    if !q.unit.is_empty() {
+        args.push("-u".into());
+        args.push(q.unit.clone());
+    }
+    let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    let out = webconfig_engine::applier::run_cmd("journalctl", &refs).map_err(ApiError::from)?;
+    Ok(Json(serde_json::json!({ "export": out, "unit": q.unit })))
+}
+
+#[derive(serde::Deserialize, Default)]
+pub struct DownloadQuery {
+    #[serde(default)]
+    pub unit: String,
 }
