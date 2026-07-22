@@ -16,13 +16,16 @@
 
 use std::sync::Mutex;
 
-use crate::applier::{run_cmd, Applier, ApplyError, ApplyOutcome};
+use crate::applier::{run_cmd, Applier, ApplyError, ApplyOutcome, FileBackup};
 use crate::store::Config;
 use crate::sysroot::Sysroot;
 
 #[derive(Debug)]
 pub struct TimeApplier {
     last: Mutex<Option<TimeSnapshot>>,
+    /// Backup of the timesyncd drop-in written to apply the NTP server list,
+    /// so rollback can restore the prior file (or its absence).
+    dropin_backup: Mutex<Option<FileBackup>>,
 }
 
 #[derive(Debug, Clone)]
@@ -34,11 +37,41 @@ struct TimeSnapshot {
     gps: bool,
 }
 
+/// systemd-timesyncd drop-in carrying the operator-configured NTP server list
+/// (spec §4.1). Written only when NTP is the active sync source.
+const TIMESYNCD_DROPIN: &str = "/etc/systemd/timesyncd.conf.d/webconfig.conf";
+
 impl TimeApplier {
     pub fn new() -> Self {
         Self {
             last: Mutex::new(None),
+            dropin_backup: Mutex::new(None),
         }
+    }
+
+    fn validate_ntp_server(server: &str) -> Result<(), ApplyError> {
+        let s = server.trim();
+        if s.is_empty() {
+            return Err(ApplyError::Validation {
+                stage: crate::applier::ApplyStage::Validate,
+                message: "ntp_servers contains an empty entry".into(),
+            });
+        }
+        // Hostnames, IPv4, and bracketless IPv6 share this character set; we
+        // reject anything that could break out of the conf line (whitespace,
+        // quotes, shell metacharacters) — the value is interpolated into a
+        // space-separated `NTP=` line, never a shell, but tightening here keeps
+        // the drop-in unambiguous.
+        if !s
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b':' || b == b'-')
+        {
+            return Err(ApplyError::Validation {
+                stage: crate::applier::ApplyStage::Validate,
+                message: format!("ntp_servers entry has invalid characters: {server}"),
+            });
+        }
+        Ok(())
     }
 
     fn zoneinfo(sysroot: &Sysroot, tz: &str) -> std::path::PathBuf {
@@ -65,6 +98,35 @@ impl TimeApplier {
                 message: format!("unknown timezone: {tz}"),
             });
         }
+        Ok(())
+    }
+
+    /// Write (or clear) the timesyncd drop-in carrying the NTP server list and
+    /// snapshot the prior file so [`rollback`] can restore it. Empty list →
+    /// remove the drop-in so timesyncd falls back to its default pools.
+    fn apply_ntp_dropin(&self, sysroot: &Sysroot, servers: &[String]) -> Result<(), ApplyError> {
+        for s in servers {
+            Self::validate_ntp_server(s)?;
+        }
+        let path = sysroot.join(TIMESYNCD_DROPIN);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let backup = FileBackup::capture(path.clone())?;
+        if servers.is_empty() {
+            if path.exists() {
+                std::fs::remove_file(&path)?;
+            }
+        } else {
+            let joined = servers
+                .iter()
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join(" ");
+            std::fs::write(&path, format!("[Time]\nNTP={joined}\n"))?;
+        }
+        *self.dropin_backup.lock().unwrap() = Some(backup);
         Ok(())
     }
 
@@ -100,6 +162,9 @@ impl Applier for TimeApplier {
     }
 
     fn validate(&self, sysroot: &Sysroot, config: &Config) -> Result<(), ApplyError> {
+        for server in &config.system.ntp_servers {
+            Self::validate_ntp_server(server)?;
+        }
         if let Some(tz) = &config.system.time.timezone {
             Self::validate_timezone(sysroot, tz)?;
         }
@@ -220,6 +285,15 @@ impl Applier for TimeApplier {
         } else if sysroot.is_real_root() {
             let _ = run_cmd("systemctl", &["stop", "gpsd.service"]);
         }
+        // Apply the operator-configured NTP server list as a timesyncd drop-in
+        // (spec §4.1). `timedatectl set-ntp` only flips the unit on/off; the
+        // server list is a separate file systemd-timesyncd reads at start.
+        self.apply_ntp_dropin(sysroot, &config.system.ntp_servers)?;
+        if sysroot.is_real_root() && t.ntp_enabled && !t.ptp_enabled {
+            // Pick up the freshly written drop-in.
+            let _ = run_cmd("systemctl", &["restart", "systemd-timesyncd.service"]);
+        }
+
         if sysroot.is_real_root() {
             run_cmd(
                 "timedatectl",
@@ -244,6 +318,14 @@ impl Applier for TimeApplier {
     }
 
     fn rollback(&self, sysroot: &Sysroot) -> Result<(), ApplyError> {
+        // Restore the prior timesyncd drop-in (or its absence) first, so a
+        // restart picks up the reverted NTP server list.
+        if let Some(b) = self.dropin_backup.lock().unwrap().take() {
+            b.restore()?;
+            if sysroot.is_real_root() {
+                let _ = run_cmd("systemctl", &["restart", "systemd-timesyncd.service"]);
+            }
+        }
         if let Some(prev) = self.last.lock().unwrap().take() {
             if sysroot.is_real_root() {
                 if let Some(tz) = prev.timezone {
@@ -360,6 +442,52 @@ mod tests {
         c.system.time.gps_device = Some("/dev/ttyUSB0".into());
         c.system.time.ptp_enabled = true;
         c.system.time.ptp_interface = Some("eth0".into());
+        assert!(a.validate(&sys, &c).is_err());
+    }
+
+    #[test]
+    fn ntp_dropin_writes_server_list_to_fake_sysroot() {
+        let dir = tempfile::tempdir().unwrap();
+        let sys = Sysroot::at(dir.path());
+        let a = TimeApplier::new();
+        let mut c = Config::default();
+        c.system.time.ntp_enabled = true;
+        c.system.ntp_servers = vec!["pool.ntp.org".into(), "time.example.com".into()];
+        a.apply(&sys, &c).unwrap();
+        let written = std::fs::read_to_string(
+            dir.path()
+                .join("etc/systemd/timesyncd.conf.d/webconfig.conf"),
+        )
+        .unwrap();
+        assert!(written.contains("[Time]"));
+        assert!(written.contains("NTP=pool.ntp.org time.example.com"));
+    }
+
+    #[test]
+    fn empty_ntp_servers_removes_dropin() {
+        let dir = tempfile::tempdir().unwrap();
+        let sys = Sysroot::at(dir.path());
+        let a = TimeApplier::new();
+        let mut c = Config::default();
+        c.system.time.ntp_enabled = true;
+        c.system.ntp_servers = vec!["pool.ntp.org".into()];
+        a.apply(&sys, &c).unwrap();
+        let path = dir
+            .path()
+            .join("etc/systemd/timesyncd.conf.d/webconfig.conf");
+        assert!(path.exists());
+
+        c.system.ntp_servers = Vec::new();
+        a.apply(&sys, &c).unwrap();
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn rejects_invalid_ntp_server() {
+        let a = TimeApplier::new();
+        let sys = Sysroot::at("/tmp/never");
+        let mut c = Config::default();
+        c.system.ntp_servers = vec!["server; rm -rf /".into()];
         assert!(a.validate(&sys, &c).is_err());
     }
 }

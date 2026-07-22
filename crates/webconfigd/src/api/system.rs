@@ -36,7 +36,9 @@ pub async fn put(
     Ok(Json(serde_json::to_value(&cfg.system).unwrap_or_default()))
 }
 
-/// `POST /api/v1/system/apply` — apply hostname + time appliers (spec §4.1).
+/// `POST /api/v1/system/apply` — apply hostname + time + ssh appliers (spec
+/// §4.1). The ssh applier writes authorized_keys and toggles sshd /
+/// serial-getty units.
 pub async fn apply(
     State(app): State<AppState>,
     role: AuthRole,
@@ -46,9 +48,13 @@ pub async fn apply(
     let user = username(&session).await;
     app.engine.validate("hostname").await?;
     app.engine.validate("time").await?;
+    app.engine.validate("ssh").await?;
     let _ = apply_and_audit(&app, &user, "hostname").await?;
     let _ = apply_and_audit(&app, &user, "time").await?;
-    Ok(Json(serde_json::json!({ "applied": ["hostname","time"] })))
+    let _ = apply_and_audit(&app, &user, "ssh").await?;
+    Ok(Json(
+        serde_json::json!({ "applied": ["hostname","time","ssh"] }),
+    ))
 }
 
 /// `GET /api/v1/system/info` — read-only device info (spec §4.1).
@@ -75,6 +81,26 @@ pub async fn info(State(app): State<AppState>) -> ApiResult<Json<serde_json::Val
             })
             .unwrap_or_else(unknown)
     };
+    // Per-interface MAC addresses (spec §4.1: "uptime, MACs"). Read from the
+    // sysroot's `/sys/class/net/*/address`, skipping the loopback. The loopback
+    // has no usable MAC and would only clutter the map.
+    let mut macs = std::collections::BTreeMap::new();
+    if let Ok(entries) = std::fs::read_dir(sysroot.join("/sys/class/net")) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name == "lo" {
+                continue;
+            }
+            if let Ok(addr) =
+                std::fs::read_to_string(sysroot.join(format!("/sys/class/net/{name}/address")))
+            {
+                let addr = addr.trim().to_string();
+                if !addr.is_empty() {
+                    macs.insert(name, addr);
+                }
+            }
+        }
+    }
     let os_version = kv
         .get("PRETTY_NAME")
         .or_else(|| kv.get("VERSION"))
@@ -109,6 +135,7 @@ pub async fn info(State(app): State<AppState>) -> ApiResult<Json<serde_json::Val
         "software_version": env!("CARGO_PKG_VERSION"),
         "software_revision": std::env::var("WEBCONFIG_REVISION").unwrap_or_else(|_| unknown()),
         "os_release": kv,
+        "macs": macs,
         "uptime_secs": webconfig_engine::monitoring::read_vitals(sysroot).uptime_secs,
     })))
 }

@@ -75,6 +75,19 @@ See `docs/webconfig-spec.md` for the full spec.
 - Native dialogs (`confirm()`/`prompt()`) are banned in the frontend — they
   block the main thread and look dated. Use `confirmDialog`/`promptDialog`/
   `formDialog` from `frontend/components/modal.js` instead.
+- `system.apply` runs three appliers in order: `hostname`, `time`, `ssh` (spec
+  §4.1). Register every system applier in `appliers::all()` AND validate +
+  apply it explicitly in `system::apply` — `apply_all()` is not used on this
+  route (it runs platform appliers like networkd/can/fireguard via their own
+  section routes).
+- The NTP server list lives at `config.system.ntp_servers` (a `Vec<String>`),
+  NOT under `config.system.time`. The time applier writes it to a
+  `systemd-timesyncd.conf.d/webconfig.conf` drop-in (`[Time]\nNTP=…`) with a
+  `FileBackup` for rollback and restarts `systemd-timesyncd` on the real root
+  so it picks the new list up; `timedatectl set-ntp` only flips the unit on/off.
+- `/system/info` returns per-interface MACs under `macs` (interface→address),
+  read from `<sysroot>/sys/class/net/<iface>/address` (loopback skipped), plus
+  `uptime_secs` (spec §4.1: "uptime, MACs").
 
 ## Don't
 
@@ -94,6 +107,11 @@ See `docs/webconfig-spec.md` for the full spec.
 - Don't expect the CSRF guard to return 403. Missing/invalid `X-CSRF-Token` on
   a mutating protected route returns **400 BadRequest** (`csrf.rs`). Tests must
   assert `StatusCode::BAD_REQUEST`, not `FORBIDDEN`.
+- Don't validate `authorized_keys` by trusting any non-empty line — reject
+  private-key material (`-----BEGIN`) and require each non-comment line to
+  start with a known OpenSSH key-type prefix + a base64 blob. The SSH applier
+  (`appliers/ssh.rs`) does this; `SshConfig.authorized_keys` is otherwise
+  saved-but-never-applied if you forget to add the applier to `system::apply`.
 - Don't assume `ApiError::NotFound` takes a message — it is a unit variant.
   Use `ApiError::NotFound` directly.
 - Host cargo toolchain IS available (`~/.cargo/bin` on PATH via rustup,
