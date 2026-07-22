@@ -39,7 +39,9 @@ toolchain: ## Install rustup + the exact pinned toolchain (one-time host setup)
 	rustup target add --toolchain $(RUST_CHANNEL) $(TARGETS); \
 	echo "==> ready: $$(rustup run $(RUST_CHANNEL) rustc --version)"
 
-CARGO ?= cargo
+# Prefer the standard rustup installation even when the caller's shell has not
+# sourced ~/.cargo/env; an explicit CARGO override still takes precedence.
+CARGO ?= $(if $(wildcard $(HOME)/.cargo/bin/cargo),$(HOME)/.cargo/bin/cargo,cargo)
 WEBCONFIG_PORT ?= 8443
 export WEBCONFIG_PORT
 TARGETS := x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu armv7-unknown-linux-gnueabihf

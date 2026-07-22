@@ -1,60 +1,55 @@
-// Canvas sparkline — a tiny rolling-history line chart with no charting
-// library (spec §2: vanilla JS only). Feed it new values over time via
-// `.push(value)`; it keeps the last `maxPoints` and redraws.
+// Small Chart.js wrapper for rolling telemetry history. Feed it new values via
+// `.push(value)`; it keeps the last `maxPoints` and updates without animation.
 
-export function Sparkline({ width = 240, height = 48, maxPoints = 60, color = 'var(--primary)', fill = true } = {}) {
+export function Sparkline({ height = 48, maxPoints = 60, color = 'var(--primary)', fill = true, label = 'Telemetry history' } = {}) {
   const canvas = document.createElement('canvas');
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width = width * dpr;
-  canvas.height = height * dpr;
+  canvas.setAttribute('role', 'img');
+  canvas.setAttribute('aria-label', label);
   canvas.style.width = '100%';
   canvas.style.height = `${height}px`;
   canvas.className = 'spark';
-  const ctx = canvas.getContext('2d');
-  ctx.scale(dpr, dpr);
-
   const values = [];
   const resolvedColor = color.startsWith('var(')
     ? getComputedStyle(document.documentElement).getPropertyValue(color.slice(4, -1)).trim() || '#4f46e5'
     : color;
 
-  function draw() {
-    ctx.clearRect(0, 0, width, height);
-    if (values.length < 2) return;
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    const range = max - min || 1;
-    const step = width / (maxPoints - 1);
-    const startX = width - (values.length - 1) * step;
-
-    ctx.beginPath();
-    values.forEach((v, i) => {
-      const x = startX + i * step;
-      const y = height - 4 - ((v - min) / range) * (height - 8);
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    });
-    ctx.strokeStyle = resolvedColor;
-    ctx.lineWidth = 1.75;
-    ctx.lineJoin = 'round';
-    ctx.stroke();
-
-    if (fill) {
-      ctx.lineTo(startX + (values.length - 1) * step, height);
-      ctx.lineTo(startX, height);
-      ctx.closePath();
-      ctx.fillStyle = resolvedColor.startsWith('#')
-        ? `${resolvedColor}1a`
-        : 'rgba(79,70,229,.1)';
-      ctx.fill();
-    }
-  }
+  const chart = new window.Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: [], datasets: [{
+        data: values,
+        borderColor: resolvedColor,
+        backgroundColor: resolvedColor.startsWith('#') ? `${resolvedColor}1a` : 'rgba(79,70,229,.1)',
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHitRadius: 8,
+        tension: 0.35,
+        fill,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: { intersect: false, mode: 'index' },
+      plugins: {
+        legend: { display: false },
+        tooltip: { displayColors: false, callbacks: { label: context => `${context.parsed.y}` } },
+      },
+      scales: {
+        x: { display: false },
+        y: { display: false, grace: '8%' },
+      },
+    },
+  });
 
   function push(v) {
     if (typeof v !== 'number' || Number.isNaN(v)) return;
     values.push(v);
     if (values.length > maxPoints) values.shift();
-    draw();
+    chart.data.labels = values.map((_, i) => i + 1);
+    chart.update('none');
   }
 
-  return { canvas, push, get values() { return values.slice(); } };
+  return { canvas, push, destroy: () => chart.destroy(), get values() { return values.slice(); } };
 }

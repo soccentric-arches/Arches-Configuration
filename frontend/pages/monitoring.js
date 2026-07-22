@@ -21,7 +21,7 @@ function fmtBytes(b) {
 // history alive and avoids visible flicker on a several-times-a-second feed).
 function metricTile(label) {
   const valueEl = el('div', { class: 'tile-value' }, '—');
-  const spark = Sparkline({ height: 36 });
+  const spark = Sparkline({ height: 42, label: `${label} history` });
   const node = el('div', { class: 'card' },
     el('div', { class: 'card-body' }, el('h3', {}, label), el('div', { class: 'tile-sub' }, 'Live telemetry'), valueEl, spark.canvas));
   return {
