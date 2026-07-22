@@ -25,7 +25,7 @@ function fmtUptime(seconds) {
 function metric(label, explanation) {
     const value = el('div', { class: 'tile-value' }, '—');
     return {
-        node: el('div', { class: 'card' }, el('div', { class: 'card-body' }, el('h3', {}, label), el('div', { class: 'tile-sub' }, explanation), value)),
+        node: el('div', { class: 'card overview-metric' }, el('div', { class: 'card-body' }, el('div', { class: 'overview-metric-label' }, label), el('div', { class: 'tile-sub' }, explanation), value)),
         update(text) { value.textContent = text; },
     };
 }
@@ -83,6 +83,12 @@ export async function render(api, store) {
     const memory = metric('Memory used', 'Percentage of RAM currently unavailable for new work.');
     const temperature = metric('Highest temperature', 'Highest sensor reading currently reported by the board.');
     const uptime = metric('Uptime', 'Time elapsed since the operating system last booted.');
+    const connectionBadge = Badge('online', 'success');
+
+    function setConnectionState(online) {
+        connectionBadge.textContent = online ? 'online' : 'offline';
+        connectionBadge.className = `badge badge-${online ? 'success' : 'destructive'}`;
+    }
 
     function updateVitals(snapshot) {
         const load = snapshot.load && snapshot.load[0];
@@ -98,12 +104,13 @@ export async function render(api, store) {
 
     const source = api.eventSource('/api/v1/events');
     source.addEventListener('vitals', (event) => {
-        try { updateVitals(JSON.parse(event.data)); } catch (_) { /* skip malformed tick */ }
+        try { updateVitals(JSON.parse(event.data)); setConnectionState(true); } catch (_) { /* skip malformed tick */ }
     });
+    source.addEventListener('error', () => setConnectionState(false));
     store.registerCleanup(() => source.close());
 
     const identity = Card({ title: 'Device identity', subtitle: 'Hardware and board identifiers reported by the device.' },
-        el('div', { class: 'field-row' },
+        el('div', { class: 'overview-detail-grid' },
             el('div', {}, el('div', { class: 'field-label' }, 'Hostname'), el('div', { class: 'field-help' }, 'Name used to identify this device on the network.'), el('div', {}, config.hostname || '—')),
             el('div', {}, el('div', { class: 'field-label' }, 'Platform'), el('div', { class: 'field-help' }, 'Board family and manifest selected for this device.'), info ? Badge(info.platform || '—', 'info') : '—'),
             el('div', {}, el('div', { class: 'field-label' }, 'Model'), el('div', { class: 'field-help' }, 'Hardware model reported by the platform.'), el('div', {}, info && info.model || '—')),
@@ -113,7 +120,7 @@ export async function render(api, store) {
         ));
 
     const software = Card({ title: 'System information', subtitle: 'Operating system, kernel, bootloader, and WebConfig build metadata.' },
-        el('div', { class: 'field-row' },
+        el('div', { class: 'overview-detail-grid' },
             el('div', {}, el('div', { class: 'field-label' }, 'Operating system'), el('div', { class: 'field-help' }, 'Base operating system running on the device.'), el('div', {}, info && info.os_name || '—')),
             el('div', {}, el('div', { class: 'field-label' }, 'OS version'), el('div', { class: 'field-help' }, 'Release version of the installed operating system.'), el('div', {}, info && info.os_version || '—')),
             el('div', {}, el('div', { class: 'field-label' }, 'OS revision'), el('div', { class: 'field-help' }, 'Build or source revision of the operating system.'), el('div', {}, info && info.os_revision || '—')),
@@ -125,8 +132,13 @@ export async function render(api, store) {
 
     return el('div', {},
         el('div', { class: 'page-header' }, el('h1', {}, 'Overview'), el('p', {}, 'Live system information and device health.')),
+        Card({ class: 'overview-hero', title: 'Device health', subtitle: 'A quick read of the device identity and current operating state.' },
+            el('div', { class: 'overview-hero-grid' },
+                el('div', {}, el('div', { class: 'overview-eyebrow' }, 'Device'), el('div', { class: 'overview-hero-title' }, config.hostname || 'Unnamed device'), el('div', { class: 'muted' }, info && info.board_name || 'Board information unavailable')),
+                el('div', {}, el('div', { class: 'overview-eyebrow' }, 'Platform'), info ? Badge(info.platform || 'unknown', 'info') : Badge('unknown', 'neutral'), el('div', { class: 'overview-hero-meta' }, info && info.model || 'Model unavailable')),
+                el('div', {}, el('div', { class: 'overview-eyebrow' }, 'Current state'), connectionBadge, el('div', { class: 'overview-hero-meta' }, 'Live telemetry connected')))),
+        el('div', { class: 'overview-metrics' }, cpu.node, memory.node, temperature.node, uptime.node),
         el('div', { class: 'card-grid overview-info-grid' }, identity, software),
-        el('div', { class: 'card-grid' }, cpu.node, memory.node, temperature.node, uptime.node),
         Card({ title: 'Storage status', subtitle: 'Mounted filesystems, capacity, and current usage.' }, renderStorage(vitals)),
         Card({ title: 'Network interfaces', subtitle: 'Live link state, addresses, and hardware identifiers.' }, renderInterfaces(network)),
     );

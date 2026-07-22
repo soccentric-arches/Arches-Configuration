@@ -161,6 +161,88 @@ pub async fn ota_check(
     })))
 }
 
+/// `GET /api/v1/updates/backup/config` — read remote backup configuration.
+pub async fn get_backup_config(
+    State(app): State<AppState>,
+    _role: AuthRole,
+) -> ApiResult<Json<webconfig_engine::store::updates::BackupConfig>> {
+    Ok(Json(app.engine.load()?.updates.backup))
+}
+
+/// `PUT /api/v1/updates/backup/config` — save remote backup configuration.
+pub async fn put_backup_config(
+    State(app): State<AppState>,
+    role: AuthRole,
+    session: Session,
+    Json(req): Json<webconfig_engine::store::updates::BackupConfig>,
+) -> ApiResult<Json<webconfig_engine::store::updates::BackupConfig>> {
+    role.require_admin("updates.backup.put")?;
+    let user = username(&session).await;
+    let cfg = app.engine.update(move |c| {
+        c.updates.backup = req.clone();
+        Ok(())
+    })?;
+    audit(
+        &app,
+        &user,
+        "updates.backup.put",
+        cfg.updates.backup.server_url.clone(),
+    );
+    Ok(Json(cfg.updates.backup))
+}
+
+/// `GET /api/v1/updates/backup/check` — test the configured remote server.
+pub async fn backup_check(
+    State(app): State<AppState>,
+    _role: AuthRole,
+) -> ApiResult<Json<serde_json::Value>> {
+    let cfg = app.engine.load()?.updates.backup;
+    let url = cfg.server_url.clone().unwrap_or_default();
+    if !cfg.enabled {
+        return Ok(Json(serde_json::json!({
+            "checked": false,
+            "connected": false,
+            "reason": "remote backup connection is disabled",
+        })));
+    }
+    if url.is_empty() {
+        return Ok(Json(serde_json::json!({
+            "checked": false,
+            "connected": false,
+            "reason": "no backup server url",
+        })));
+    }
+    if !app.engine.sysroot.is_real_root() {
+        return Ok(Json(serde_json::json!({
+            "checked": true,
+            "connected": false,
+            "server_url": url,
+            "reason": "remote checks are disabled in the fake sysroot",
+        })));
+    }
+
+    let output = webconfig_engine::applier::run_cmd(
+        "curl",
+        &[
+            "--fail",
+            "--silent",
+            "--show-error",
+            "--max-time",
+            "10",
+            &url,
+        ],
+    )
+    .map_err(ApiError::from)?;
+    let remote = serde_json::from_str::<serde_json::Value>(&output).ok();
+    Ok(Json(serde_json::json!({
+        "checked": true,
+        "connected": true,
+        "server_url": url,
+        "remote_backup_enabled": remote.as_ref().and_then(|v| v.get("backup_enabled")),
+        "remote_restore_enabled": remote.as_ref().and_then(|v| v.get("restore_enabled")),
+    })))
+}
+
 /// `GET /api/v1/updates/backup` — download the config store as a file (spec
 /// §4.4). **Secrets excluded by default** (PSKs, WireGuard private key, user
 /// hashes redacted).

@@ -43,8 +43,8 @@ Base URL: `https://<device>:8443/api/v1`. All responses are JSON.
 
 | Method | Path | Role | Notes |
 |---|---|---|---|
-| GET | `/system` | any | `SystemConfig` (hostname, asset_tag, hardware_revision, serial_number, time, ssh, ntp_servers). |
-| PUT | `/system` | **[admin]** | `SystemConfig` → saved section. |
+| GET | `/system` | any | `SystemConfig` (hostname, asset_tag, hardware_revision, serial_number, time, ssh, ntp_servers). `time` includes timezone, NTP, PTP, GPS/GNSS, and manual datetime settings. |
+| PUT | `/system` | **[admin]** | `SystemConfig` → saved section. NTP, PTP, and GPS cannot be enabled together. |
 | POST | `/system/apply` | **[admin]** | apply hostname + time appliers. |
 | GET | `/system/info` | any | platform, model, board_name, has_rtc, os_release, uptime. |
 | POST | `/system/reboot` | **[admin]** | reboot. |
@@ -96,6 +96,9 @@ Base URL: `https://<device>:8443/api/v1`. All responses are JSON.
 | GET | `/updates/ota` | any | Read OTA server configuration. |
 | PUT | `/updates/ota` | **[admin]** | Save OTA server configuration. |
 | GET | `/updates/ota/check` | any | Query the configured server for `{update_available, version, platform}` JSON. |
+| GET | `/updates/backup/config` | any | Read `{enabled, server_url, backup_enabled, restore_enabled}`. |
+| PUT | `/updates/backup/config` | **[admin]** | Save remote backup connection and local feature flags. |
+| GET | `/updates/backup/check` | any | Test the configured backup server; returns `{checked, connected, reason}`. |
 | GET | `/updates/backup?include_secrets=false` | any | config store (secrets redacted by default). |
 | POST | `/updates/restore` | **[admin]** | restore a backup (tolerates version skew). |
 | GET | `/updates/diagnostics` | any | journal excerpt + config + slots + audit + dmesg + alert history. |
@@ -108,6 +111,8 @@ Base URL: `https://<device>:8443/api/v1`. All responses are JSON.
 | GET | `/monitoring/vitals` | any | `Vitals` (load, mem, mounts, temperatures, net, uptime). |
 | GET | `/monitoring/emmc/:dev` | any | `{dev, life_time_estimate}`. |
 | GET | `/monitoring/tiles` | any | manifest-declared dashboard tiles. |
+| GET | `/monitoring/telemetry` | any | Read `{enabled, publish_interval_secs, include_diagnostics}`. |
+| PUT | `/monitoring/telemetry` | **[admin]** | Save telemetry publishing settings. |
 
 ## Logs (§4.6)
 

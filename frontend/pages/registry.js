@@ -7,24 +7,35 @@
 // (core/shortcuts.js) — picked explicitly so pages sharing a first letter
 // (System/Services/Security) don't collide.
 export const NAV = [
-  { id: 'overview', label: 'Overview', icon: 'monitoring', category: 'General', key: 'o', loader: () => import('./overview.js') },
-  { id: 'system', label: 'System settings', icon: 'system', category: 'General', key: 's', loader: () => import('./system.js') },
-  { id: 'time', label: 'Time & NTP', icon: 'refresh', category: 'General', key: 't', loader: () => import('./time.js') },
-  { id: 'power', label: 'Power', icon: 'power', category: 'General', key: 'p', loader: () => import('./power.js') },
+  // Dashboard: understand the current state before changing anything.
+  { id: 'overview', label: 'Overview', icon: 'monitoring', category: 'Dashboard', key: 'o', loader: () => import('./overview.js') },
+  { id: 'monitoring', label: 'Monitoring', icon: 'monitoring', category: 'Dashboard', key: 'm', loader: () => import('./monitoring.js') },
+  { id: 'faults', label: 'Faults', icon: 'alerts', category: 'Dashboard', key: '2', loader: () => import('./faults.js') },
+  { id: 'alerts', label: 'Alarms', icon: 'alerts', category: 'Dashboard', key: 'a', loader: () => import('./alerts.js') },
+  { id: 'logs', label: 'Logs', icon: 'logs', category: 'Dashboard', key: 'l', loader: () => import('./logs.js') },
+
+  // System: local identity, time, and lifecycle controls.
+  { id: 'system', label: 'System settings', icon: 'system', category: 'System', key: 's', loader: () => import('./system.js') },
+  { id: 'time', label: 'Time & NTP', icon: 'refresh', category: 'System', key: 't', loader: () => import('./time.js') },
+  { id: 'power', label: 'Power', icon: 'power', category: 'System', key: 'p', loader: () => import('./power.js') },
+
+  // Connectivity: network links and connected services.
   { id: 'network', label: 'Networking', icon: 'network', category: 'Connectivity', key: 'n', loader: () => import('./network.js') },
   { id: 'services', label: 'Services', icon: 'services', category: 'Connectivity', key: 'v', loader: () => import('./services.js') },
   { id: 'cloud', label: 'Cloud', icon: 'cloud', category: 'Connectivity', key: 'c', loader: () => import('./cloud.js') },
-  { id: 'updates', label: 'Updates', icon: 'updates', category: 'Operations', key: 'u', loader: () => import('./updates.js') },
-  { id: 'backup', label: 'Backup & Restore', icon: 'updates', category: 'Operations', key: 'b', loader: () => import('./backup.js'), adminOnly: true },
-  { id: 'monitoring', label: 'Monitoring', icon: 'monitoring', category: 'Operations', key: 'm', loader: () => import('./monitoring.js') },
-  { id: 'logs', label: 'Logs', icon: 'logs', category: 'Operations', key: 'l', loader: () => import('./logs.js') },
-  { id: 'faults', label: 'Faults', icon: 'alerts', category: 'Operations', key: '2', loader: () => import('./faults.js') },
-  { id: 'alerts', label: 'Alarms', icon: 'alerts', category: 'Operations', key: 'a', loader: () => import('./alerts.js') },
+
+  // Maintenance: updates and configuration recovery.
+  { id: 'updates', label: 'Updates', icon: 'updates', category: 'Maintenance', key: 'u', loader: () => import('./updates.js') },
+  { id: 'backup', label: 'Backup & Restore', icon: 'updates', category: 'Maintenance', key: 'b', loader: () => import('./backup.js'), adminOnly: true },
+
+  // Security: access, exposure, trust, and user administration.
   { id: 'security', label: 'Security', icon: 'security', category: 'Security', key: 'e', loader: () => import('./security.js'), adminOnly: true },
   { id: 'ssh', label: 'SSH & Console', icon: 'security', category: 'Security', key: 'j', loader: () => import('./ssh.js'), adminOnly: true },
   { id: 'firewall', label: 'Firewall', icon: 'security', category: 'Security', key: 'f', loader: () => import('./firewall.js'), adminOnly: true },
   { id: 'secure-boot', label: 'Secure Boot', icon: 'security', category: 'Security', key: 'r', loader: () => import('./secure-boot.js'), adminOnly: true },
   { id: 'users', label: 'Users & Groups', icon: 'users', category: 'Security', key: 'g', loader: () => import('./users.js'), adminOnly: true },
+
+  // Hardware: board inventory and individual peripheral controls.
   { id: 'hardware', label: 'Hardware', icon: 'io', category: 'Hardware', key: 'h', loader: () => import('./hardware.js') },
   { id: 'display', label: 'Display', icon: 'camera', category: 'Hardware', key: 'i', loader: () => import('./display.js') },
   { id: 'leds', label: 'Board LEDs', icon: 'io', category: 'Hardware', key: '1', loader: () => import('./leds.js'), adminOnly: true },

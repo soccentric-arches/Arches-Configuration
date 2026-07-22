@@ -58,6 +58,38 @@ export async function render(api, store) {
         label: 'NTP enabled',
         checked: cfg.time && cfg.time.ntp_enabled,
     });
+    const ptpEnabled = Toggle({
+        label: 'PTP enabled',
+        checked: cfg.time && cfg.time.ptp_enabled,
+    });
+    const ptpInterface = Field({
+        label: 'PTP network interface',
+        value: cfg.time && cfg.time.ptp_interface,
+        placeholder: 'eth0',
+        help: 'Interface connected to the PTP grandmaster. NTP is disabled while PTP is enabled.',
+    });
+    const ptpDomain = Field({
+        label: 'PTP domain',
+        type: 'number',
+        value: cfg.time && cfg.time.ptp_domain,
+        help: 'PTP domain number, normally 0.',
+    });
+    const gpsEnabled = Toggle({
+        label: 'GPS/GNSS time enabled',
+        checked: cfg.time && cfg.time.gps_enabled,
+    });
+    const gpsDevice = Field({
+        label: 'GPS/GNSS device',
+        value: cfg.time && cfg.time.gps_device,
+        placeholder: '/dev/ttyUSB0',
+        help: 'Serial device used by gpsd for the receiver time and position lock.',
+    });
+    const gpsPpsDevice = Field({
+        label: 'GPS PPS device (optional)',
+        value: cfg.time && cfg.time.gps_pps_device,
+        placeholder: '/dev/pps0',
+        help: 'Kernel PPS device for sub-second synchronization when the receiver exposes PPS.',
+    });
     const manualDt = Field({
         label: 'Manual datetime (air-gapped)',
         value: cfg.time && cfg.time.manual_datetime,
@@ -78,6 +110,12 @@ export async function render(api, store) {
             time: {
                 timezone: timezone.get() || null,
                 ntp_enabled: ntpEnabled.get(),
+                ptp_enabled: ptpEnabled.get(),
+                ptp_interface: ptpInterface.get() || null,
+                ptp_domain: ptpDomain.get() ? Number(ptpDomain.get()) : null,
+                gps_enabled: gpsEnabled.get(),
+                gps_device: gpsDevice.get() || null,
+                gps_pps_device: gpsPpsDevice.get() || null,
                 manual_datetime: manualDt.get() || null,
             },
             ssh: cfg.ssh,
@@ -92,16 +130,16 @@ export async function render(api, store) {
     }
 
     const timeCard = Card({
-        title: 'Time and NTP',
-        subtitle: 'Keep the device clock accurate and choose how it synchronizes.',
+        title: 'Time and synchronization',
+        subtitle: 'Keep the device clock accurate with NTP, PTP, or a GPS/GNSS lock.',
         footer: ActionList(
             ActionRow('Apply to device', 'Apply the timezone and clock synchronization settings now.', Button({ variant: 'outline', onClick: apply }, 'Apply')),
             ActionRow('Save settings', 'Store the time and NTP settings for the next apply.', Button({ onClick: save }, 'Save'))),
-    }, el('div', { class: 'form-grid' }, timezone.wrap, ntpEnabled.wrap, manualDt.wrap, ntpServers.wrap));
+    }, el('div', { class: 'form-grid' }, timezone.wrap, ntpEnabled.wrap, ptpEnabled.wrap, ptpInterface.wrap, ptpDomain.wrap, gpsEnabled.wrap, gpsDevice.wrap, gpsPpsDevice.wrap, manualDt.wrap, ntpServers.wrap));
 
     return el('div', { class: 'time-page' },
         el('div', { class: 'page-header' },
-            el('h1', {}, 'Time & NTP'),
-            el('p', {}, 'Configure the device timezone, clock, and network time sources.')),
+            el('h1', {}, 'Time & Sync'),
+            el('p', {}, 'Configure the device timezone, clock, NTP, PTP, and GPS/GNSS time sources.')),
         timeCard);
 }

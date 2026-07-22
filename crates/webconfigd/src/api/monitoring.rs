@@ -2,8 +2,11 @@
 
 use axum::extract::{Path, State};
 use axum::Json;
+use tower_sessions::Session;
 use webconfig_engine::monitoring;
+use webconfig_engine::store::monitoring::TelemetryConfig;
 
+use crate::api::{audit, username};
 use crate::auth::AuthRole;
 use crate::error::ApiResult;
 use crate::state::AppState;
@@ -37,4 +40,29 @@ pub async fn tiles(
     _role: AuthRole,
 ) -> ApiResult<Json<Vec<webconfig_engine::manifest::DashboardTile>>> {
     Ok(Json(app.manifest.dashboard_tiles.clone()))
+}
+
+/// `GET /api/v1/monitoring/telemetry` — telemetry publishing configuration.
+pub async fn get_telemetry(
+    State(app): State<AppState>,
+    _role: AuthRole,
+) -> ApiResult<Json<TelemetryConfig>> {
+    Ok(Json(app.engine.load()?.monitoring.telemetry))
+}
+
+/// `PUT /api/v1/monitoring/telemetry` — save telemetry publishing settings.
+pub async fn put_telemetry(
+    State(app): State<AppState>,
+    role: AuthRole,
+    session: Session,
+    Json(req): Json<TelemetryConfig>,
+) -> ApiResult<Json<TelemetryConfig>> {
+    role.require_admin("monitoring.telemetry.put")?;
+    let user = username(&session).await;
+    let cfg = app.engine.update(move |c| {
+        c.monitoring.telemetry = req.clone();
+        Ok(())
+    })?;
+    audit(&app, &user, "monitoring.telemetry.put", None);
+    Ok(Json(cfg.monitoring.telemetry))
 }

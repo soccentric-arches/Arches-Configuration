@@ -213,6 +213,21 @@ pub mod system {
         pub timezone: Option<String>,
         #[serde(default)]
         pub ntp_enabled: bool,
+        /// Precision Time Protocol synchronization. NTP and PTP are mutually
+        /// exclusive; legacy configs keep NTP as the default.
+        #[serde(default)]
+        pub ptp_enabled: bool,
+        #[serde(default)]
+        pub ptp_interface: Option<String>,
+        #[serde(default)]
+        pub ptp_domain: Option<u8>,
+        /// GPS/GNSS time synchronization through gpsd/chrony.
+        #[serde(default)]
+        pub gps_enabled: bool,
+        #[serde(default)]
+        pub gps_device: Option<String>,
+        #[serde(default)]
+        pub gps_pps_device: Option<String>,
         /// Manual date/time for air-gapped sites (ISO-8601 local). Applied via
         /// `timedatectl set-time` (spec §4.1).
         #[serde(default)]
@@ -381,6 +396,8 @@ pub mod updates {
     pub struct UpdatesConfig {
         #[serde(default)]
         pub ota: OtaConfig,
+        #[serde(default)]
+        pub backup: BackupConfig,
         /// Whether HTTP→HTTPS redirect is on (mirrors security; kept here for
         /// the Updates page convenience).
         #[serde(default)]
@@ -397,6 +414,22 @@ pub mod updates {
         #[serde(default)]
         pub maintenance_window: Option<serde_json::Value>,
     }
+
+    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+    pub struct BackupConfig {
+        #[serde(default)]
+        pub enabled: bool,
+        #[serde(default)]
+        pub server_url: Option<String>,
+        #[serde(default = "default_feature_enabled")]
+        pub backup_enabled: bool,
+        #[serde(default = "default_feature_enabled")]
+        pub restore_enabled: bool,
+    }
+
+    fn default_feature_enabled() -> bool {
+        true
+    }
 }
 
 pub mod monitoring {
@@ -407,10 +440,26 @@ pub mod monitoring {
         /// Dashboard poll interval in seconds while the page is open (spec §4.5).
         #[serde(default = "default_poll_interval_secs")]
         pub poll_interval_secs: u64,
+        #[serde(default)]
+        pub telemetry: TelemetryConfig,
+    }
+
+    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+    pub struct TelemetryConfig {
+        #[serde(default)]
+        pub enabled: bool,
+        #[serde(default = "default_publish_interval_secs")]
+        pub publish_interval_secs: u64,
+        #[serde(default)]
+        pub include_diagnostics: bool,
     }
 
     fn default_poll_interval_secs() -> u64 {
         3
+    }
+
+    fn default_publish_interval_secs() -> u64 {
+        30
     }
 }
 

@@ -50,9 +50,79 @@
   margin-top: 2px;
 }
 
+.overview-hero {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 5%, var(--card));
+}
+
+.overview-hero .card-body {
+  padding: var(--space-6);
+}
+
+.overview-hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr));
+  gap: var(--space-6);
+  align-items: center;
+}
+
+.overview-eyebrow,
+.overview-metric-label {
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.overview-hero-title {
+  margin: 3px 0;
+  font-size: var(--text-xl);
+  font-weight: 700;
+}
+
+.overview-hero-meta {
+  margin-top: 5px;
+  color: var(--muted-foreground);
+  font-size: var(--text-sm);
+}
+
+.overview-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.overview-metric {
+  margin-bottom: 0;
+}
+
+.overview-metric .card-body {
+  padding: var(--space-4);
+}
+
+.overview-metric .tile-value {
+  margin-top: var(--space-3);
+}
+
+.overview-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-5) var(--space-6);
+}
+
 .overview-info-grid {
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
+}
+
+@media (max-width: 760px) {
+
+  .overview-hero-grid,
+  .overview-metrics,
+  .overview-detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .power-page {

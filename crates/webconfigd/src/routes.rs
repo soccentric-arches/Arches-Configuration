@@ -95,6 +95,11 @@ pub fn build_router(state: AppState, static_dir: std::path::PathBuf) -> Router {
         .route("/updates/reboot-to-apply", post(updates::reboot_to_apply))
         .route("/updates/ota", get(updates::get_ota).put(updates::put_ota))
         .route("/updates/ota/check", get(updates::ota_check))
+        .route(
+            "/updates/backup/config",
+            get(updates::get_backup_config).put(updates::put_backup_config),
+        )
+        .route("/updates/backup/check", get(updates::backup_check))
         .route("/updates/backup", get(updates::backup))
         .route("/updates/restore", post(updates::restore))
         .route("/updates/diagnostics", get(updates::diagnostics))
@@ -103,6 +108,10 @@ pub fn build_router(state: AppState, static_dir: std::path::PathBuf) -> Router {
         .route("/monitoring/vitals", get(monitoring::vitals))
         .route("/monitoring/emmc/:dev", get(monitoring::emmc_wear))
         .route("/monitoring/tiles", get(monitoring::tiles))
+        .route(
+            "/monitoring/telemetry",
+            get(monitoring::get_telemetry).put(monitoring::put_telemetry),
+        )
         // Logs (§4.6)
         .route("/logs", get(logs::read))
         .route("/logs/config", get(logs::get_config).put(logs::put_config))
