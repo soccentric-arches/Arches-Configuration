@@ -1,8 +1,9 @@
-//! I/O & Peripherals handlers (spec §4.9). Everything is rendered from the
-//! board manifest — zero hardcoded I/O.
+//! I/O & peripheral handlers (spec §4.9). Configurable peripherals come from
+//! the board manifest; USB and PCI inventory is read live from the host tools.
 
 use axum::extract::{Path, State};
 use axum::Json;
+use serde::Serialize;
 use tower_sessions::Session;
 use webconfig_engine::manifest::IoKind;
 use webconfig_engine::store::io::IoConfig;
@@ -22,6 +23,388 @@ pub async fn get(
         "config": app.engine.load()?.io,
         "tiles": app.manifest.dashboard_tiles,
     })))
+}
+
+/// `GET /api/v1/io/usb` - enumerate live USB devices with `lsusb`.
+pub async fn usb_devices(
+    State(app): State<AppState>,
+    _role: AuthRole,
+) -> ApiResult<Json<serde_json::Value>> {
+    let (available, error, devices) = if app.engine.sysroot.is_real_root() {
+        match std::process::Command::new("lsusb").output() {
+            Ok(output) if output.status.success() => (
+                true,
+                None,
+                parse_lsusb(&String::from_utf8_lossy(&output.stdout)),
+            ),
+            Ok(output) => (false, Some(command_error("lsusb", &output)), Vec::new()),
+            Err(error) => (false, Some(error.to_string()), Vec::new()),
+        }
+    } else {
+        (
+            false,
+            Some("hardware discovery unavailable in a fake sysroot".into()),
+            Vec::new(),
+        )
+    };
+    Ok(Json(
+        serde_json::json!({ "available": available, "error": error, "devices": devices }),
+    ))
+}
+
+/// `GET /api/v1/io/pci` - enumerate live PCI devices with `lspci`.
+pub async fn pci_devices(
+    State(app): State<AppState>,
+    _role: AuthRole,
+) -> ApiResult<Json<serde_json::Value>> {
+    let (available, error, devices) = if app.engine.sysroot.is_real_root() {
+        match std::process::Command::new("lspci")
+            .args(["-D", "-nn"])
+            .output()
+        {
+            Ok(output) if output.status.success() => (
+                true,
+                None,
+                parse_lspci(&String::from_utf8_lossy(&output.stdout)),
+            ),
+            Ok(output) => (false, Some(command_error("lspci", &output)), Vec::new()),
+            Err(error) => (false, Some(error.to_string()), Vec::new()),
+        }
+    } else {
+        (
+            false,
+            Some("hardware discovery unavailable in a fake sysroot".into()),
+            Vec::new(),
+        )
+    };
+    Ok(Json(
+        serde_json::json!({ "available": available, "error": error, "devices": devices }),
+    ))
+}
+
+/// `GET /api/v1/io/i2c` - scan live I2C adapters with `i2cdetect`.
+pub async fn i2c_devices(
+    State(app): State<AppState>,
+    _role: AuthRole,
+) -> ApiResult<Json<serde_json::Value>> {
+    if !app.engine.sysroot.is_real_root() {
+        return Ok(Json(serde_json::json!({
+            "available": false,
+            "error": "hardware discovery unavailable in a fake sysroot",
+            "devices": []
+        })));
+    }
+    let buses = match std::fs::read_dir(app.engine.sysroot.join("/sys/class/i2c-dev")) {
+        Ok(entries) => entries
+            .filter_map(Result::ok)
+            .filter_map(|entry| entry.file_name().into_string().ok())
+            .filter_map(|name| {
+                name.strip_prefix("i2c-")
+                    .and_then(|value| value.parse::<u32>().ok())
+            })
+            .collect::<Vec<_>>(),
+        Err(error) => {
+            return Ok(Json(serde_json::json!({
+                "available": false,
+                "error": error.to_string(),
+                "devices": []
+            })));
+        }
+    };
+    let mut devices = Vec::new();
+    let mut errors = Vec::new();
+    for bus in buses {
+        match std::process::Command::new("i2cdetect")
+            .args(["-y", &bus.to_string()])
+            .output()
+        {
+            Ok(output) if output.status.success() => {
+                devices.extend(parse_i2cdetect(
+                    bus,
+                    &String::from_utf8_lossy(&output.stdout),
+                ));
+            }
+            Ok(output) => errors.push(command_error("i2cdetect", &output)),
+            Err(error) => errors.push(error.to_string()),
+        }
+    }
+    Ok(Json(serde_json::json!({
+        "available": true,
+        "error": if errors.is_empty() { None } else { Some(errors.join("; ")) },
+        "devices": devices
+    })))
+}
+
+/// `GET /api/v1/io/spi` - enumerate SPI controller/chip-select nodes.
+/// SPI has no generic, safe bus-wide probe, so this reports kernel-created
+/// spidev nodes and their bound driver metadata instead of clocking devices.
+pub async fn spi_devices(
+    State(app): State<AppState>,
+    _role: AuthRole,
+) -> ApiResult<Json<serde_json::Value>> {
+    if !app.engine.sysroot.is_real_root() {
+        return Ok(Json(serde_json::json!({
+            "available": false,
+            "error": "hardware discovery unavailable in a fake sysroot",
+            "devices": []
+        })));
+    }
+    let class_dir = app.engine.sysroot.join("/sys/class/spidev");
+    let entries = match std::fs::read_dir(&class_dir) {
+        Ok(entries) => entries,
+        Err(error) => {
+            return Ok(Json(serde_json::json!({
+                "available": false,
+                "error": error.to_string(),
+                "devices": []
+            })));
+        }
+    };
+    let mut devices = entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let name = entry.file_name().into_string().ok()?;
+            let (bus, chip_select) = parse_spidev_name(&name)?;
+            let device_path = format!("/dev/{name}");
+            let sysfs_device = entry.path().join("device");
+            let modalias = std::fs::read_to_string(sysfs_device.join("modalias"))
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| "-".into());
+            let driver = std::fs::read_link(sysfs_device.join("driver"))
+                .ok()
+                .and_then(|path| {
+                    path.file_name()
+                        .map(|value| value.to_string_lossy().into_owned())
+                })
+                .unwrap_or_else(|| "-".into());
+            Some(SpiDevice {
+                name,
+                bus,
+                chip_select,
+                device_path,
+                modalias,
+                driver,
+            })
+        })
+        .collect::<Vec<_>>();
+    devices.sort_by(|left, right| left.name.cmp(&right.name));
+    Ok(Json(
+        serde_json::json!({ "available": true, "error": null, "devices": devices }),
+    ))
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+pub struct UsbDevice {
+    pub bus: String,
+    pub device: String,
+    pub vendor_id: String,
+    pub product_id: String,
+    pub description: String,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+pub struct PciDevice {
+    pub address: String,
+    pub class: String,
+    pub vendor_id: String,
+    pub product_id: String,
+    pub revision: String,
+    pub description: String,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+pub struct I2cDevice {
+    pub bus: u32,
+    pub address: String,
+    pub status: String,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+pub struct SpiDevice {
+    pub name: String,
+    pub bus: u32,
+    pub chip_select: u32,
+    pub device_path: String,
+    pub modalias: String,
+    pub driver: String,
+}
+
+fn parse_lsusb(output: &str) -> Vec<UsbDevice> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.split_whitespace();
+            if fields.next()? != "Bus" {
+                return None;
+            }
+            let bus = fields.next()?.to_string();
+            if fields.next()? != "Device" {
+                return None;
+            }
+            let device = fields.next()?.trim_end_matches(':').to_string();
+            if fields.next()? != "ID" {
+                return None;
+            }
+            let ids = fields.next()?;
+            let (vendor_id, product_id) = ids.split_once(':')?;
+            if !is_hex_id(vendor_id) || !is_hex_id(product_id) {
+                return None;
+            }
+            Some(UsbDevice {
+                bus,
+                device,
+                vendor_id: vendor_id.to_lowercase(),
+                product_id: product_id.to_lowercase(),
+                description: fields.collect::<Vec<_>>().join(" "),
+            })
+        })
+        .collect()
+}
+
+fn parse_lspci(output: &str) -> Vec<PciDevice> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let (address, details) = line.split_once(' ')?;
+            let (class, after_class) = details.split_once(" [")?;
+            let class_end = after_class.find(']')?;
+            let vendor_details = &after_class[class_end + 1..];
+            let ids = vendor_details
+                .match_indices('[')
+                .filter_map(|(start, _)| {
+                    let end = vendor_details[start + 1..].find(']')? + start + 1;
+                    let id = &vendor_details[start + 1..end];
+                    id.split_once(':')
+                        .filter(|(vendor, product)| is_hex_id(vendor) && is_hex_id(product))
+                })
+                .next()?;
+            let revision = details
+                .split("(rev ")
+                .nth(1)
+                .and_then(|value| value.split(')').next())
+                .unwrap_or("-")
+                .to_string();
+            Some(PciDevice {
+                address: address.to_string(),
+                class: class.to_string(),
+                vendor_id: ids.0.to_lowercase(),
+                product_id: ids.1.to_lowercase(),
+                revision,
+                description: details.to_string(),
+            })
+        })
+        .collect()
+}
+
+fn parse_i2cdetect(bus: u32, output: &str) -> Vec<I2cDevice> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let (row, cells) = line.split_once(':')?;
+            let row = u8::from_str_radix(row.trim(), 16).ok()?;
+            Some(
+                cells
+                    .split_whitespace()
+                    .enumerate()
+                    .filter_map(move |(column, value)| {
+                        let address = row as u16 * 16 + column as u16;
+                        if address > 0x7f || value == "--" {
+                            return None;
+                        }
+                        let status = if value == "UU" {
+                            "in-use"
+                        } else {
+                            "responding"
+                        };
+                        Some(I2cDevice {
+                            bus,
+                            address: format!("0x{address:02x}"),
+                            status: status.into(),
+                        })
+                    }),
+            )
+        })
+        .flatten()
+        .collect()
+}
+
+fn parse_spidev_name(name: &str) -> Option<(u32, u32)> {
+    let value = name.strip_prefix("spidev")?;
+    let (bus, chip_select) = value.split_once('.')?;
+    Some((bus.parse().ok()?, chip_select.parse().ok()?))
+}
+
+fn is_hex_id(value: &str) -> bool {
+    value.len() == 4 && value.chars().all(|character| character.is_ascii_hexdigit())
+}
+
+fn command_error(command: &str, output: &std::process::Output) -> String {
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if stderr.is_empty() {
+        format!("{command} exited with {}", output.status)
+    } else {
+        stderr
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_i2cdetect, parse_lspci, parse_lsusb, parse_spidev_name};
+
+    #[test]
+    fn parses_lsusb_ids_and_description() {
+        let devices = parse_lsusb(
+            "Bus 001 Device 004: ID 0b1f:03ee Insyde Software Corp. RNDIS/Ethernet Gadget\n",
+        );
+        assert_eq!(devices.len(), 1);
+        assert_eq!(devices[0].bus, "001");
+        assert_eq!(devices[0].device, "004");
+        assert_eq!(devices[0].vendor_id, "0b1f");
+        assert_eq!(devices[0].product_id, "03ee");
+        assert_eq!(
+            devices[0].description,
+            "Insyde Software Corp. RNDIS/Ethernet Gadget"
+        );
+    }
+
+    #[test]
+    fn parses_lspci_address_ids_class_and_revision() {
+        let devices = parse_lspci(
+            "0000:00:01.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Device [1022:14da] (rev 01)\n",
+        );
+        assert_eq!(devices.len(), 1);
+        assert_eq!(devices[0].address, "0000:00:01.0");
+        assert_eq!(devices[0].class, "Host bridge");
+        assert_eq!(devices[0].vendor_id, "1022");
+        assert_eq!(devices[0].product_id, "14da");
+        assert_eq!(devices[0].revision, "01");
+    }
+
+    #[test]
+    fn ignores_malformed_inventory_lines() {
+        assert!(parse_lsusb("not a usb line\nBus 001 Device 002: ID invalid nope\n").is_empty());
+        assert!(
+            parse_lspci("not a pci line\n0000:00:00.0 Host bridge [0600]: Unknown Device\n")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn parses_i2cdetect_addresses_and_in_use_state() {
+        let devices = parse_i2cdetect(1, "     0 1 2 3 4 5 6 7 8 9 a b c d e f\n00: -- -- 03 UU -- -- -- -- -- -- -- -- -- -- -- --\n");
+        assert_eq!(devices[0].address, "0x02");
+        assert_eq!(devices[0].status, "responding");
+        assert_eq!(devices[1].address, "0x03");
+        assert_eq!(devices[1].status, "in-use");
+    }
+
+    #[test]
+    fn parses_spidev_bus_and_chip_select() {
+        assert_eq!(parse_spidev_name("spidev0.1"), Some((0, 1)));
+        assert_eq!(parse_spidev_name("spi0.0"), None);
+    }
 }
 
 /// `PUT /api/v1/io` — update serial/CAN/GPIO/MCU config (admin only).

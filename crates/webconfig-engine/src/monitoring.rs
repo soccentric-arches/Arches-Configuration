@@ -18,6 +18,8 @@ pub struct Vitals {
     pub mem_total_kb: u64,
     pub mem_available_kb: u64,
     pub mounts: Vec<Mount>,
+    pub swap_total_bytes: u64,
+    pub swap_free_bytes: u64,
     pub temperatures: Vec<TempZone>,
     pub net: Vec<NetStats>,
     pub uptime_secs: u64,
@@ -34,6 +36,7 @@ pub struct Mount {
     pub source: String,
     pub target: String,
     pub fstype: String,
+    pub physical: bool,
     pub total_bytes: u64,
     pub avail_bytes: u64,
 }
@@ -56,6 +59,7 @@ pub struct NetStats {
 /// (spec §4.5: warn when no data, never crash the dashboard).
 pub fn read_vitals(sysroot: &Sysroot) -> Vitals {
     let (boot_count, last_boot_reason) = read_boot_info(sysroot);
+    let (swap_total_bytes, swap_free_bytes) = read_swap(sysroot);
     Vitals {
         load: read_loadavg(sysroot),
         mem_total_kb: read_meminfo_field(sysroot, "MemTotal:"),
@@ -63,6 +67,8 @@ pub fn read_vitals(sysroot: &Sysroot) -> Vitals {
         // Prefer MemAvailable; fall back to MemFree if absent (spec §4.5:
         // show available, not free).
         mounts: read_mounts(sysroot),
+        swap_total_bytes,
+        swap_free_bytes,
         temperatures: read_thermal(sysroot),
         net: read_net_stats(sysroot),
         uptime_secs: read_uptime(sysroot),
@@ -136,11 +142,49 @@ fn read_mounts(sysroot: &Sysroot) -> Vec<Mount> {
             source: source.into(),
             target: target.into(),
             fstype: fstype.into(),
+            physical: is_physical_source(source),
             total_bytes: total,
             avail_bytes: avail,
         });
     }
     out
+}
+
+fn is_physical_source(source: &str) -> bool {
+    source.starts_with("/dev/")
+        && !source.starts_with("/dev/mapper/")
+        && !source.starts_with("/dev/dm-")
+        && !source.starts_with("/dev/loop")
+        && !source.starts_with("/dev/zram")
+}
+
+fn read_swap(sysroot: &Sysroot) -> (u64, u64) {
+    let Ok(raw) = fs::read_to_string(sysroot.join("/proc/swaps")) else {
+        return (0, 0);
+    };
+    let totals = raw
+        .lines()
+        .skip(1)
+        .filter_map(|line| {
+            let fields: Vec<_> = line.split_whitespace().collect();
+            let total_kib = fields.get(2)?.parse::<u64>().ok()?;
+            let used_kib = fields.get(3)?.parse::<u64>().ok()?;
+            Some((
+                total_kib.saturating_mul(1024),
+                used_kib.saturating_mul(1024),
+            ))
+        })
+        .fold(
+            (0_u64, 0_u64),
+            |(total, used), (entry_total, entry_used)| {
+                (
+                    total.saturating_add(entry_total),
+                    used.saturating_add(entry_used),
+                )
+            },
+        );
+    let (total, used) = totals;
+    (total, total.saturating_sub(used))
 }
 
 fn statvfs(sysroot: &Sysroot, target: &str) -> (u64, u64) {
@@ -368,7 +412,12 @@ mod tests {
         std::fs::write(sys.join("/proc/uptime"), "12345.67 67890.12\n").unwrap();
         std::fs::write(
             sys.join("/proc/mounts"),
-            "rootfs / ext4 rw 0 0\ntmpfs /run tmpfs rw 0 0\nproc /proc proc rw 0 0\n",
+            "rootfs / ext4 rw 0 0\ntmpfs /run tmpfs rw 0 0\n/dev/mmcblk0p1 /data ext4 rw 0 0\nproc /proc proc rw 0 0\n",
+        )
+        .unwrap();
+        std::fs::write(
+            sys.join("/proc/swaps"),
+            "Filename\tType\tSize\tUsed\tPriority\n/dev/zram0\tpartition\t1024\t256\t5\n",
         )
         .unwrap();
         std::fs::create_dir_all(sys.root().join("sys-block-usage")).unwrap();
@@ -404,8 +453,11 @@ mod tests {
         assert_eq!(v.net.len(), 1);
         assert_eq!(v.net[0].rx_bytes, 1024);
         assert_eq!(v.net[0].tx_bytes, 2048);
-        // Only ext4 and tmpfs mounts are interesting; proc is skipped.
-        assert_eq!(v.mounts.len(), 2);
+        // Only ext4, tmpfs, and the physical data mount are interesting; proc is skipped.
+        assert_eq!(v.mounts.len(), 3);
+        assert!(v.mounts.iter().any(|mount| mount.physical));
+        assert_eq!(v.swap_total_bytes, 1024 * 1024);
+        assert_eq!(v.swap_free_bytes, 768 * 1024);
     }
 
     #[test]

@@ -7,13 +7,14 @@ import { Field } from '../components/field.js';
 import { Toggle } from '../components/toggle.js';
 import { Button } from '../components/button.js';
 import { ActionList, ActionRow } from '../components/action-row.js';
+import { Table } from '../components/table.js';
 
 export async function render(api, store) {
   let cfg;
   try {
     cfg = await api.get('/api/v1/logs/config');
   } catch (e) {
-    cfg = { storage: 'volatile', max_size_bytes: 64 * 1024 * 1024, retention_days: 30, remote_syslog: null };
+    cfg = { storage: 'volatile', max_size_bytes: 64 * 1024 * 1024, retention_days: 30 };
     store.toast(`Could not load log configuration: ${e.message}`, 'error');
   }
   let sources = [];
@@ -23,11 +24,15 @@ export async function render(api, store) {
     store.toast(`Could not load log sources: ${e.message}`, 'error');
   }
 
-  const sourceList = el('div', { class: 'list-stack' }, ...(Array.isArray(sources) ? sources : []).map(source => el('div', { class: 'row list-row' },
-    el('div', {},
-      el('strong', {}, source.label),
-      el('div', { class: 'muted' }, source.description)),
-    el('span', { class: source.available ? 'status-badge status-ok' : 'status-badge' }, source.available ? 'Available' : 'Unavailable'))));
+  const sourceRows = (Array.isArray(sources) ? sources : []).map(source => [
+    el('strong', {}, source.label || source.id || 'Unknown'),
+    el('code', {}, source.id || '—'),
+    el('span', { class: 'source-description' }, source.description || '—'),
+    el('span', { class: source.available ? 'status-badge status-ok' : 'status-badge' }, source.available ? 'Available' : 'Unavailable'),
+  ]);
+  const sourceList = Table({
+    columns: ['Source', 'Identifier', 'Description', 'Status'],
+  }, sourceRows).element;
   const sourcesCard = Card({
     title: 'Available log sources',
     subtitle: 'Sources exposed by this Linux image and the WebConfig daemon.',
@@ -69,8 +74,10 @@ export async function render(api, store) {
       }
     });
   }
-  const followToggle = Toggle({ label: 'Follow (live)', checked: false,
-    onChange: v => v ? startFollow() : stopFollow() });
+  const followToggle = Toggle({
+    label: 'Follow (live)', checked: false,
+    onChange: v => v ? startFollow() : stopFollow()
+  });
   store.registerCleanup(stopFollow);
 
   const viewerCard = Card({
@@ -98,27 +105,21 @@ export async function render(api, store) {
   });
   const maxSize = Field({ label: 'Max size when persistent (bytes)', type: 'number', value: cfg.max_size_bytes });
   const retentionDays = Field({ label: 'Retention length (days)', type: 'number', value: cfg.retention_days || 30, help: 'Journald removes entries older than this limit. Use 0 for the system default.' });
-  const syslogEnabled = Toggle({ label: 'Enable remote syslog', checked: !!cfg.remote_syslog && cfg.remote_syslog.enabled === true });
-  const syslogHost = Field({ label: 'Host', value: cfg.remote_syslog && cfg.remote_syslog.host });
-  const syslogPort = Field({ label: 'Port', type: 'number', value: (cfg.remote_syslog && cfg.remote_syslog.port) || 514 });
-  const syslogProto = Field({ label: 'Protocol', type: 'select', value: (cfg.remote_syslog && cfg.remote_syslog.protocol) || 'udp', options: [{ value: 'udp', label: 'UDP' }, { value: 'tcp', label: 'TCP' }] });
-
   const configCard = Card({
-    title: 'Log rotation and remote delivery',
-    subtitle: 'Set retention by age and size, then optionally forward logs to a remote syslog server.',
-    footer: ActionList(ActionRow('Save and apply', 'Apply the journald storage and remote syslog settings.', Button({
+    title: 'Log rotation',
+    subtitle: 'Set retention by age and size for the local journal.',
+    footer: ActionList(ActionRow('Save and apply', 'Apply the local journald storage settings.', Button({
       onClick: async () => {
         await api.put('/api/v1/logs/config', {
+          ...cfg,
           storage: storage.get(),
           max_size_bytes: Number(maxSize.get()) || 0,
           retention_days: Number(retentionDays.get()) || 0,
-          remote_syslog: syslogEnabled.get() ? { enabled: true, host: syslogHost.get(), port: Number(syslogPort.get()) || 514, protocol: syslogProto.get() } : null,
         });
         store.toast('Logging config applied', 'success');
       },
     }, 'Save & apply'))),
-  }, storage.wrap, maxSize.wrap, retentionDays.wrap, syslogEnabled.wrap,
-    el('div', { class: 'field-row' }, syslogHost.wrap, syslogPort.wrap, syslogProto.wrap));
+  }, storage.wrap, maxSize.wrap, retentionDays.wrap);
 
   // ---------- Audit log ----------
   const auditPre = el('pre', { class: 'log-viewer' });
@@ -141,7 +142,7 @@ export async function render(api, store) {
   }, auditPre);
 
   return el('div', {},
-    el('div', { class: 'page-header' }, el('h1', {}, 'Logs'), el('p', {}, 'Journal viewer, storage policy, and the audit trail.')),
+    el('div', { class: 'page-header' }, el('h1', {}, 'Logs'), el('p', {}, 'Journal viewer, local storage policy, and the audit trail.')),
     sourcesCard, viewerCard, configCard, auditCard);
 }
 

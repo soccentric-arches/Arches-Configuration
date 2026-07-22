@@ -8,12 +8,14 @@ pub use webconfig_engine::update::{
     MockUpdateBackend, RaucUpdateBackend, SlotStatus, UpdateBackend,
 };
 
+use std::process::Command;
 use std::sync::Arc;
 use webconfig_engine::Sysroot;
 
-/// Pick the backend: RAUC on the real root, mock on a fake sysroot.
+/// Pick the backend: RAUC on a real root when the RAUC executable is present,
+/// mock on a fake sysroot or a developer host without RAUC installed.
 pub fn make_backend(sysroot: &Sysroot) -> Arc<dyn UpdateBackend> {
-    if sysroot.is_real_root() {
+    if sysroot.is_real_root() && rauc_available() {
         Arc::new(RaucUpdateBackend::new())
     } else {
         // Seed the mock with a plausible A/B pair so the Updates page has data.
@@ -34,4 +36,8 @@ pub fn make_backend(sysroot: &Sysroot) -> Arc<dyn UpdateBackend> {
             },
         ]))
     }
+}
+
+fn rauc_available() -> bool {
+    Command::new("rauc").arg("--version").output().is_ok()
 }

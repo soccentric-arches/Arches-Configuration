@@ -36,7 +36,8 @@ function metricTile(label) {
 export async function render(api, store) {
   const cpu = metricTile('CPU load (1m)');
   const mem = metricTile('Memory');
-  const disk = metricTile('Disk (max)');
+  const disk = metricTile('Physical storage');
+  const swap = metricTile('Swap');
   const temp = metricTile('Hottest');
   const uptimeEl = el('div', { class: 'tile-value' }, '—');
   const bootCountEl = el('div', { class: 'tile-sub', style: 'margin-top:6px' }, 'Boots: —');
@@ -54,9 +55,12 @@ export async function render(api, store) {
     const memPct = v.mem_total_kb ? ((1 - v.mem_available_kb / v.mem_total_kb) * 100) : null;
     mem.update(memPct != null ? `${memPct.toFixed(0)}%` : '—', memPct);
 
-    const diskPct = (v.mounts || []).map(m => m.total_bytes ? ((1 - m.avail_bytes / m.total_bytes) * 100) : 0)
+    const diskPct = (v.mounts || []).filter(m => m.physical).map(m => m.total_bytes ? ((1 - m.avail_bytes / m.total_bytes) * 100) : 0)
       .reduce((a, b) => Math.max(a, b), 0);
     disk.update(diskPct ? `${diskPct.toFixed(0)}%` : '—', diskPct);
+
+    const swapPct = v.swap_total_bytes ? ((1 - v.swap_free_bytes / v.swap_total_bytes) * 100) : null;
+    swap.update(swapPct != null ? `${swapPct.toFixed(0)}%` : '—', swapPct);
 
     const maxTemp = (v.temperatures || []).map(t => t.temp_millideg_c / 1000).reduce((a, b) => Math.max(a, b), -Infinity);
     temp.update(Number.isFinite(maxTemp) ? `${maxTemp.toFixed(0)}°C` : '—', Number.isFinite(maxTemp) ? maxTemp : null);
@@ -105,7 +109,7 @@ export async function render(api, store) {
     el('div', { class: 'page-header row', style: 'justify-content:space-between' },
       el('div', {}, el('h1', {}, 'Monitoring'), el('p', {}, 'Live vitals, pushed over SSE.')),
       el('div', { class: 'row' }, liveDot, liveLabel)),
-    Card({ title: 'Vitals', subtitle: 'Live CPU, memory, disk, temperature, and uptime readings.' }, el('div', { class: 'card-grid' }, cpu.node, mem.node, disk.node, uptimeTile, temp.node)),
+    Card({ title: 'Vitals', subtitle: 'Live CPU, memory, physical storage, swap, temperature, and uptime readings.' }, el('div', { class: 'card-grid' }, cpu.node, mem.node, disk.node, swap.node, uptimeTile, temp.node)),
     Card({ title: 'Network throughput', subtitle: 'Per-interface receive throughput from the live telemetry stream.' }, netHost),
     emmcCard);
 }

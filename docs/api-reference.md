@@ -108,7 +108,7 @@ Base URL: `https://<device>:8443/api/v1`. All responses are JSON.
 
 | Method | Path | Role | Notes |
 |---|---|---|---|
-| GET | `/monitoring/vitals` | any | `Vitals` (load, mem available, mounts, temperatures from `/sys/class/thermal` + hwmon with throttle flag, per-iface net counters, uptime, boot_count, last_boot_reason). |
+| GET | `/monitoring/vitals` | any | `Vitals` (load, mem available, mounts with `physical` flags, swap totals/free bytes, temperatures from `/sys/class/thermal` + hwmon with throttle flag, per-iface net counters, uptime, boot_count, last_boot_reason). |
 | GET | `/monitoring/emmc/:dev` | any | `{dev, life_time_estimate}`. |
 | GET | `/monitoring/tiles` | any | manifest-declared dashboard tiles. |
 | GET | `/monitoring/telemetry` | any | Read `{enabled, server_url, username, password, publish_interval_secs, include_diagnostics}`. |

@@ -33,6 +33,7 @@ export const NAV = [
 
   // Maintenance: updates and configuration recovery.
   { id: 'updates', label: 'Updates', icon: 'updates', category: 'Maintenance', key: 'u', loader: () => import('./updates.js') },
+  { id: 'remote-logs', label: 'Remote Logs', icon: 'logs', category: 'Maintenance', key: '6', loader: () => import('./remote-logs.js'), adminOnly: true },
   { id: 'remote-updates', label: 'Remote Updates', icon: 'cloud', category: 'Maintenance', key: '7', loader: () => import('./remote-updates.js'), adminOnly: true },
   { id: 'backup', label: 'Backup & Restore', icon: 'archive', category: 'Maintenance', key: 'b', loader: () => import('./backup.js'), adminOnly: true },
 

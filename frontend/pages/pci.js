@@ -2,15 +2,20 @@
 
 import { el } from '../core/dom.js';
 import { Card } from '../components/card.js';
-import { Badge } from '../components/badge.js';
 import { EmptyState } from '../components/empty-state.js';
-import { peripheralsOf } from './hardware-utils.js';
+import { Table } from '../components/table.js';
 
 export async function render(api) {
-    const peripherals = peripheralsOf(await api.get('/api/v1/io'), 'pci');
-    const cards = peripherals.map(peripheral => Card({ title: peripheral.human_name || peripheral.id, subtitle: peripheral.device },
-        Badge('available', 'success'),
-        el('div', { class: 'row' }, el('span', {}, 'Capabilities'), el('span', { class: 'muted' }, Object.keys(peripheral.caps || {}).length ? Object.entries(peripheral.caps).map(([key, value]) => `${key}: ${value}`).join(', ') : 'Board-defined defaults'))));
-    return el('div', {}, el('div', { class: 'page-header' }, el('h1', {}, 'PCI'), el('p', {}, 'Inspect PCI peripherals defined by the board manifest.')),
-        cards.length ? el('div', { class: 'card-grid' }, ...cards) : EmptyState({ title: 'No PCI peripherals on this board' }));
+    const data = await api.get('/api/v1/io/pci');
+    const devices = Array.isArray(data.devices) ? data.devices : [];
+    const table = Table({ columns: ['Address', 'Class', 'Vendor ID', 'Product ID', 'Revision', 'Details'] }, devices.map(device => [
+        el('code', {}, device.address),
+        device.class || '-',
+        el('code', {}, device.vendor_id),
+        el('code', {}, device.product_id),
+        el('code', {}, device.revision || '-'),
+        device.description || '-',
+    ])).element;
+    return el('div', {}, el('div', { class: 'page-header' }, el('h1', {}, 'PCI'), el('p', {}, 'Inspect live PCI devices discovered by lspci.')),
+        data.available && devices.length ? Card({ title: 'Connected PCI devices', subtitle: 'Live inventory from lspci.', }, table) : EmptyState({ title: data.error || 'No PCI devices detected' }));
 }
