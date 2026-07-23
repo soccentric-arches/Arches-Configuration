@@ -29,7 +29,7 @@
   --ring: #93c5fd;
 
   /* Accent (blue) */
-  --primary: #2563eb;
+  --sidebar-bg: var(--muted);
   --primary-foreground: #ffffff;
   --primary-hover: #1d4ed8;
   --primary-light: #60a5fa;

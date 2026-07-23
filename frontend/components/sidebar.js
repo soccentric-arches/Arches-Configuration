@@ -2,7 +2,7 @@ import { el } from '../core/dom.js';
 import { icon } from '../core/icons.js';
 
 /**
- * Sidebar({ navItems, onNavigate, onLogout }) -> { element, setActive }
+ * Sidebar({ navItems, onNavigate }) -> { element, setActive }
  * navItems: [{ id, label, icon, category }]
  */
 export function Sidebar({ navItems, onNavigate }) {
@@ -38,11 +38,7 @@ export function Sidebar({ navItems, onNavigate }) {
       }),
     ]));
 
-  const element = el('aside', { class: 'sidebar', id: 'sidebar' },
-    el('div', { class: 'sidebar-brand' },
-      el('span', { class: 'logo-mark' }, 'W'),
-      el('span', { class: 'brand-text' }, 'WebConfig')),
-    nav);
+  const element = el('aside', { class: 'sidebar', id: 'sidebar' }, nav);
 
   function setActive(routeId) {
     for (const [id, link] of links) {

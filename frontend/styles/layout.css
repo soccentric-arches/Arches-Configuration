@@ -12,7 +12,7 @@
 .sidebar {
   width: var(--sidebar-width);
   flex: 0 0 auto;
-  background: var(--sidebar-bg);
+  background: var(--muted);
   border-right: none;
   display: flex;
   flex-direction: column;
@@ -22,38 +22,6 @@
   box-shadow: none;
   transition: width var(--duration-normal) var(--ease);
   z-index: 30;
-}
-
-.sidebar-brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-4) var(--space-4);
-  height: var(--topbar-height);
-  border-bottom: 1px solid var(--sidebar-border);
-  font-weight: 600;
-  font-size: var(--text-base);
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-/* The product identity lives in the shared topbar; keep the sidebar focused on navigation. */
-.sidebar-brand {
-  display: none;
-}
-
-.sidebar-brand .logo-mark {
-  width: 26px;
-  height: 26px;
-  border-radius: var(--radius-md);
-  background: linear-gradient(135deg, var(--primary), var(--primary-light));
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-weight: 700;
-  font-size: 13px;
 }
 
 .sidebar-nav {
@@ -122,21 +90,13 @@
   text-overflow: ellipsis;
 }
 
-.sidebar-footer {
-  flex: 0 0 auto;
-  border-top: none;
-  padding: var(--space-3);
-}
-
 /* Collapsed (icon-only) state, toggled via body class. */
 .app-shell.sidebar-collapsed .sidebar {
   width: var(--sidebar-width-collapsed);
 }
 
-.app-shell.sidebar-collapsed .sidebar-brand span.brand-text,
 .app-shell.sidebar-collapsed .sidebar-link .label,
-.app-shell.sidebar-collapsed .sidebar-section-label,
-.app-shell.sidebar-collapsed .sidebar-footer .footer-detail {
+.app-shell.sidebar-collapsed .sidebar-section-label {
   display: none;
 }
 
@@ -148,12 +108,6 @@
   width: 18px;
   height: 18px;
   flex: 0 0 18px;
-}
-
-.app-shell.sidebar-collapsed .sidebar-brand .logo-mark {
-  width: 26px;
-  height: 26px;
-  flex: 0 0 26px;
 }
 
 /* ---------- Main column ---------- */
@@ -172,10 +126,9 @@
   align-items: center;
   gap: var(--space-3);
   padding: 0 max(var(--space-5), calc((100vw - var(--content-max-width) - var(--sidebar-width)) / 2 + var(--space-5))) 0 max(var(--space-5), calc((100vw - var(--content-max-width) - var(--sidebar-width)) / 2 + var(--space-5)));
-  border-bottom: 1px solid var(--border);
-  background: color-mix(in srgb, var(--background) 88%, transparent);
-  backdrop-filter: blur(8px);
-  box-shadow: 0 2px 8px rgba(15, 23, 42, .05);
+  border-bottom: none;
+  background: var(--muted);
+  box-shadow: none;
   position: fixed;
   left: 0;
   right: 0;
@@ -189,7 +142,7 @@
   gap: var(--space-2);
   min-width: var(--sidebar-width);
   padding-right: var(--space-5);
-  border-right: 1px solid var(--border);
+  border-right: none;
   font-size: var(--text-base);
   font-weight: 600;
   white-space: nowrap;

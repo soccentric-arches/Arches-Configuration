@@ -133,14 +133,14 @@
   color: var(--card-foreground);
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-sm);
+  box-shadow: none;
   margin-bottom: var(--space-6);
   overflow: hidden;
   transition: box-shadow var(--duration-normal) var(--ease), transform var(--duration-normal) var(--ease);
 }
 
 .card:hover {
-  box-shadow: var(--shadow-md);
+  box-shadow: none;
 }
 
 .card-header {
@@ -326,6 +326,7 @@ textarea.input {
   height: 20px;
   border-radius: 999px;
   background: var(--zinc-300);
+  border: 1px solid transparent;
   position: relative;
   transition: background var(--duration-fast) var(--ease);
   flex: 0 0 auto;
@@ -345,6 +346,7 @@ textarea.input {
 
 .switch input:checked+.switch-track {
   background: var(--primary);
+  border-color: var(--primary-hover);
 }
 
 .switch input:checked+.switch-track .switch-thumb {
