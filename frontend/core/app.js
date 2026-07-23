@@ -22,11 +22,14 @@ let authController;
 const sidebar = Sidebar({
   navItems: NAV,
   onNavigate: (id) => { closeMobileSidebar(); go(id); },
-  onLogout: () => authController.logout(),
 });
 document.getElementById('sidebar-mount').replaceWith(sidebar.element);
 
-const topbar = Topbar({ onToggleSidebar: toggleSidebar, onOpenPalette: openCommandPalette });
+const topbar = Topbar({
+  onToggleSidebar: toggleSidebar,
+  onOpenPalette: openCommandPalette,
+  onLogout: () => authController.logout(),
+});
 document.getElementById('topbar-mount').replaceWith(topbar.element);
 
 function toggleSidebar() {

@@ -55,8 +55,8 @@
   --info-border: #bae6fd;
 
   /* Sidebar */
-  --sidebar-bg: var(--zinc-50);
-  --sidebar-border: var(--zinc-200);
+  --sidebar-bg: var(--background);
+  --sidebar-border: transparent;
   --sidebar-foreground: var(--zinc-700);
   --sidebar-muted: var(--zinc-500);
   --sidebar-active-bg: #eff6ff;

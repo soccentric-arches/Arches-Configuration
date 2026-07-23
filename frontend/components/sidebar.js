@@ -1,12 +1,11 @@
 import { el } from '../core/dom.js';
 import { icon } from '../core/icons.js';
-import { Button } from './button.js';
 
 /**
  * Sidebar({ navItems, onNavigate, onLogout }) -> { element, setActive }
  * navItems: [{ id, label, icon, category }]
  */
-export function Sidebar({ navItems, onNavigate, onLogout }) {
+export function Sidebar({ navItems, onNavigate }) {
   const links = new Map();
 
   const groupedItems = new Map();
@@ -43,9 +42,7 @@ export function Sidebar({ navItems, onNavigate, onLogout }) {
     el('div', { class: 'sidebar-brand' },
       el('span', { class: 'logo-mark' }, 'W'),
       el('span', { class: 'brand-text' }, 'WebConfig')),
-    nav,
-    el('div', { class: 'sidebar-footer' },
-      Button({ variant: 'ghost', icon: 'logout', onClick: onLogout }, 'Log out')));
+    nav);
 
   function setActive(routeId) {
     for (const [id, link] of links) {

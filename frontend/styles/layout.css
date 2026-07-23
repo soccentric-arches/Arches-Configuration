@@ -13,13 +13,13 @@
   width: var(--sidebar-width);
   flex: 0 0 auto;
   background: var(--sidebar-bg);
-  border-right: 1px solid var(--sidebar-border);
+  border-right: none;
   display: flex;
   flex-direction: column;
   position: sticky;
   top: 0;
   height: 100vh;
-  box-shadow: 3px 0 12px rgba(15, 23, 42, .07), 1px 0 3px rgba(15, 23, 42, .04);
+  box-shadow: none;
   transition: width var(--duration-normal) var(--ease);
   z-index: 30;
 }
@@ -35,6 +35,11 @@
   font-size: var(--text-base);
   white-space: nowrap;
   overflow: hidden;
+}
+
+/* The product identity lives in the shared topbar; keep the sidebar focused on navigation. */
+.sidebar-brand {
+  display: none;
 }
 
 .sidebar-brand .logo-mark {
@@ -55,10 +60,15 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--space-3);
+  scrollbar-width: none;
+  padding: calc(60px + var(--space-3)) var(--space-3) var(--space-3);
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.sidebar-nav::-webkit-scrollbar {
+  display: none;
 }
 
 .sidebar-section-label {
@@ -114,7 +124,7 @@
 
 .sidebar-footer {
   flex: 0 0 auto;
-  border-top: 1px solid var(--sidebar-border);
+  border-top: none;
   padding: var(--space-3);
 }
 
@@ -152,6 +162,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
+  padding-top: 60px;
 }
 
 .topbar {
@@ -160,14 +171,41 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: 0 var(--space-5);
+  padding: 0 max(var(--space-5), calc((100vw - var(--content-max-width) - var(--sidebar-width)) / 2 + var(--space-5))) 0 max(var(--space-5), calc((100vw - var(--content-max-width) - var(--sidebar-width)) / 2 + var(--space-5)));
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--background) 88%, transparent);
   backdrop-filter: blur(8px);
   box-shadow: 0 2px 8px rgba(15, 23, 42, .05);
-  position: sticky;
+  position: fixed;
+  left: 0;
+  right: 0;
   top: 0;
-  z-index: 20;
+  z-index: 40;
+}
+
+.topbar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: var(--sidebar-width);
+  padding-right: var(--space-5);
+  border-right: 1px solid var(--border);
+  font-size: var(--text-base);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.topbar-brand .logo-mark {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, var(--primary), var(--primary-light));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .topbar .page-title {
@@ -217,6 +255,20 @@
 }
 
 @media (max-width: 880px) {
+  .topbar {
+    padding-left: var(--space-3);
+    padding-right: var(--space-3);
+  }
+
+  .topbar-brand {
+    min-width: auto;
+    padding-right: var(--space-3);
+  }
+
+  .topbar-brand .brand-text {
+    display: none;
+  }
+
   .sidebar {
     position: fixed;
     left: 0;
