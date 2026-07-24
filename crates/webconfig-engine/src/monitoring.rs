@@ -29,6 +29,61 @@ pub struct Vitals {
     /// Why the last boot happened, where the platform/MCU reports it
     /// (spec §4.5: "last boot reason"). `None` when no source reports it.
     pub last_boot_reason: Option<String>,
+    /// Per-cert days-until-expiry for the device cert store (spec §4.8:
+    /// "expires < 30 days feeds the alert engine"). Populated by the caller
+    /// — who owns the wall clock — from `config.security.certificates`; the
+    /// engine stays deterministic. Negative = already expired. Empty when no
+    /// certs are installed or none parse.
+    pub cert_expiries: Vec<CertExpiry>,
+}
+
+/// One cert's days-until-expiry, surfaced to the alert engine as `cert.<id>`
+/// (or aggregated as `cert.*` for the minimum across the store).
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct CertExpiry {
+    pub id: String,
+    pub days_until_expiry: i64,
+}
+
+/// Compute days-until-expiry for each cert from its operator-supplied ISO-8601
+/// `not_after` and the caller-supplied epoch seconds (the engine never reads
+/// the clock). Only the date part is parsed — the 30-day alert window makes the
+/// time-of-day irrelevant. Unparseable expiries are skipped (the engine can't
+/// alert on garbage; the upload route already shape-checks `not_after`).
+pub fn cert_expiries(certs: &[crate::store::security::CertMeta], now_secs: u64) -> Vec<CertExpiry> {
+    let mut out = Vec::new();
+    for c in certs {
+        if let Some(expiry_secs) = parse_iso_date_to_secs(&c.not_after) {
+            let days = (expiry_secs - now_secs as i64) / 86_400;
+            out.push(CertExpiry {
+                id: c.id.clone(),
+                days_until_expiry: days,
+            });
+        }
+    }
+    out
+}
+
+/// Parse the leading `YYYY-MM-DD` of an ISO-8601 stamp to UTC-epoch seconds.
+/// Manual integer parse keeps this robust to `time`-crate format-description
+/// API variance and accepts both date-only and full-stamp inputs.
+fn parse_iso_date_to_secs(s: &str) -> Option<i64> {
+    let s = s.trim();
+    if s.len() < 10
+        || s.as_bytes()[4] != b'-'
+        || s.as_bytes()[7] != b'-'
+        || !s[0..4].bytes().all(|b| b.is_ascii_digit())
+        || !s[5..7].bytes().all(|b| b.is_ascii_digit())
+        || !s[8..10].bytes().all(|b| b.is_ascii_digit())
+    {
+        return None;
+    }
+    let y: i32 = s[0..4].parse().ok()?;
+    let m: u8 = s[5..7].parse().ok()?;
+    let d: u8 = s[8..10].parse().ok()?;
+    let month = time::Month::try_from(m).ok()?;
+    let date = time::Date::from_calendar_date(y, month, d).ok()?;
+    Some(date.midnight().assume_utc().unix_timestamp())
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -74,6 +129,9 @@ pub fn read_vitals(sysroot: &Sysroot) -> Vitals {
         uptime_secs: read_uptime(sysroot),
         boot_count,
         last_boot_reason,
+        // Populated by the caller from config.security.certificates (read_vitals
+        // only sees the sysroot, not the config store).
+        cert_expiries: Vec::new(),
     }
 }
 
@@ -534,5 +592,64 @@ mod tests {
         std::fs::write(sys.webconfig_dir().join("last-boot-reason"), "watchdog\n").unwrap();
         let v = read_vitals(&sys);
         assert_eq!(v.last_boot_reason.as_deref(), Some("watchdog"));
+    }
+
+    #[test]
+    fn cert_expiries_compute_days_until_not_after() {
+        use crate::store::security::CertMeta;
+        // now = 2026-01-01T00:00:00Z == 1767225600.
+        let now = 1_767_225_600u64;
+        let certs = vec![
+            CertMeta {
+                id: "far".into(),
+                kind: "ca".into(),
+                subject: "CN=far".into(),
+                not_after: "2026-12-31".into(),
+            },
+            CertMeta {
+                id: "near".into(),
+                kind: "client".into(),
+                subject: "CN=near".into(),
+                not_after: "2026-01-20".into(),
+            },
+            CertMeta {
+                id: "past".into(),
+                kind: "ca".into(),
+                subject: "CN=past".into(),
+                not_after: "2025-12-01".into(),
+            },
+        ];
+        let exp = cert_expiries(&certs, now);
+        let by_id: std::collections::HashMap<&str, i64> = exp
+            .iter()
+            .map(|c| (c.id.as_str(), c.days_until_expiry))
+            .collect();
+        // 2026-01-01 → 2026-12-31 is 364 days.
+        assert_eq!(by_id["far"], 364);
+        // 2026-01-01 → 2026-01-20 is 19 days.
+        assert_eq!(by_id["near"], 19);
+        // Already expired → negative.
+        assert!(by_id["past"] < 0);
+    }
+
+    #[test]
+    fn cert_expiries_skips_unparseable_not_after() {
+        use crate::store::security::CertMeta;
+        let certs = vec![CertMeta {
+            id: "bad".into(),
+            kind: "ca".into(),
+            subject: "x".into(),
+            not_after: "not-a-date".into(),
+        }];
+        assert!(cert_expiries(&certs, 0).is_empty());
+    }
+
+    #[test]
+    fn parse_iso_accepts_date_only_and_full_stamp() {
+        // Full stamp's leading date is parsed; time portion ignored.
+        assert!(parse_iso_date_to_secs("2026-08-23").is_some());
+        assert!(parse_iso_date_to_secs("2026-08-23T12:00:00Z").is_some());
+        assert!(parse_iso_date_to_secs("garbage").is_none());
+        assert!(parse_iso_date_to_secs("2026/08/23").is_none());
     }
 }

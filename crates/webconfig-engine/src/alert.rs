@@ -207,6 +207,26 @@ fn resolve_metric(metric: &str, vitals: &Vitals) -> Option<f64> {
             || reason.to_ascii_lowercase().contains("hardware");
         return Some(hit as u8 as f64);
     }
+    // `cert.<id>` — days until that cert expires (spec §4.8: "expires < 30
+    // days feeds the alert engine"). `cert.*` aggregates to the minimum days
+    // across the whole cert store, so a single default rule fires when ANY
+    // installed cert nears expiry. Negative = already expired. Checked before
+    // the `cert.<id>` prefix branch so the `*` wildcard isn't treated as an id.
+    if metric == "cert.*" {
+        return vitals
+            .cert_expiries
+            .iter()
+            .map(|c| c.days_until_expiry as f64)
+            .fold(f64::INFINITY, f64::min)
+            .into_option();
+    }
+    if let Some(id) = metric.strip_prefix("cert.") {
+        return vitals
+            .cert_expiries
+            .iter()
+            .find(|c| c.id == id)
+            .map(|c| c.days_until_expiry as f64);
+    }
     // `service.<unit>` and `mcu.heartbeat` are spec §4.7 metrics but are not
     // carried by `Vitals`; they resolve to None when absent (the engine skips
     // the rule that tick), so a rule using them simply never fires until the
@@ -435,6 +455,57 @@ mod tests {
             throttled: false,
         });
         v
+    }
+
+    fn vitals_with_certs(days: &[(&str, i64)]) -> Vitals {
+        let mut v = vitals(40.0);
+        v.cert_expiries = days
+            .iter()
+            .map(|(id, d)| crate::monitoring::CertExpiry {
+                id: (*id).into(),
+                days_until_expiry: *d,
+            })
+            .collect();
+        v
+    }
+
+    #[test]
+    fn cert_star_resolves_to_min_days() {
+        // No certs → None (rule skipped, no false alarm).
+        assert_eq!(resolve_metric("cert.*", &vitals(40.0)), None);
+        // Min across the store.
+        let v = vitals_with_certs(&[("ca-root", 120), ("mqtt-client", 10), ("old", -2)]);
+        assert_eq!(resolve_metric("cert.*", &v), Some(-2.0));
+    }
+
+    #[test]
+    fn cert_id_resolves_to_that_cert() {
+        let v = vitals_with_certs(&[("ca-root", 120), ("mqtt-client", 10)]);
+        assert_eq!(resolve_metric("cert.ca-root", &v), Some(120.0));
+        assert_eq!(resolve_metric("cert.mqtt-client", &v), Some(10.0));
+        // Unknown id → None (rule skips that tick).
+        assert_eq!(resolve_metric("cert.missing", &v), None);
+    }
+
+    #[test]
+    fn cert_expiry_rule_fires_within_30_days() {
+        // spec §4.8: 'expires < 30 days feeds the alert engine'. Each scenario
+        // uses a fresh engine so a prior fire doesn't suppress re-emission.
+        let rules = vec![rule("cert-expiry", "cert.*", "<", 30.0, 0)];
+        // 120 days out → no fire.
+        let mut eng = AlertEngine::new();
+        let e = eng.evaluate(&rules, &vitals_with_certs(&[("ca", 120)]), 0);
+        assert!(e.is_empty());
+        // 10 days out → fires.
+        let mut eng = AlertEngine::new();
+        let e = eng.evaluate(&rules, &vitals_with_certs(&[("ca", 10)]), 0);
+        assert_eq!(e.len(), 1);
+        assert_eq!(e[0].state, AlertState::Fired);
+        // Already expired (negative) → fires too (urgent).
+        let mut eng = AlertEngine::new();
+        let e = eng.evaluate(&rules, &vitals_with_certs(&[("ca", -5)]), 0);
+        assert_eq!(e.len(), 1);
+        assert_eq!(e[0].state, AlertState::Fired);
     }
 
     #[test]

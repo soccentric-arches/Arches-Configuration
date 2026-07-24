@@ -30,7 +30,18 @@ pub(crate) async fn run_alert_timer(
             Ok(config) => config,
             Err(_) => continue,
         };
-        let vitals = webconfig_engine::monitoring::read_vitals(&engine.sysroot);
+        let vitals = {
+            let mut v = webconfig_engine::monitoring::read_vitals(&engine.sysroot);
+            // spec §4.8: cert expiry feeds the alert engine. The HTTP layer owns
+            // the wall clock, so days-until-expiry is computed here from each
+            // cert's operator-supplied ISO-8601 not_after and injected into the
+            // vitals snapshot the engine evaluates (the engine stays pure).
+            v.cert_expiries = webconfig_engine::monitoring::cert_expiries(
+                &config.security.certificates,
+                now_secs,
+            );
+            v
+        };
         // Global alert switch (spec §4.7). When the engine is disabled, do not
         // evaluate rules — instead flush any firing state with clear events so
         // the dashboard red-state resets. This makes `alerts.enabled` actually
