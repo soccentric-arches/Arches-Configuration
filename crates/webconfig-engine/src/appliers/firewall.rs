@@ -148,18 +148,21 @@ impl Applier for FirewallApplier {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(&path, Self::render(config))?;
+        if config.network.firewall.enabled {
+            std::fs::write(&path, Self::render(config))?;
+        } else {
+            // Firewall disabled (spec §4.2 enabled flag): remove the managed
+            // ruleset file so WebConfig imposes no nftables policy. The live
+            // kernel table is dropped by `reload_nft` below. Previously
+            // `enabled` was ignored and the default-deny ruleset was always
+            // generated and loaded.
+            let _ = std::fs::remove_file(&path);
+        }
         *self.backup.lock().unwrap() = Some(prior);
         if sysroot.is_real_root() {
-            // `nft -f` the generated file. On failure, restore the prior file
-            // before returning so we never leave a broken ruleset in place.
-            if let Err(e) = run_cmd(
-                "nft",
-                &[
-                    "-f",
-                    path.to_str().unwrap_or("/etc/nftables.d/webconfig.nft"),
-                ],
-            ) {
+            // Re-load the (possibly removed) ruleset. On failure, restore the
+            // prior file so we never leave a broken ruleset in place.
+            if let Err(e) = Self::reload_nft(&path) {
                 let _ = self.backup.lock().unwrap().take().unwrap().restore();
                 return Err(e);
             }
@@ -167,9 +170,39 @@ impl Applier for FirewallApplier {
         Ok(ApplyOutcome::Committed)
     }
 
-    fn rollback(&self, _sysroot: &Sysroot) -> Result<(), ApplyError> {
+    fn rollback(&self, sysroot: &Sysroot) -> Result<(), ApplyError> {
         if let Some(b) = self.backup.lock().unwrap().take() {
             b.restore()?;
+        }
+        if sysroot.is_real_root() {
+            // Re-load whatever state rollback restored on disk (a prior file, or
+            // nothing if we created the file fresh). Previously rollback only
+            // restored the file and left the live kernel ruleset stale — the
+            // just-applied ruleset stayed in effect until something else
+            // reloaded nftables.
+            let _ = Self::reload_nft(&Self::nft_file(sysroot));
+        }
+        Ok(())
+    }
+}
+
+impl FirewallApplier {
+    /// Reload the WebConfig nftables ruleset on the real root. Drops any
+    /// existing `inet webconfig` table first so this is idempotent (a plain
+    /// `nft -f` fails if the table already exists, which broke re-apply), then
+    /// loads the file if it still exists — so apply, disable, and rollback all
+    /// converge to the on-disk state. The `delete table` failure is ignored
+    /// because the table may not exist yet.
+    fn reload_nft(path: &std::path::Path) -> Result<(), ApplyError> {
+        let _ = run_cmd("nft", &["delete", "table", "inet", "webconfig"]);
+        if path.exists() {
+            run_cmd(
+                "nft",
+                &[
+                    "-f",
+                    path.to_str().unwrap_or("/etc/nftables.d/webconfig.nft"),
+                ],
+            )?;
         }
         Ok(())
     }
@@ -276,5 +309,34 @@ mod tests {
         assert!(f.exists());
         a.rollback(&sys).unwrap();
         assert!(!f.exists());
+    }
+
+    #[test]
+    fn disabled_firewall_writes_no_ruleset() {
+        // Pre-seed a ruleset so we can prove apply removes it when disabled.
+        let dir = tempfile::tempdir().unwrap();
+        let sys = Sysroot::at(dir.path());
+        let a = FirewallApplier::new();
+        let mut c = Config::default();
+        c.network.interfaces.push(Interface {
+            name: "eth0".into(),
+            enabled: true,
+            open_services: vec!["ssh".into()],
+            ..Default::default()
+        });
+        a.apply(&sys, &c).unwrap();
+        let f = sys.join("/etc/nftables.d/webconfig.nft");
+        assert!(f.exists());
+        // Now disable the firewall — the managed ruleset file must be removed.
+        c.network.firewall.enabled = false;
+        a.apply(&sys, &c).unwrap();
+        assert!(!f.exists(), "disabled firewall must not leave a ruleset");
+    }
+
+    #[test]
+    fn firewall_config_defaults_enabled() {
+        // First-boot seed (Config::default()) must ship the firewall ON per
+        // spec §4.2 ("default everything closed except the UI").
+        assert!(crate::store::network::FirewallConfig::default().enabled);
     }
 }

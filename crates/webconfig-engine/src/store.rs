@@ -480,7 +480,7 @@ pub mod network {
         true
     }
 
-    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct FirewallConfig {
         #[serde(default = "default_firewall_enabled")]
         pub enabled: bool,
@@ -494,6 +494,20 @@ pub mod network {
 
     fn default_firewall_enabled() -> bool {
         true
+    }
+
+    // Manual Default so `Config::default()` (the first-boot seed) ships the
+    // firewall ON — spec §4.2: "Default: everything closed except the UI." The
+    // derived Default would give `enabled: false`, contradicting the serde
+    // default and leaving the device unprotected out of the box.
+    impl Default for FirewallConfig {
+        fn default() -> Self {
+            Self {
+                enabled: true,
+                default_open: Vec::new(),
+                default_open_ports: Vec::new(),
+            }
+        }
     }
 
     #[derive(Debug, Clone, Default, Serialize, Deserialize)]
