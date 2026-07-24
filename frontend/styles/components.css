@@ -633,6 +633,21 @@ textarea.input {
   margin-top: var(--space-4);
 }
 
+/* ---------- Callout (inline page-level notice, non-sticky) ---------- */
+.callout {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+}
+.callout-warning {
+  background: var(--warning-bg);
+  color: #92400e;
+  border-color: var(--warning-border);
+}
+
 /* ---------- Banner (reconnect / commit-confirm) ---------- */
 .banner {
   position: sticky;

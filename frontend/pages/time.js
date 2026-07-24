@@ -42,6 +42,18 @@ const US_TIMEZONES = [
 
 export async function render(api, store) {
     const cfg = await api.get('/api/v1/system');
+    // Spec §4.1: a board without a battery-backed RTC loses the wall clock on
+    // every power loss. Surface that so the operator knows NTP/GPS is required
+    // (or a manual datetime must be re-entered after each boot).
+    let rtcBanner = null;
+    try {
+        const manifest = await api.get('/api/v1/manifest');
+        if (manifest && manifest.has_rtc === false) {
+            rtcBanner = el('div', { class: 'callout callout-warning' },
+                el('div', {}, el('strong', {}, 'No battery-backed RTC'),
+                    el('div', { class: 'text-sm' }, 'This board has no real-time clock, so the system time resets on every power loss. Enable NTP, PTP, or GPS/GNSS synchronization, or re-enter the manual datetime after each boot.')));
+        }
+    } catch (_) { /* manifest optional — banner is best-effort */ }
     const t = cfg.time || {};
     const currentTimezone = t.timezone;
     const timezoneOptions = US_TIMEZONES.map(([value, label]) => ({ value, label }));
@@ -96,5 +108,6 @@ export async function render(api, store) {
         el('div', { class: 'page-header' },
             el('h1', {}, 'Clock'),
             el('p', {}, 'Configure the timezone and manual clock value. NTP, PTP, and GPS/GNSS have dedicated pages.')),
+        rtcBanner,
         timeCard);
 }
