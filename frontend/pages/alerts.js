@@ -109,7 +109,39 @@ export async function render(api, store) {
 
   // ---------- History ---------------------------------------------------
   const historyItems = (data.history || []).slice(-20).reverse();
-  const historyCard = Card({ title: 'Recent events', subtitle: 'The most recent alert transitions recorded by the daemon.' },
+  // Spec §4.7: alert history is viewable AND exportable. Download the full
+  // ring buffer from the dedicated /alerts/history endpoint (not the truncated
+  // slice carried on /alerts) as a client-side file — no backend change.
+  function downloadHistory(text, filename, mime) {
+    const blob = new Blob([text], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = el('a', { href: url, download: filename });
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+  async function exportHistory(format) {
+    try {
+      const rows = await api.get('/api/v1/alerts/history');
+      if (!rows.length) { store.toast('No alert history to export', 'error'); return; }
+      if (format === 'csv') {
+        const head = 'ts,rule_id,state,value\n';
+        const body = rows.map(r => `${r.ts},${r.rule_id},${r.state},${r.value}`).join('\n');
+        downloadHistory(head + body, 'alert-history.csv', 'text/csv');
+      } else {
+        downloadHistory(JSON.stringify(rows, null, 2), 'alert-history.json', 'application/json');
+      }
+      store.toast('History exported', 'success');
+    } catch (error) { store.toast(error.message || 'Export failed', 'error'); }
+  }
+  const historyCard = Card({
+    title: 'Recent events',
+    subtitle: 'The most recent alert transitions recorded by the daemon.',
+    footer: ActionList(
+      ActionRow('Export JSON', 'Download the full alert history ring buffer as JSON.', Button({ variant: 'outline', size: 'sm', onClick: () => exportHistory('json') }, 'Export JSON')),
+      ActionRow('Export CSV', 'Download the full alert history as CSV for spreadsheet review.', Button({ variant: 'outline', size: 'sm', onClick: () => exportHistory('csv') }, 'Export CSV'))),
+  },
     historyItems.length
       ? el('div', { class: 'stack' }, ...historyItems.map(ev => el('div', { class: 'row muted text-sm' },
         el('span', { class: 'mono' }, ev.ts), el('span', {}, ev.rule_id), el('span', {}, ev.state), el('span', {}, `val=${ev.value}`))))
