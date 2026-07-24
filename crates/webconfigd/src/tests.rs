@@ -48,13 +48,22 @@ async fn build_app_with(schema: Schema) -> (axum::Router, tempfile::TempDir) {
     // services pages have data.
     let manifest = BoardManifest {
         platform: "arches".into(),
-        peripherals: vec![webconfig_engine::manifest::Peripheral {
-            id: "can0".into(),
-            device: "can0".into(),
-            human_name: "CAN 0".into(),
-            kind: IoKind::Can,
-            ..Default::default()
-        }],
+        peripherals: vec![
+            webconfig_engine::manifest::Peripheral {
+                id: "can0".into(),
+                device: "can0".into(),
+                human_name: "CAN 0".into(),
+                kind: IoKind::Can,
+                ..Default::default()
+            },
+            webconfig_engine::manifest::Peripheral {
+                id: "ttyTHS0".into(),
+                device: "/dev/ttyTHS0".into(),
+                human_name: "High-speed UART 0".into(),
+                kind: IoKind::Serial,
+                ..Default::default()
+            },
+        ],
         service_allowlist: vec!["sshd.service".into()],
         default_alert_rules: vec![
             webconfig_engine::store::alerts::AlertRule {
@@ -881,5 +890,58 @@ async fn tls_identity_upload_replaces_cert_and_rejects_mismatch() {
         Some(r#"{"cert":"","key":""}"#),
     )
     .await;
+    assert_eq!(st, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn serial_apply_writes_baud_unit_and_rejects_conflicts() {
+    // Spec §4.9: serial ownership + baud is applied (not just persisted), and
+    // duplicate-device conflicts are prevented at PUT time.
+    let (app, dir) = build_app().await;
+    let webconfig_dir = dir.path().join("data/webconfig");
+    let (cookie, csrf) = boot_admin(&app).await;
+
+    // A valid serial port on a manifest-declared UART.
+    let body = serde_json::json!({
+        "serial": [{ "device": "/dev/ttyTHS0", "enabled": true, "baud": 115200, "mode": "rs232", "owner": "customer" }],
+        "serial_enabled": true,
+        "can": [], "can_enabled": true, "gpio": [], "gpio_enabled": true,
+        "cameras": [], "cameras_enabled": true, "mcu": null, "board_leds": {},
+    })
+    .to_string();
+    let (st, _, _) = send(&app, "PUT", "/api/v1/io", Some(&cookie), Some(&csrf), Some(&body)).await;
+    assert_eq!(st, StatusCode::OK);
+
+    // Apply serial -> the baud unit lands on the data partition.
+    let (st, _, _) = send(&app, "POST", "/api/v1/io/serial/apply", Some(&cookie), Some(&csrf), None).await;
+    assert_eq!(st, StatusCode::OK);
+    assert!(webconfig_dir
+        .join("/etc/systemd/system/webconfig-serial-ttyTHS0.service")
+        .exists());
+
+    // Duplicate device (same UART, two entries) is rejected at PUT (409), even
+    // though the two owners differ — ownership is per-device (spec §4.9).
+    let dup = serde_json::json!({
+        "serial": [
+            { "device": "/dev/ttyTHS0", "enabled": true, "baud": 115200, "mode": "rs232", "owner": "console" },
+            { "device": "/dev/ttyTHS0", "enabled": true, "baud": 9600, "mode": "rs232", "owner": "customer" }
+        ],
+        "serial_enabled": true,
+        "can": [], "can_enabled": true, "gpio": [], "gpio_enabled": true,
+        "cameras": [], "cameras_enabled": true, "mcu": null, "board_leds": {},
+    })
+    .to_string();
+    let (st, _, _) = send(&app, "PUT", "/api/v1/io", Some(&cookie), Some(&csrf), Some(&dup)).await;
+    assert_eq!(st, StatusCode::CONFLICT);
+
+    // A port not in the manifest is rejected at PUT (400).
+    let bad = serde_json::json!({
+        "serial": [{ "device": "/dev/ttyS9", "enabled": true, "baud": 9600, "mode": "rs232", "owner": "unassigned" }],
+        "serial_enabled": true,
+        "can": [], "can_enabled": true, "gpio": [], "gpio_enabled": true,
+        "cameras": [], "cameras_enabled": true, "mcu": null, "board_leds": {},
+    })
+    .to_string();
+    let (st, _, _) = send(&app, "PUT", "/api/v1/io", Some(&cookie), Some(&csrf), Some(&bad)).await;
     assert_eq!(st, StatusCode::BAD_REQUEST);
 }

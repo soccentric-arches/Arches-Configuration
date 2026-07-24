@@ -436,13 +436,21 @@ pub async fn put(
 ) -> ApiResult<Json<IoConfig>> {
     role.require_admin("io.put")?;
     // Serial ownership conflict prevention (spec §4.9): no two ports may claim
-    // the same non-unassigned owner when the owner is a singleton like console.
+    // the same non-unassigned owner when the owner is a singleton like console,
+    // and no two ports may target the same device (ownership is per-device).
     let mut owners = std::collections::HashSet::new();
+    let mut devices = std::collections::HashSet::new();
     for s in &req.serial {
         if s.owner != "unassigned" && !owners.insert(s.owner.clone()) {
             return Err(ApiError::Conflict(format!(
                 "serial owner {} claimed twice",
                 s.owner
+            )));
+        }
+        if !devices.insert(s.device.clone()) {
+            return Err(ApiError::Conflict(format!(
+                "serial device {} claimed twice",
+                s.device
             )));
         }
         // Reject ports not in the manifest.
@@ -479,6 +487,20 @@ pub async fn apply_can(
     app.engine.validate("can").await?;
     let _ = apply_and_audit(&app, &user, "can").await?;
     Ok(Json(serde_json::json!({ "applied": ["can"] })))
+}
+
+/// `POST /api/v1/io/serial/apply` — apply the serial applier (spec §4.9): set
+/// per-port baud and resolve exclusive ownership (console getty on/off).
+pub async fn apply_serial(
+    State(app): State<AppState>,
+    role: AuthRole,
+    session: Session,
+) -> ApiResult<Json<serde_json::Value>> {
+    role.require_admin("io.serial.apply")?;
+    let user = username(&session).await;
+    app.engine.validate("serial").await?;
+    let _ = apply_and_audit(&app, &user, "serial").await?;
+    Ok(Json(serde_json::json!({ "applied": ["serial"] })))
 }
 
 /// `POST /api/v1/io/gpio/:name/toggle` — manual toggle for an output (spec §4.9).

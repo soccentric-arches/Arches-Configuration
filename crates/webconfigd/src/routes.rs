@@ -146,6 +146,7 @@ pub fn build_router(state: AppState, static_dir: std::path::PathBuf) -> Router {
         .route("/io/i2c", get(io::i2c_devices))
         .route("/io/spi", get(io::spi_devices))
         .route("/io/can/apply", post(io::apply_can))
+        .route("/io/serial/apply", post(io::apply_serial))
         .route("/io/gpio/:name/toggle", post(io::toggle_gpio))
         .route("/io/i2c/scan", post(io::i2c_scan))
         .route("/io/mcu", get(io::mcu))

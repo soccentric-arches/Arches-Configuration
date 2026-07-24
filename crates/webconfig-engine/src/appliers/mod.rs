@@ -12,6 +12,7 @@ pub mod firewall;
 pub mod hostname;
 pub mod journald;
 pub mod networkd;
+pub mod serial;
 pub mod ssh;
 pub mod time;
 pub mod wifi;
@@ -23,6 +24,7 @@ pub use firewall::FirewallApplier;
 pub use hostname::HostnameApplier;
 pub use journald::JournaldApplier;
 pub use networkd::NetworkdApplier;
+pub use serial::SerialApplier;
 pub use ssh::SshApplier;
 pub use time::TimeApplier;
 pub use wifi::WifiApplier;
@@ -43,6 +45,7 @@ pub fn all() -> Vec<Box<dyn Applier>> {
         Box::new(WifiApplier::new()),
         Box::new(ApApplier::new()),
         Box::new(CanApplier::new()),
+        Box::new(SerialApplier::new()),
         Box::new(JournaldApplier::new()),
         Box::new(WireGuardApplier::new()),
     ]
