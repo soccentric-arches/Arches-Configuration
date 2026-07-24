@@ -49,6 +49,19 @@ export async function render(api, store) {
   const liveDot = el('span', { class: 'live-dot' });
   const liveLabel = el('span', { class: 'muted text-sm' }, 'Connecting…');
 
+  function ensureNetTiles(iface) {
+    if (!netTiles.has(iface)) {
+      // Spec §4.5: per-interface traffic counters from /sys/class/net/*/statistics
+      // — show both rx and tx, each with its own rolling sparkline.
+      const rx = metricTile(`${iface} rx`);
+      const tx = metricTile(`${iface} tx`);
+      netTiles.set(iface, { rx, tx });
+      netHost.appendChild(rx.node);
+      netHost.appendChild(tx.node);
+    }
+    return netTiles.get(iface);
+  }
+
   function renderVitals(v) {
     cpu.update(v.load && v.load[0] != null ? v.load[0].toFixed(2) : '—', v.load && v.load[0]);
 
@@ -70,12 +83,9 @@ export async function render(api, store) {
     bootReasonEl.textContent = `Last boot: ${v.last_boot_reason || '—'}`;
 
     for (const n of v.net || []) {
-      if (!netTiles.has(n.iface)) {
-        const t = metricTile(`${n.iface} rx`);
-        netTiles.set(n.iface, t);
-        netHost.appendChild(t.node);
-      }
-      netTiles.get(n.iface).update(fmtBytes(n.rx_bytes), n.rx_bytes / 1024);
+      const t = ensureNetTiles(n.iface);
+      t.rx.update(fmtBytes(n.rx_bytes), n.rx_bytes / 1024);
+      t.tx.update(fmtBytes(n.tx_bytes), n.tx_bytes / 1024);
     }
   }
 
