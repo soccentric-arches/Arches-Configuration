@@ -686,9 +686,17 @@ pub mod alerts {
         true
     }
 
-    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct AlertsConfig {
-        #[serde(default)]
+        /// Global alert-engine switch (spec §4.7). Defaults to **true** so the
+        /// shipped per-platform default packs (disk-full, watchdog-reset,
+        /// Arches throttling) protect the device out of the box; an operator
+        /// can turn the whole engine off here. The daemon's alert timer honors
+        /// this — when false it emits clears for any firing rules and skips
+        /// evaluation. (Previously this field defaulted to false AND was
+        /// ignored, so the toggle was a no-op and default packs only fired by
+        /// accident because the timer never checked it.)
+        #[serde(default = "default_enabled")]
         pub enabled: bool,
         #[serde(default)]
         pub rules: Vec<AlertRule>,
@@ -716,6 +724,21 @@ pub mod alerts {
         /// `webhook`, `mqtt`, `ui` (always UI + event log).
         #[serde(default)]
         pub actions: Vec<String>,
+    }
+
+    // Manual Default so `Config::default()` (the first-boot seed) enables the
+    // alert engine — matching the serde default of `default_enabled` above.
+    // The derived Default would give `enabled: false`, contradicting the
+    // out-of-box protection intent.
+    impl Default for AlertsConfig {
+        fn default() -> Self {
+            Self {
+                enabled: true,
+                rules: Vec::new(),
+                webhooks: Vec::new(),
+                mqtt_event_topic: None,
+            }
+        }
     }
 }
 

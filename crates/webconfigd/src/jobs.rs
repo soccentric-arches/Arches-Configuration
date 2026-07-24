@@ -25,6 +25,20 @@ pub(crate) async fn run_alert_timer(
             Err(_) => continue,
         };
         let vitals = webconfig_engine::monitoring::read_vitals(&engine.sysroot);
+        // Global alert switch (spec §4.7). When the engine is disabled, do not
+        // evaluate rules — instead flush any firing state with clear events so
+        // the dashboard red-state resets. This makes `alerts.enabled` actually
+        // gate the engine (previously it was ignored).
+        if !config.alerts.enabled {
+            let clears = alert_engine.lock().await.clear_all(tick);
+            for event in clears {
+                tracing::info!(rule = %event.rule_id, state = ?event.state, "alert (engine disabled)");
+                if let Err(error) = history.record(&event) {
+                    tracing::warn!(error = %error, "alert history write failed");
+                }
+            }
+            continue;
+        }
         // Merge per-platform default rule packs with the user-configured rules
         // (spec §4.7). User rules override defaults by id; defaults ship in the
         // board manifest (Arches: throttling; all: disk-full, watchdog-reset).

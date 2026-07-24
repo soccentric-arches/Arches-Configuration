@@ -70,6 +70,24 @@ impl AlertEngine {
         let mut seen: HashMap<String, ()> = HashMap::new();
         for rule in rules {
             seen.insert(rule.id.clone(), ());
+            // Honor the per-rule `enabled` flag (spec §4.7 / API reference:
+            // "override/disable a default by adding a same-id rule"). A disabled
+            // rule never fires; if it was firing when it got disabled, emit a
+            // clear so the UI red-state drops and no stale event lingers.
+            if !rule.enabled {
+                let st = self.states.entry(rule.id.clone()).or_default();
+                if st.firing {
+                    st.firing = false;
+                    st.held_since = None;
+                    out.push(AlertEvent {
+                        ts: ts_from_secs(now_secs),
+                        rule_id: rule.id.clone(),
+                        state: AlertState::Cleared,
+                        value: f64::NAN,
+                    });
+                }
+                continue;
+            }
             let value = match resolve_metric(&rule.metric, vitals) {
                 Some(v) => v,
                 None => continue, // metric not available this tick
@@ -111,6 +129,26 @@ impl AlertEngine {
 
     pub fn is_firing(&self, rule_id: &str) -> bool {
         self.states.get(rule_id).map(|s| s.firing).unwrap_or(false)
+    }
+
+    /// Drop all rule state, emitting a `Cleared` event for every rule that was
+    /// firing. Used when the global alert switch (`alerts.enabled`) is turned
+    /// off so the dashboard red-state resets and no stale firing state survives
+    /// a disable/re-enable cycle (spec §4.7). Idempotent: an empty/cleared
+    /// engine yields no events.
+    pub fn clear_all(&mut self, now_secs: u64) -> Vec<AlertEvent> {
+        let mut out = Vec::new();
+        for (id, st) in self.states.drain() {
+            if st.firing {
+                out.push(AlertEvent {
+                    ts: ts_from_secs(now_secs),
+                    rule_id: id,
+                    state: AlertState::Cleared,
+                    value: f64::NAN,
+                });
+            }
+        }
+        out
     }
 }
 
@@ -521,5 +559,55 @@ mod tests {
         assert_eq!(by_id["disk-full"].threshold, 95.0);
         assert!(by_id.contains_key("watchdog-reset"));
         assert!(by_id.contains_key("custom"));
+    }
+
+    #[test]
+    fn disabled_rule_never_fires() {
+        let mut eng = AlertEngine::new();
+        let mut r = rule("hot", "temp", ">", 85.0, 0);
+        r.enabled = false;
+        let rules = vec![r];
+        // Condition is true well past duration, but the rule is disabled.
+        let e = eng.evaluate(&rules, &vitals(90.0), 0);
+        assert!(e.is_empty(), "disabled rule must not fire");
+        let e = eng.evaluate(&rules, &vitals(90.0), 100);
+        assert!(e.is_empty(), "disabled rule must not fire on later ticks");
+        assert!(!eng.is_firing("hot"));
+    }
+
+    #[test]
+    fn disabling_a_firing_rule_emits_clear() {
+        let mut eng = AlertEngine::new();
+        let rules = vec![rule("hot", "temp", ">", 85.0, 0)];
+        eng.evaluate(&rules, &vitals(90.0), 0); // fires (duration 0)
+        assert!(eng.is_firing("hot"));
+        // Same rule, now disabled — must clear, not keep firing.
+        let mut r = rule("hot", "temp", ">", 85.0, 0);
+        r.enabled = false;
+        let e = eng.evaluate(&[r], &vitals(90.0), 5);
+        assert_eq!(e.len(), 1);
+        assert_eq!(e[0].state, AlertState::Cleared);
+        assert!(!eng.is_firing("hot"));
+    }
+
+    #[test]
+    fn clear_all_flushes_firing_rules() {
+        let mut eng = AlertEngine::new();
+        let rules = vec![rule("hot", "temp", ">", 85.0, 0)];
+        eng.evaluate(&rules, &vitals(90.0), 0);
+        assert!(eng.is_firing("hot"));
+        let clears = eng.clear_all(10);
+        assert_eq!(clears.len(), 1);
+        assert_eq!(clears[0].state, AlertState::Cleared);
+        assert!(!eng.is_firing("hot"));
+        // Idempotent on an already-cleared engine.
+        assert!(eng.clear_all(20).is_empty());
+    }
+
+    #[test]
+    fn alerts_config_defaults_enabled() {
+        // First-boot seed is Config::default(); alerts must be on out of the
+        // box so the shipped default packs protect the device (spec §4.7).
+        assert!(crate::store::alerts::AlertsConfig::default().enabled);
     }
 }
