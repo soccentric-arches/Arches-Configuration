@@ -253,10 +253,17 @@ fn compare(value: f64, op: &str, threshold: f64) -> bool {
     }
 }
 
+/// Format an epoch-seconds value (supplied by the caller — the engine is
+/// deterministic and never reads the wall clock) as an ISO-8601 UTC stamp
+/// `YYYY-MM-DDTHH:MM:SSZ`, matching the audit `ts` contract (spec §4.7/§4.8).
+/// Uses the already-vendored `time` crate purely for formatting.
 fn ts_from_secs(secs: u64) -> String {
-    // Deterministic ISO-ish stamp from a tick count; the real timestamp is
-    // applied by the caller. Tests use small numbers.
-    format!("t={secs}")
+    let dt = time::OffsetDateTime::from_unix_timestamp(secs as i64)
+        .unwrap_or(time::OffsetDateTime::UNIX_EPOCH);
+    dt.format(time::macros::format_description!(
+        "[year]-[month]-[day]T[hour]:[minute]:[second]Z"
+    ))
+    .unwrap_or_else(|_| format!("t={secs}"))
 }
 
 /// A bounded ring-buffer history file (spec §4.7).
@@ -609,5 +616,24 @@ mod tests {
         // First-boot seed is Config::default(); alerts must be on out of the
         // box so the shipped default packs protect the device (spec §4.7).
         assert!(crate::store::alerts::AlertsConfig::default().enabled);
+    }
+
+    #[test]
+    fn ts_from_secs_is_iso8601_utc() {
+        // 2026-01-01T00:00:00Z == epoch 1767225600.
+        let ts = ts_from_secs(1_767_225_600);
+        assert_eq!(ts, "2026-01-01T00:00:00Z");
+        // No `t=` placeholder may survive for a real epoch value.
+        assert!(!ts.starts_with("t="));
+    }
+
+    #[test]
+    fn evaluate_emits_iso8601_timestamp() {
+        // The engine must stamp fired events with ISO-8601, not `t=<tick>`.
+        let mut eng = AlertEngine::new();
+        let rules = vec![rule("hot", "temp", ">", 85.0, 0)];
+        let events = eng.evaluate(&rules, &vitals(90.0), 1_767_225_600);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].ts, "2026-01-01T00:00:00Z");
     }
 }

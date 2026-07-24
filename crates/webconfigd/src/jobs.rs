@@ -16,10 +16,16 @@ pub(crate) async fn run_alert_timer(
     alert_engine: Arc<tokio::sync::Mutex<AlertEngine>>,
 ) {
     let history = bootstrap::alert_history(&engine);
-    let mut tick: u64 = 0;
     loop {
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-        tick += 5;
+        // Real wall-clock epoch seconds (spec §4.7): alert history `ts` must be
+        // an ISO-8601 UTC stamp, so the engine receives the actual time rather
+        // than a monotonic tick counter. The HTTP layer owns the clock; the
+        // engine stays deterministic (it only formats what we pass).
+        let now_secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
         let config = match engine.load() {
             Ok(config) => config,
             Err(_) => continue,
@@ -30,7 +36,7 @@ pub(crate) async fn run_alert_timer(
         // the dashboard red-state resets. This makes `alerts.enabled` actually
         // gate the engine (previously it was ignored).
         if !config.alerts.enabled {
-            let clears = alert_engine.lock().await.clear_all(tick);
+            let clears = alert_engine.lock().await.clear_all(now_secs);
             for event in clears {
                 tracing::info!(rule = %event.rule_id, state = ?event.state, "alert (engine disabled)");
                 if let Err(error) = history.record(&event) {
@@ -43,7 +49,10 @@ pub(crate) async fn run_alert_timer(
         // (spec §4.7). User rules override defaults by id; defaults ship in the
         // board manifest (Arches: throttling; all: disk-full, watchdog-reset).
         let rules = merge_defaults(&manifest.default_alert_rules, &config.alerts.rules);
-        let events = alert_engine.lock().await.evaluate(&rules, &vitals, tick);
+        let events = alert_engine
+            .lock()
+            .await
+            .evaluate(&rules, &vitals, now_secs);
         for event in events {
             tracing::info!(rule = %event.rule_id, state = ?event.state, "alert");
             // Event log (always) — append to the ring-buffer history.
