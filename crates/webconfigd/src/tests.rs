@@ -799,3 +799,87 @@ async fn cert_store_upload_list_delete_round_trip() {
     .await;
     assert_eq!(st, StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn tls_identity_upload_replaces_cert_and_rejects_mismatch() {
+    // Spec §4.8: "upload of customer cert/key" replaces the device TLS
+    // identity. The pair is validated (a mismatched cert/key is rejected) and
+    // only then written to cert.pem/key.pem — a bad upload can never brick the
+    // listener on the next boot.
+    let (app, dir) = build_app().await;
+    let webconfig_dir = dir.path().join("data/webconfig");
+    let (cookie, csrf) = boot_admin(&app).await;
+
+    // A real self-signed identity generated client-side = the "customer" pair.
+    let mut params = rcgen::CertificateParams::new(vec!["customer.example".to_string()]).unwrap();
+    params.distinguished_name = rcgen::DistinguishedName::new();
+    params
+        .distinguished_name
+        .push(rcgen::DnType::CommonName, "customer.example");
+    let kp = rcgen::KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256).unwrap();
+    let cert_pem = params.self_signed(&kp).unwrap().pem();
+    let key_pem = kp.serialize_pem();
+
+    let body = serde_json::json!({ "cert": cert_pem, "key": key_pem }).to_string();
+    let (st, _, resp) = send(
+        &app,
+        "POST",
+        "/api/v1/security/tls",
+        Some(&cookie),
+        Some(&csrf),
+        Some(&body),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let v: serde_json::Value = serde_json::from_str(&resp).unwrap();
+    assert_eq!(v["ok"], true);
+    assert_eq!(v["restart_required"], true);
+    // The customer identity replaced cert.pem/key.pem on the data partition.
+    let on_disk = std::fs::read_to_string(webconfig_dir.join("cert.pem")).unwrap();
+    assert_eq!(on_disk, cert_pem, "cert.pem must be the uploaded cert");
+    assert_eq!(
+        std::fs::read_to_string(webconfig_dir.join("key.pem")).unwrap(),
+        key_pem
+    );
+    // The private key is mode 0600 — not world-readable.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(webconfig_dir.join("key.pem"))
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o077, 0, "key.pem must not be group/world readable");
+    }
+
+    // A cert uploaded against a DIFFERENT key is rejected before disk changes.
+    let other_kp = rcgen::KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256).unwrap();
+    let bad = serde_json::json!({ "cert": cert_pem, "key": other_kp.serialize_pem() }).to_string();
+    let (st, _, _) = send(
+        &app,
+        "POST",
+        "/api/v1/security/tls",
+        Some(&cookie),
+        Some(&csrf),
+        Some(&bad),
+    )
+    .await;
+    assert_eq!(st, StatusCode::BAD_REQUEST);
+    // cert.pem is still the previously-accepted one (not overwritten on reject).
+    assert_eq!(
+        std::fs::read_to_string(webconfig_dir.join("cert.pem")).unwrap(),
+        cert_pem
+    );
+
+    // Empty body → 400.
+    let (st, _, _) = send(
+        &app,
+        "POST",
+        "/api/v1/security/tls",
+        Some(&cookie),
+        Some(&csrf),
+        Some(r#"{"cert":"","key":""}"#),
+    )
+    .await;
+    assert_eq!(st, StatusCode::BAD_REQUEST);
+}

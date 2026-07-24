@@ -142,6 +142,7 @@ Base URL: `https://<device>:8443/api/v1`. All responses are JSON.
 | POST | `/security/apply` | **[admin]** | apply WireGuard. |
 | GET | `/security/wireguard/pubkey` | any | `{public_key, has_private_key}`. |
 | POST | `/security/csr` | **[admin]** | `{cn}` → `{csr, private_key}`. |
+| POST | `/security/tls` | **[admin]** | `{cert, key}` (PEM pair) → `{ok, restart_required}`. Replaces the device TLS identity (`<data>/webconfig/cert.pem`+`key.pem`). The pair is validated by building a real `rustls` `ServerConfig` first — a cert/key mismatch or unsupported key is rejected (400) **before** any file is written, so a bad upload can never brick the listener on the next boot. The key is written mode 0600. The running listener holds the prior cert in memory, so the new identity takes effect on the next daemon restart (`restart_required: true`). |
 | GET | `/security/exposure` | any | per-interface open services. |
 | GET | `/security/trust` | any | secure boot / TPM / verity / encryption status (read-only). |
 | GET | `/security/certs` | any | `[{id, kind, subject, not_after}]`. |

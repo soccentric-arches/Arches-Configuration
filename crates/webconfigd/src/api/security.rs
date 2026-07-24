@@ -100,6 +100,82 @@ pub struct CsrRequest {
     pub cn: String,
 }
 
+/// `POST /api/v1/security/tls` — replace the device TLS identity with a
+/// customer-provided cert/key pair (spec §4.8: "upload of customer cert/key").
+/// The pair is validated in memory by building a real `rustls` ServerConfig —
+/// `with_single_cert` rejects a cert/key mismatch or an unsupported key
+/// algorithm, so a bad upload can never leave the listener unable to start on
+/// the next boot. On success both files are atomically replaced (write temp +
+/// rename). Admin only; audited.
+///
+/// Stated v1 assumption: the running listener holds the prior `ServerConfig`
+/// in memory, so the new identity takes effect on the next daemon restart (or
+/// reboot), not mid-session. Surfacing that to the operator is a frontend job.
+pub async fn upload_tls_identity(
+    State(app): State<AppState>,
+    role: AuthRole,
+    session: Session,
+    Json(req): Json<TlsUploadRequest>,
+) -> ApiResult<Json<serde_json::Value>> {
+    role.require_admin("security.tls.upload")?;
+    if req.cert.trim().is_empty() || req.key.trim().is_empty() {
+        return Err(ApiError::BadRequest(
+            "cert and key are both required".into(),
+        ));
+    }
+    // Validate the pair before touching disk — never write a half-identity.
+    crate::tls::server_config_from_pem(req.cert.as_bytes(), req.key.as_bytes())
+        .map_err(|e| ApiError::BadRequest(format!("invalid cert/key pair: {e}")))?;
+
+    let dir = app.engine.sysroot.webconfig_dir().to_path_buf();
+    let cert_path = dir.join("cert.pem");
+    let key_path = dir.join("key.pem");
+    std::fs::create_dir_all(&dir).map_err(|_| ApiError::Internal)?;
+    // Atomic replace: write to sibling temp files, fsync, then rename onto the
+    // real paths. The window between the two renames is two syscalls; a crash
+    // there is no worse than the pre-existing first-boot case (ensure_self_signed
+    // regenerates). Order: key first, then cert — a restart sees a valid pair
+    // only once both land, and a half-swapped pair fails loud on boot rather
+    // than silently serving the wrong identity.
+    let cert_tmp = dir.join("cert.pem.new");
+    let key_tmp = dir.join("key.pem.new");
+    {
+        use std::io::Write;
+        let mut f = std::fs::File::create(&cert_tmp).map_err(|_| ApiError::Internal)?;
+        f.write_all(req.cert.as_bytes())
+            .map_err(|_| ApiError::Internal)?;
+        f.sync_all().map_err(|_| ApiError::Internal)?;
+        let mut f = std::fs::File::create(&key_tmp).map_err(|_| ApiError::Internal)?;
+        f.write_all(req.key.as_bytes())
+            .map_err(|_| ApiError::Internal)?;
+        f.sync_all().map_err(|_| ApiError::Internal)?;
+    }
+    // 0o600 on the private key — it must not be world-readable.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&key_tmp, std::fs::Permissions::from_mode(0o600))
+            .map_err(|_| ApiError::Internal)?;
+    }
+    std::fs::rename(&key_tmp, &key_path).map_err(|_| ApiError::Internal)?;
+    std::fs::rename(&cert_tmp, &cert_path).map_err(|_| ApiError::Internal)?;
+
+    let user = username(&session).await;
+    audit(&app, &user, "security.tls.upload", None);
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "restart_required": true,
+    })))
+}
+
+#[derive(serde::Deserialize)]
+pub struct TlsUploadRequest {
+    /// PEM certificate chain (leaf first, then intermediates if any).
+    pub cert: String,
+    /// PEM private key matching the leaf cert.
+    pub key: String,
+}
+
 /// `GET /api/v1/security/exposure` — one glanceable statement of currently
 /// reachable services per interface (spec §4.8), derived from firewall +
 /// service state.

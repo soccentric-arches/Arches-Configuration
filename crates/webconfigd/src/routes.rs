@@ -133,6 +133,7 @@ pub fn build_router(state: AppState, static_dir: std::path::PathBuf) -> Router {
         .route("/security/apply", post(security::apply))
         .route("/security/wireguard/pubkey", get(security::wg_pubkey))
         .route("/security/csr", post(security::generate_csr))
+        .route("/security/tls", post(security::upload_tls_identity))
         .route("/security/exposure", get(security::exposure))
         .route("/security/trust", get(security::trust))
         .route("/security/certs", get(security::certs))

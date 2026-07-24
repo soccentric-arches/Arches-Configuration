@@ -66,20 +66,33 @@ pub fn ensure_self_signed(
 pub fn server_config(cert_path: &Path, key_path: &Path) -> Result<ServerConfig, TlsError> {
     let cert_pem = std::fs::read(cert_path)?;
     let key_pem = std::fs::read(key_path)?;
+    server_config_from_pem(&cert_pem, &key_pem)
+}
 
-    let certs: Vec<CertificateDer<'static>> = rustls_pemfile::certs(&mut cert_pem.as_slice())
+/// Build a `rustls` ServerConfig from in-memory PEM cert + key bytes. Used by
+/// the customer-cert upload route to validate a candidate pair **before**
+/// writing it to disk — `with_single_cert` rejects a cert/key mismatch and an
+/// unsupported key algorithm, so a bad upload can never leave the listener
+/// unable to start on the next boot (spec §4.8: "upload of customer cert/key").
+pub fn server_config_from_pem(
+    mut cert_pem: &[u8],
+    mut key_pem: &[u8],
+) -> Result<ServerConfig, TlsError> {
+    let certs: Vec<CertificateDer<'static>> = rustls_pemfile::certs(&mut cert_pem)
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| TlsError::Pem(e.to_string()))?;
+    if certs.is_empty() {
+        return Err(TlsError::Pem("no certificate in pem".into()));
+    }
 
-    let key: PrivateKeyDer<'static> = rustls_pemfile::private_key(&mut key_pem.as_slice())
+    let key: PrivateKeyDer<'static> = rustls_pemfile::private_key(&mut key_pem)
         .map_err(|e| TlsError::Pem(e.to_string()))?
         .ok_or_else(|| TlsError::Pem("no private key in pem".into()))?;
 
-    let cfg = ServerConfig::builder()
+    ServerConfig::builder()
         .with_no_client_auth()
         .with_single_cert(certs, key)
-        .map_err(|e| TlsError::Pem(e.to_string()))?;
-    Ok(cfg)
+        .map_err(|e| TlsError::Pem(e.to_string()))
 }
 
 /// An acceptor wrapping a ServerConfig for tokio-rustls.
@@ -143,5 +156,34 @@ mod tests {
         let (csr, key) = generate_csr("arches-01").unwrap();
         assert!(csr.contains("BEGIN CERTIFICATE REQUEST"));
         assert!(key.contains("BEGIN PRIVATE KEY"));
+    }
+
+    #[test]
+    fn rejects_cert_key_mismatch() {
+        // Two independent self-signed identities — their cert and key do NOT
+        // pair, so a customer cert uploaded against the wrong key must fail
+        // validation rather than silently bricking the listener on reboot.
+        let d = tempfile::tempdir().unwrap();
+        let a = (d.path().join("a.pem"), d.path().join("a.key"));
+        let b = (d.path().join("b.pem"), d.path().join("b.key"));
+        ensure_self_signed(&a.0, &a.1, None).unwrap();
+        ensure_self_signed(&b.0, &b.1, None).unwrap();
+        let cert_a = std::fs::read(&a.0).unwrap();
+        let key_b = std::fs::read(&b.1).unwrap();
+        assert!(server_config_from_pem(&cert_a, &key_b).is_err());
+        // The matching pair must still succeed.
+        let key_a = std::fs::read(&a.1).unwrap();
+        assert!(server_config_from_pem(&cert_a, &key_a).is_ok());
+    }
+
+    #[test]
+    fn rejects_pem_with_no_cert() {
+        let d = tempfile::tempdir().unwrap();
+        let cert = d.path().join("c.pem");
+        let key = d.path().join("k.pem");
+        ensure_self_signed(&cert, &key, None).unwrap();
+        let key_pem = std::fs::read(&key).unwrap();
+        // Key-only PEM, no cert -> error, not a silent half-written identity.
+        assert!(server_config_from_pem(&key_pem, &key_pem).is_err());
     }
 }
