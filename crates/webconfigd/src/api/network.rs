@@ -162,11 +162,18 @@ pub async fn rollback(
 }
 
 /// `GET /api/v1/network/scan` — Wi-Fi scan (SSID/signal list, spec §4.2).
-/// On the real root shells out to `iw dev wlan0 scan`; fake sysroot returns
-/// the manifest-declared wlan0 + an empty list so the UI renders.
+/// Scans the first live wireless interface (detected from `/sys/class/net`,
+/// never hardcoded — Pinnacle/Sequoia may name theirs `wlp*`); on the fake
+/// sysroot returns an empty list so the UI still renders.
 pub async fn scan(State(app): State<AppState>, _role: AuthRole) -> ApiResult<Json<Vec<WifiScan>>> {
-    if app.engine.sysroot.is_real_root() {
-        let out = webconfig_engine::applier::run_cmd("iw", &["dev", "wlan0", "scan"])
+    let sys = &app.engine.sysroot;
+    if sys.is_real_root() {
+        let Some(iface) = first_wireless_iface(sys) else {
+            // No wireless hardware present — return an empty scan rather than
+            // erroring on a missing `wlan0` (spec §4.2).
+            return Ok(Json(Vec::new()));
+        };
+        let out = webconfig_engine::applier::run_cmd("iw", &["dev", &iface, "scan"])
             .map_err(ApiError::from)?;
         // Parse the `iw scan` dump for SSID + signal. Best-effort.
         let mut nets = Vec::new();
@@ -198,6 +205,31 @@ pub async fn scan(State(app): State<AppState>, _role: AuthRole) -> ApiResult<Jso
         return Ok(Json(nets));
     }
     Ok(Json(Vec::new()))
+}
+
+/// Pick the first wireless interface from `/sys/class/net` (spec §4.2: never
+/// hardcode `wlan0`). A wireless interface exposes a `wireless` symlink and/or
+/// a `phy80211` directory under its net-class node. `None` when no Wi-Fi
+/// hardware is present.
+fn first_wireless_iface(sysroot: &webconfig_engine::Sysroot) -> Option<String> {
+    let netdir = sysroot.join("/sys/class/net");
+    let entries = std::fs::read_dir(&netdir).ok()?;
+    for e in entries.flatten() {
+        let name = e.file_name().to_string_lossy().to_string();
+        if name == "lo" {
+            continue;
+        }
+        let has_wireless = sysroot
+            .join(format!("/sys/class/net/{name}/wireless"))
+            .exists();
+        let has_phy = sysroot
+            .join(format!("/sys/class/net/{name}/phy80211"))
+            .exists();
+        if has_wireless || has_phy {
+            return Some(name);
+        }
+    }
+    None
 }
 
 #[derive(Serialize, Default, serde::Deserialize)]
@@ -281,4 +313,44 @@ pub async fn connectivity_test(
             }
         },
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::first_wireless_iface;
+    use webconfig_engine::Sysroot;
+
+    fn fake_sysroot() -> tempfile::TempDir {
+        tempfile::tempdir().unwrap()
+    }
+
+    #[test]
+    fn picks_wireless_iface_by_wireless_node() {
+        // `wlan0` exposes the `wireless` symlink — the classic convention.
+        let dir = fake_sysroot();
+        let sys = Sysroot::at(dir.path());
+        std::fs::create_dir_all(sys.join("/sys/class/net/eth0")).unwrap();
+        std::fs::create_dir_all(sys.join("/sys/class/net/wlan0/wireless")).unwrap();
+        std::fs::create_dir_all(sys.join("/sys/class/net/lo")).unwrap();
+        assert_eq!(first_wireless_iface(&sys).as_deref(), Some("wlan0"));
+    }
+
+    #[test]
+    fn picks_wireless_iface_by_phy80211_node() {
+        // Pinnacle/Sequoia may name the radio `wlp3s0` and expose `phy80211`
+        // instead of `wireless` — must still be detected, not hardcoded to
+        // `wlan0` (spec §4.2).
+        let dir = fake_sysroot();
+        let sys = Sysroot::at(dir.path());
+        std::fs::create_dir_all(sys.join("/sys/class/net/wlp3s0/phy80211")).unwrap();
+        assert_eq!(first_wireless_iface(&sys).as_deref(), Some("wlp3s0"));
+    }
+
+    #[test]
+    fn returns_none_when_no_wireless_hardware() {
+        let dir = fake_sysroot();
+        let sys = Sysroot::at(dir.path());
+        std::fs::create_dir_all(sys.join("/sys/class/net/eth0")).unwrap();
+        assert_eq!(first_wireless_iface(&sys), None);
+    }
 }
