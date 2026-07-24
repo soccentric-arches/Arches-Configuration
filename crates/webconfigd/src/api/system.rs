@@ -27,6 +27,7 @@ pub async fn put(
     Json(req): Json<SystemConfig>,
 ) -> ApiResult<Json<serde_json::Value>> {
     role.require_admin("system.put")?;
+    validate_system_config(&req)?;
     let user = username(&session).await;
     let cfg = app.engine.update(move |c| {
         c.system = req.clone();
@@ -34,6 +35,96 @@ pub async fn put(
     })?;
     audit(&app, &user, "system.put", None);
     Ok(Json(serde_json::to_value(&cfg.system).unwrap_or_default()))
+}
+
+/// Validate the system section at save time (spec §4.1). The time applier
+/// re-checks all of this at apply (defense in depth), but rejecting here gives
+/// the operator immediate feedback instead of a failure only when they press
+/// Apply — the same "reject at save" rationale as PUT /alerts. Mirrors the
+/// applier's time-sync mutex exactly: NTP, PTP, and GPS are mutually exclusive,
+/// a manual date/time requires every sync source off, PTP needs a valid
+/// interface + domain, and GPS needs a device path. Timezone tzdata existence
+/// is left to the applier (it needs a real root).
+fn validate_system_config(cfg: &SystemConfig) -> ApiResult<()> {
+    let t = &cfg.time;
+    let sync_sources = [t.ntp_enabled, t.ptp_enabled, t.gps_enabled]
+        .into_iter()
+        .filter(|enabled| *enabled)
+        .count();
+    if sync_sources > 1 {
+        return Err(ApiError::BadRequest(
+            "NTP, PTP, and GPS cannot be enabled together".into(),
+        ));
+    }
+    if t.manual_datetime.is_some() && (t.ntp_enabled || t.ptp_enabled || t.gps_enabled) {
+        return Err(ApiError::BadRequest(
+            "manual_datetime requires NTP, PTP, and GPS synchronization to be disabled".into(),
+        ));
+    }
+    if let Some(tz) = &t.timezone {
+        if tz.is_empty()
+            || tz
+                .chars()
+                .any(|c| !(c.is_ascii_alphanumeric() || c == '/' || c == '_' || c == '-'))
+        {
+            return Err(ApiError::BadRequest(format!(
+                "invalid timezone characters: {tz}"
+            )));
+        }
+    }
+    if let Some(manual) = &t.manual_datetime {
+        let stripped = manual.trim();
+        let bad = stripped.len() < 19
+            || !stripped[4..5].contains('-')
+            || !stripped[7..8].contains('-')
+            || !stripped[10..11].contains(' ')
+            || !stripped[13..14].contains(':')
+            || !stripped[16..17].contains(':');
+        if bad {
+            return Err(ApiError::BadRequest(format!(
+                "manual_datetime must be 'YYYY-MM-DD HH:MM:SS', got {manual:?}"
+            )));
+        }
+    }
+    if t.ptp_enabled {
+        let interface = t.ptp_interface.as_deref().unwrap_or("");
+        if interface.is_empty()
+            || interface
+                .chars()
+                .any(|c| !(c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.'))
+        {
+            return Err(ApiError::BadRequest(
+                "PTP requires a valid network interface".into(),
+            ));
+        }
+        if t.ptp_domain.is_some_and(|domain| domain > 127) {
+            return Err(ApiError::BadRequest(
+                "PTP domain must be between 0 and 127".into(),
+            ));
+        }
+    }
+    if t.gps_enabled {
+        for (label, device) in [
+            ("GPS", t.gps_device.as_deref()),
+            ("GPS PPS", t.gps_pps_device.as_deref()),
+        ] {
+            if let Some(path) = device {
+                if path.is_empty()
+                    || path
+                        .chars()
+                        .any(|c| !(c.is_ascii_alphanumeric() || "/_-.:".contains(c)))
+                {
+                    return Err(ApiError::BadRequest(format!(
+                        "{label} device path is invalid"
+                    )));
+                }
+            }
+        }
+        if t.gps_device.is_none() {
+            return Err(ApiError::BadRequest("GPS requires a device path".into()));
+        }
+    }
+    Ok(())
 }
 
 /// `POST /api/v1/system/apply` — apply hostname + time + ssh appliers (spec
@@ -518,4 +609,80 @@ pub async fn root_password(
         let _ = child.wait();
     }
     Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use webconfig_engine::store::system::{SshConfig, TimeConfig};
+
+    fn cfg() -> SystemConfig {
+        SystemConfig {
+            hostname: None,
+            asset_tag: None,
+            hardware_revision: None,
+            serial_number: None,
+            time: TimeConfig::default(),
+            ssh: SshConfig::default(),
+            ntp_servers: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn accepts_a_single_sync_source() {
+        let mut c = cfg();
+        c.time.ntp_enabled = true;
+        assert!(validate_system_config(&c).is_ok());
+        let mut c = cfg();
+        c.time.ptp_enabled = true;
+        c.time.ptp_interface = Some("eth0".into());
+        assert!(validate_system_config(&c).is_ok());
+        let mut c = cfg();
+        c.time.gps_enabled = true;
+        c.time.gps_device = Some("/dev/ttyUSB0".into());
+        assert!(validate_system_config(&c).is_ok());
+    }
+
+    #[test]
+    fn rejects_ntp_and_ptp_together() {
+        let mut c = cfg();
+        c.time.ntp_enabled = true;
+        c.time.ptp_enabled = true;
+        c.time.ptp_interface = Some("eth0".into());
+        assert!(validate_system_config(&c).is_err());
+    }
+
+    #[test]
+    fn rejects_manual_time_with_any_sync_on() {
+        let mut c = cfg();
+        c.time.manual_datetime = Some("2026-01-02 03:04:05".into());
+        c.time.ntp_enabled = true;
+        assert!(validate_system_config(&c).is_err());
+        let mut c = cfg();
+        c.time.manual_datetime = Some("2026-01-02 03:04:05".into());
+        c.time.ptp_enabled = true;
+        c.time.ptp_interface = Some("eth0".into());
+        assert!(validate_system_config(&c).is_err());
+    }
+
+    #[test]
+    fn accepts_manual_time_with_all_sync_off() {
+        let mut c = cfg();
+        c.time.manual_datetime = Some("2026-01-02 03:04:05".into());
+        assert!(validate_system_config(&c).is_ok());
+    }
+
+    #[test]
+    fn rejects_ptp_without_interface() {
+        let mut c = cfg();
+        c.time.ptp_enabled = true;
+        assert!(validate_system_config(&c).is_err());
+    }
+
+    #[test]
+    fn rejects_gps_without_device() {
+        let mut c = cfg();
+        c.time.gps_enabled = true;
+        assert!(validate_system_config(&c).is_err());
+    }
 }
