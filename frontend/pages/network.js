@@ -163,6 +163,27 @@ export async function renderNetworkPage(api, store, mode = 'all') {
     store.toast('Rolled back');
   }
 
+  // Spec §4.2 connectivity test: gateway → public IP → DNS resolve, each
+  // reported as {ok, detail}. Surfaces the live reachability of the configured
+  // network without the operator needing shell access.
+  const connResult = el('div', { class: 'stack' });
+  function renderConnResult(r) {
+    const row = (label, layer) => el('div', { class: 'action-row' },
+      el('div', { class: 'action-row-copy' },
+        el('h3', {}, label),
+        el('p', { class: layer.ok ? 'muted' : 'error-text' }, layer.detail || (layer.ok ? 'ok' : 'failed'))),
+      el('span', { class: layer.ok ? 'badge badge-success' : 'badge badge-destructive' }, layer.ok ? 'Reachable' : 'Failed'));
+    connResult.replaceChildren(
+      row('Gateway', r.gateway || { ok: false, detail: '—' }),
+      row('Public internet', r.public || { ok: false, detail: '—' }),
+      row('DNS resolution', r.dns || { ok: false, detail: '—' }));
+  }
+  async function runConnectivity() {
+    connResult.replaceChildren(el('p', { class: 'muted' }, 'Testing…'));
+    try { renderConnResult(await api.post('/api/v1/network/connectivity-test', {})); }
+    catch (error) { connResult.replaceChildren(el('p', { class: 'error-text' }, error.message || 'Connectivity test failed')); }
+  }
+
   const showWired = mode === 'all' || mode === 'wired';
   const showWireless = mode === 'all' || mode === 'wireless';
   const showFiveG = mode === 'all' || mode === '5g';
@@ -181,7 +202,9 @@ export async function renderNetworkPage(api, store, mode = 'all') {
     Card({ title: 'Network actions', subtitle: 'Applying network settings is provisional until the new connection is confirmed.' },
       ActionList(
         ActionRow('Save and apply', 'Write the edited settings and apply them. The connection may move to a new address.', Button({ onClick: apply }, 'Apply settings')),
-        ActionRow('Roll back now', 'Restore the previous network configuration immediately.', Button({ variant: 'outline', onClick: rollback }, 'Roll back')))),
+        ActionRow('Roll back now', 'Restore the previous network configuration immediately.', Button({ variant: 'outline', onClick: rollback }, 'Roll back')),
+        ActionRow('Test connectivity', 'Ping the configured gateway, a public IP, and resolve a name via the configured DNS.', Button({ variant: 'outline', onClick: runConnectivity }, 'Run test'))),
+      connResult),
   ];
 
   return el('div', {},
