@@ -32,8 +32,6 @@ async function request(method, url, body, isForm) {
     throw new Error(msg);
   }
   if (method !== 'GET' && method !== 'HEAD') {
-    // Placeholder until the frontend has a dedicated client-side event stream.
-    console.log('[WebConfig] frontend update', { method, url, at: new Date().toISOString() });
     // A mutation just succeeded — whatever made the page "dirty" is now saved.
     clearDirty();
   }
