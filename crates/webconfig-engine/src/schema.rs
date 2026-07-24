@@ -70,7 +70,16 @@ impl Schema {
         for entry in std::fs::read_dir(dir)? {
             let entry = entry?;
             let path = entry.path();
-            if path.extension().and_then(|s| s.to_str()) != Some("json") {
+            // Only `*.schema.json` files are schemas (spec §3). A bare `.json`
+            // file in this directory — a manifest, notes, anything else — must
+            // not be loaded as a schema, or it would either mis-key a validator
+            // or break load_dir entirely when it fails to parse as a descriptor.
+            let is_schema = path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .map(|name| name.ends_with(".schema.json"))
+                .unwrap_or(false);
+            if !is_schema {
                 continue;
             }
             let stem = path
@@ -297,5 +306,21 @@ mod tests {
         assert!(s.validate(&cfg).is_err());
         cfg.system.hostname = Some("arches-01".into());
         assert!(s.validate(&cfg).is_ok());
+    }
+
+    #[test]
+    fn load_dir_ignores_non_schema_json_files() {
+        // A bare .json file in the schemas dir is not a schema and must be
+        // skipped — even when its content would not parse as a descriptor.
+        let dir = tempfile::tempdir().unwrap();
+        let schema = r#"{ "id": "system", "title": "System" }"#;
+        std::fs::write(dir.path().join("system.schema.json"), schema).unwrap();
+        // Not a schema: wrong name. Malformed content would have broken
+        // load_dir before the filter was tightened.
+        std::fs::write(dir.path().join("notes.json"), r#"{ "not": "a schema" }"#).unwrap();
+        std::fs::write(dir.path().join("README.txt"), "ignore me").unwrap();
+        let s = Schema::load_dir(dir.path()).unwrap();
+        assert_eq!(s.descriptors.len(), 1);
+        assert_eq!(s.descriptors[0].0, "system");
     }
 }
