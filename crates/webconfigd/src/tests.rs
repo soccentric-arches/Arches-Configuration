@@ -598,3 +598,82 @@ async fn alerts_expose_default_packs_and_persist_push_targets() {
     assert!(actions.iter().any(|a| a == "webhook"));
     assert!(actions.iter().any(|a| a == "mqtt"));
 }
+
+#[tokio::test]
+async fn factory_reset_wipes_certs_and_alert_history() {
+    // spec §4.1: factory reset "wipes the data partition". The device TLS
+    // identity (cert.pem/key.pem), the uploaded cert store (certs/), and the
+    // SQLite alert_history table must all be cleared so a reset device
+    // re-provisions with a fresh identity — not just config/audit/users.
+    let (app, dir) = build_app().await;
+    let webconfig_dir = dir.path().join("data/webconfig");
+    std::fs::create_dir_all(&webconfig_dir).unwrap();
+    std::fs::write(webconfig_dir.join("cert.pem"), "FAKE CERT PEM").unwrap();
+    std::fs::write(webconfig_dir.join("key.pem"), "FAKE KEY PEM").unwrap();
+    std::fs::create_dir_all(webconfig_dir.join("certs")).unwrap();
+    std::fs::write(webconfig_dir.join("certs/ca.pem"), "FAKE CA PEM").unwrap();
+    // Seed an alert_history row in config.db so we can assert it is cleared.
+    {
+        let conn = rusqlite::Connection::open(webconfig_dir.join("config.db")).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS alert_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts TEXT NOT NULL, rule_id TEXT NOT NULL, state TEXT NOT NULL, value REAL NOT NULL
+             );",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO alert_history (ts, rule_id, state, value) VALUES ('t=1','hot','fired',90.0)",
+            [],
+        )
+        .unwrap();
+    }
+
+    // Bootstrap an admin and grab session + csrf.
+    let (_, ck, _) = send(
+        &app,
+        "POST",
+        "/api/v1/auth/first-boot",
+        None,
+        None,
+        Some(r#"{"username":"admin","password":"password1"}"#),
+    )
+    .await;
+    let cookie = ck.unwrap();
+    let (_, _, text) = send(
+        &app,
+        "GET",
+        "/api/v1/auth/whoami",
+        Some(&cookie),
+        None,
+        None,
+    )
+    .await;
+    let csrf = serde_json::from_str::<serde_json::Value>(&text).unwrap()["csrf"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Factory reset (settings-only mode still wipes certs + alert history).
+    let (st, _, _) = send(
+        &app,
+        "POST",
+        "/api/v1/system/factory-reset",
+        Some(&cookie),
+        Some(&csrf),
+        Some(r#"{"confirm":"RESET","mode":"settings"}"#),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+
+    // TLS identity + cert store are gone (next boot regenerates the identity).
+    assert!(!webconfig_dir.join("cert.pem").exists());
+    assert!(!webconfig_dir.join("key.pem").exists());
+    assert!(!webconfig_dir.join("certs").exists());
+    // The alert history table is empty after the reset.
+    let conn = rusqlite::Connection::open(webconfig_dir.join("config.db")).unwrap();
+    let count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM alert_history", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(count, 0);
+}

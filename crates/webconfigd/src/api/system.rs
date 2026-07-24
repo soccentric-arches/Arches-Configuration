@@ -294,11 +294,28 @@ pub async fn factory_reset(
         if let Ok(conn) = rusqlite::Connection::open(&database) {
             let _ = conn.execute("DELETE FROM config_state", []);
             let _ = conn.execute("DELETE FROM audit_entries", []);
+            // The alert history ring buffer lives in config.db when the history
+            // path ends in .db (it does in production). The legacy alert.jsonl
+            // file is removed below; the SQLite table must be cleared too or
+            // fired/cleared events survive a factory reset (spec §4.1: "wipe
+            // data partition"). Missing-table is harmless — execute is best-effort.
+            let _ = conn.execute("DELETE FROM alert_history", []);
         }
         let _ = std::fs::remove_file(dir.join("config.json"));
         let _ = std::fs::remove_file(dir.join("config.json.bak"));
         let _ = std::fs::remove_file(dir.join("audit.jsonl"));
         let _ = std::fs::remove_file(dir.join("alert.jsonl"));
+        // Device identity + cert store (spec §4.8): a factory reset returns the
+        // device to a clean provisioning state, so drop the TLS cert/key (the
+        // next boot regenerates a fresh self-signed identity via
+        // tls::ensure_self_signed) and any uploaded CA/client certs in the
+        // device cert store. Both modes wipe these — the settings/settings+users
+        // distinction is about user accounts, not security material. The cert
+        // store directory is created on demand by the upload route, so its
+        // absence here is normal.
+        let _ = std::fs::remove_file(dir.join("cert.pem"));
+        let _ = std::fs::remove_file(dir.join("key.pem"));
+        let _ = std::fs::remove_dir_all(dir.join("certs"));
         if req.mode == "settings+users" {
             if let Ok(conn) = rusqlite::Connection::open(&database) {
                 let _ = conn.execute("DELETE FROM group_members", []);
