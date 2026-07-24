@@ -42,9 +42,7 @@ pub async fn put(
     Json(req): Json<AlertsConfig>,
 ) -> ApiResult<Json<serde_json::Value>> {
     role.require_admin("alerts.put")?;
-    for r in &req.rules {
-        validate_rule(r)?;
-    }
+    validate_alerts_config(&req)?;
     let user = username(&session).await;
     let cfg = app.engine.update(move |c| {
         c.alerts = req.clone();
@@ -54,15 +52,51 @@ pub async fn put(
     Ok(Json(serde_json::to_value(&cfg.alerts).unwrap_or_default()))
 }
 
+/// Validate a full `AlertsConfig` (spec §4.7): every rule is well-formed, rule
+/// ids are unique, push actions are from the allowed set, and webhook URLs are
+/// http(s) URLs (so a typo is rejected at save time rather than failing per
+/// dispatch on the real root).
+fn validate_alerts_config(cfg: &AlertsConfig) -> ApiResult<()> {
+    let mut seen = std::collections::HashSet::new();
+    for r in &cfg.rules {
+        validate_rule(r)?;
+        if !seen.insert(r.id.as_str()) {
+            return Err(ApiError::BadRequest(format!(
+                "duplicate alert rule id {}",
+                r.id
+            )));
+        }
+    }
+    for url in &cfg.webhooks {
+        if !url.starts_with("http://") && !url.starts_with("https://") {
+            return Err(ApiError::BadRequest(format!(
+                "webhook URL must be http(s): {url}"
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn validate_rule(r: &AlertRule) -> ApiResult<()> {
     if r.id.is_empty() {
         return Err(ApiError::BadRequest("rule id empty".into()));
+    }
+    if r.metric.is_empty() {
+        return Err(ApiError::BadRequest(format!("rule {} metric empty", r.id)));
     }
     if !matches!(r.comparison.as_str(), ">" | "<" | ">=" | "<=" | "==" | "!=") {
         return Err(ApiError::BadRequest(format!(
             "rule {} bad comparison",
             r.id
         )));
+    }
+    for a in &r.actions {
+        if !matches!(a.as_str(), "ui" | "webhook" | "mqtt") {
+            return Err(ApiError::BadRequest(format!(
+                "rule {} bad action {}",
+                r.id, a
+            )));
+        }
     }
     Ok(())
 }
@@ -76,4 +110,83 @@ pub async fn history(
         .read_all()
         .unwrap_or_default();
     Ok(Json(h))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use webconfig_engine::store::alerts::{AlertRule, AlertsConfig};
+
+    fn rule(id: &str, metric: &str, op: &str) -> AlertRule {
+        AlertRule {
+            id: id.into(),
+            enabled: true,
+            metric: metric.into(),
+            comparison: op.into(),
+            threshold: 85.0,
+            duration_secs: 60,
+            actions: vec!["ui".into()],
+        }
+    }
+
+    #[test]
+    fn accepts_a_well_formed_config() {
+        let cfg = AlertsConfig {
+            enabled: true,
+            rules: vec![rule("hot", "temp", ">")],
+            webhooks: vec!["https://hooks.example.com/a".into()],
+            mqtt_event_topic: Some("soccentric/events".into()),
+        };
+        assert!(validate_alerts_config(&cfg).is_ok());
+    }
+
+    #[test]
+    fn rejects_empty_metric() {
+        let mut r = rule("hot", "temp", ">");
+        r.metric = "".into();
+        let cfg = AlertsConfig {
+            enabled: true,
+            rules: vec![r],
+            webhooks: vec![],
+            mqtt_event_topic: None,
+        };
+        assert!(validate_alerts_config(&cfg).is_err());
+    }
+
+    #[test]
+    fn rejects_duplicate_rule_ids() {
+        let cfg = AlertsConfig {
+            enabled: true,
+            rules: vec![rule("hot", "temp", ">"), rule("hot", "disk.pct", ">")],
+            webhooks: vec![],
+            mqtt_event_topic: None,
+        };
+        assert!(validate_alerts_config(&cfg).is_err());
+    }
+
+    #[test]
+    fn rejects_unknown_push_action() {
+        let mut r = rule("hot", "temp", ">");
+        r.actions = vec!["email".into()];
+        let cfg = AlertsConfig {
+            enabled: true,
+            rules: vec![r],
+            webhooks: vec![],
+            mqtt_event_topic: None,
+        };
+        assert!(validate_alerts_config(&cfg).is_err());
+    }
+
+    #[test]
+    fn rejects_non_http_webhook_url() {
+        let cfg = AlertsConfig {
+            enabled: true,
+            rules: vec![rule("hot", "temp", ">")],
+            webhooks: vec!["file:///etc/passwd".into()],
+            mqtt_event_topic: None,
+        };
+        // A non-http(s) webhook URL must be rejected at save time, not deferred
+        // to dispatch (spec §4.7).
+        assert!(validate_alerts_config(&cfg).is_err());
+    }
 }
