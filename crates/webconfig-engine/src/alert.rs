@@ -67,9 +67,7 @@ impl AlertEngine {
         now_secs: u64,
     ) -> Vec<AlertEvent> {
         let mut out = Vec::new();
-        let mut seen: HashMap<String, ()> = HashMap::new();
         for rule in rules {
-            seen.insert(rule.id.clone(), ());
             // Honor the per-rule `enabled` flag (spec §4.7 / API reference:
             // "override/disable a default by adding a same-id rule"). A disabled
             // rule never fires; if it was firing when it got disabled, emit a
