@@ -101,6 +101,30 @@ export async function render(api, store) {
   source.addEventListener('error', () => { liveDot.classList.remove('live'); liveLabel.textContent = 'Reconnecting…'; });
   store.registerCleanup(() => source.close());
 
+  // ---------- Service health strip (spec §4.5) ----------
+  // One glanceable badge per manifest-allowlisted service: active=green,
+  // failed=red, inactive=neutral, anything else=warning. Snapshot on load.
+  const healthHost = el('div', { class: 'badge-row' });
+  function healthBadgeClass(state) {
+    if (state === 'active') return 'badge badge-success';
+    if (state === 'failed') return 'badge badge-destructive';
+    if (state === 'inactive') return 'badge badge-neutral';
+    return 'badge badge-warning';
+  }
+  async function loadServiceHealth() {
+    try {
+      const rows = await api.get('/api/v1/services/health');
+      if (!rows.length) {
+        healthHost.replaceChildren(el('p', { class: 'muted' }, 'No services declared for this platform.'));
+        return;
+      }
+      healthHost.replaceChildren(...rows.map(r =>
+        el('span', { class: healthBadgeClass(r.state), title: r.state },
+          `${r.unit} · ${r.state}`)));
+    } catch (_) { healthHost.replaceChildren(el('p', { class: 'error-text' }, 'Service health unavailable.')); }
+  }
+  loadServiceHealth();
+
   // ---------- eMMC wear ----------
   const dev = Field({ label: 'Block device', value: 'mmcblk0', placeholder: 'mmcblk0' });
   const wearResult = el('div', { class: 'tile-sub', style: 'margin-top:8px' });
@@ -121,5 +145,6 @@ export async function render(api, store) {
       el('div', { class: 'row' }, liveDot, liveLabel)),
     Card({ title: 'Vitals', subtitle: 'Live CPU, memory, physical storage, swap, temperature, and uptime readings.' }, el('div', { class: 'card-grid' }, cpu.node, mem.node, disk.node, swap.node, uptimeTile, temp.node)),
     Card({ title: 'Network throughput', subtitle: 'Per-interface receive throughput from the live telemetry stream.' }, netHost),
+    Card({ title: 'Service health', subtitle: 'Allowlisted services and their current systemd state (spec §4.5).' }, healthHost),
     emmcCard);
 }
