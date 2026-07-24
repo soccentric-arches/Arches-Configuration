@@ -129,6 +129,12 @@ export async function renderNetworkPage(api, store, mode = 'all') {
   const dns = Field({ label: 'DNS servers (comma)', value: (config.dns_servers || []).join(', ') });
   const confirmWindow = Field({ label: 'Confirm window (s)', type: 'number', value: config.confirm_window_secs || 90 });
   const apEn = Toggle({ label: 'AP provisioning mode', checked: config.ap_mode && config.ap_mode.enabled });
+  const apTrigger = Field({
+    label: 'Provisioning trigger', type: 'select',
+    value: (config.ap_mode && config.ap_mode.trigger) || 'no-config',
+    help: 'no-config enters AP mode automatically when no wired/network config is present; gpio-button waits for the board provision button.',
+    options: [{ value: 'no-config', label: 'No config detected' }, { value: 'gpio-button', label: 'GPIO provision button' }],
+  });
   const apSsid = Field({ label: 'AP SSID', value: config.ap_mode && config.ap_mode.ssid });
   const apPass = Field({ label: 'AP passphrase', type: 'password', value: config.ap_mode && config.ap_mode.passphrase });
 
@@ -142,7 +148,7 @@ export async function renderNetworkPage(api, store, mode = 'all') {
       confirm_window_secs: Number(confirmWindow.get()) || 90,
       ap_mode: {
         enabled: apEn.get(),
-        trigger: (config.ap_mode && config.ap_mode.trigger) || 'no-config',
+        trigger: apTrigger.get() || 'no-config',
         ssid: apSsid.get(), passphrase: apPass.get(),
       },
       vlan: config.vlan || [], bridges: config.bridges || [], cellular: config.cellular || [],
@@ -198,7 +204,7 @@ export async function renderNetworkPage(api, store, mode = 'all') {
       el('p', { class: 'muted' }, 'Wi-Fi connections and wireless interfaces.'),
       wirelessIfaceHost, wirelessCard) : null,
     showFiveG ? fiveGCard : null,
-    showWireless ? Card({ title: 'DNS + AP mode', subtitle: 'Set name servers and the fallback access-point provisioning behavior.' }, dns.wrap, confirmWindow.wrap, el('div', { class: 'toggle-stack' }, apEn.wrap), apSsid.wrap, apPass.wrap) : null,
+    showWireless ? Card({ title: 'DNS + AP mode', subtitle: 'Set name servers and the fallback access-point provisioning behavior.' }, dns.wrap, confirmWindow.wrap, el('div', { class: 'toggle-stack' }, apEn.wrap), apTrigger.wrap, apSsid.wrap, apPass.wrap) : null,
     Card({ title: 'Network actions', subtitle: 'Applying network settings is provisional until the new connection is confirmed.' },
       ActionList(
         ActionRow('Save and apply', 'Write the edited settings and apply them. The connection may move to a new address.', Button({ onClick: apply }, 'Apply settings')),
