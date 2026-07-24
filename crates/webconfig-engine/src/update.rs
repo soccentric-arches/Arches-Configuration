@@ -23,6 +23,13 @@ pub const BUILD_PLATFORM: &str = match option_env!("WEBCONFIG_PLATFORM") {
     None => "arches",
 };
 
+/// The optional device variant (e.g. a Jetson SKU: `orin-nano` vs `agx`), baked
+/// in at compile time from `WEBCONFIG_VARIANT`. `None` means the build does not
+/// distinguish variants — bundle variant checks are skipped in that case so
+/// existing variant-less bundles still install (spec §4.4: a same-platform,
+/// wrong-variant bundle must never flash).
+pub const BUILD_VARIANT: Option<&str> = option_env!("WEBCONFIG_VARIANT");
+
 #[derive(Debug, Error)]
 pub enum UpdateError {
     #[error("io error: {0}")]
@@ -31,6 +38,8 @@ pub enum UpdateError {
     Signature(String),
     #[error("bundle incompatible: bundle platform {bundle:?} != device {device:?}")]
     Incompatible { bundle: String, device: String },
+    #[error("bundle incompatible: bundle variant {bundle:?} != device {device:?}")]
+    IncompatibleVariant { bundle: String, device: String },
     #[error("dbus error: {0}")]
     Dbus(String),
     #[error("operation failed: {0}")]
@@ -108,12 +117,36 @@ pub trait UpdateBackend: Send + Sync {
 }
 
 /// A compatibility check reusable by both backends (spec §4.4).
+///
+/// Refuses a bundle whose platform differs from the device, and — when both
+/// the bundle and the device declare a variant — refuses a variant mismatch
+/// (e.g. an Arches `agx` bundle must not flash onto an Arches `orin-nano`).
+/// If either side omits the variant, the variant check is skipped so legacy
+/// variant-less bundles still install.
 pub fn check_compatibility(manifest: &BundleManifest) -> Result<(), UpdateError> {
-    if manifest.platform != BUILD_PLATFORM {
+    check_compatibility_against(manifest, BUILD_PLATFORM, BUILD_VARIANT)
+}
+
+/// Testable core of [`check_compatibility`]: checks the manifest against an
+/// explicit device platform + variant rather than the compile-time constants.
+pub fn check_compatibility_against(
+    manifest: &BundleManifest,
+    device_platform: &str,
+    device_variant: Option<&str>,
+) -> Result<(), UpdateError> {
+    if manifest.platform != device_platform {
         return Err(UpdateError::Incompatible {
             bundle: manifest.platform.clone(),
-            device: BUILD_PLATFORM.to_string(),
+            device: device_platform.to_string(),
         });
+    }
+    if let (Some(bundle_v), Some(device_v)) = (&manifest.variant, device_variant) {
+        if bundle_v.as_str() != device_v {
+            return Err(UpdateError::IncompatibleVariant {
+                bundle: bundle_v.clone(),
+                device: device_v.to_string(),
+            });
+        }
     }
     Ok(())
 }
@@ -332,6 +365,55 @@ mod tests {
         assert!(err.to_string().contains("incompatible"));
         let _ = m;
         std::env::remove_var("WEBCONFIG_PLATFORM");
+    }
+
+    #[test]
+    fn compatibility_refuses_variant_mismatch() {
+        // Same platform, wrong variant — must refuse (spec §4.4).
+        let m = BundleManifest {
+            platform: "arches".into(),
+            variant: Some("agx".into()),
+            version: "1.0".into(),
+            description: None,
+        };
+        let err = check_compatibility_against(&m, "arches", Some("orin-nano")).unwrap_err();
+        assert!(matches!(err, UpdateError::IncompatibleVariant { .. }));
+        assert!(err.to_string().contains("variant"));
+    }
+
+    #[test]
+    fn compatibility_accepts_matching_variant() {
+        let m = BundleManifest {
+            platform: "arches".into(),
+            variant: Some("orin-nano".into()),
+            version: "1.0".into(),
+            description: None,
+        };
+        check_compatibility_against(&m, "arches", Some("orin-nano")).unwrap();
+    }
+
+    #[test]
+    fn compatibility_skips_variant_when_device_has_none() {
+        // Device has no variant → a variant-bearing bundle still installs
+        // (legacy/variant-less device), so the check must not over-reject.
+        let m = BundleManifest {
+            platform: "arches".into(),
+            variant: Some("agx".into()),
+            version: "1.0".into(),
+            description: None,
+        };
+        check_compatibility_against(&m, "arches", None).unwrap();
+    }
+
+    #[test]
+    fn compatibility_skips_variant_when_bundle_has_none() {
+        let m = BundleManifest {
+            platform: "arches".into(),
+            variant: None,
+            version: "1.0".into(),
+            description: None,
+        };
+        check_compatibility_against(&m, "arches", Some("orin-nano")).unwrap();
     }
 
     #[test]
