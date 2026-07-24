@@ -39,7 +39,10 @@ impl CanApplier {
             br = c.bitrate
         );
         if c.fd {
-            ip_args.push_str(&format!("dbitrate {} ", c.data_bitrate));
+            // `fd on` is mandatory for the data bitrate to take effect — without
+            // it `ip` brings the interface up in classic CAN mode and `dbitrate`
+            // is silently ignored (spec §4.9: CAN-FD + data bitrate).
+            ip_args.push_str(&format!("dbitrate {} fd on ", c.data_bitrate));
         }
         if c.listen_only {
             ip_args.push_str("listen-only ");
@@ -155,8 +158,17 @@ mod tests {
         let u = CanApplier::render_unit(&can("can0", 500_000, true, 2_000_000));
         assert!(u.contains("bitrate 500000"));
         assert!(u.contains("dbitrate 2000000"));
+        assert!(u.contains("fd on"));
         assert!(u.contains("restart-ms 100"));
         assert!(u.contains("WantedBy=multi-user.target"));
+    }
+
+    #[test]
+    fn classic_can_has_no_fd_flag() {
+        let u = CanApplier::render_unit(&can("can0", 500_000, false, 0));
+        assert!(u.contains("bitrate 500000"));
+        assert!(!u.contains("dbitrate"));
+        assert!(!u.contains("fd on"));
     }
 
     #[test]
