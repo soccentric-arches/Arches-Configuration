@@ -84,12 +84,14 @@ pub async fn wg_pubkey(
 pub async fn generate_csr(
     State(app): State<AppState>,
     role: AuthRole,
+    session: Session,
     Json(req): Json<CsrRequest>,
 ) -> ApiResult<Json<serde_json::Value>> {
     role.require_admin("security.csr")?;
+    let user = username(&session).await;
     let (csr, key) =
         crate::tls::generate_csr(&req.cn).map_err(|e| ApiError::BadRequest(e.to_string()))?;
-    audit(&app, "", "security.csr", Some(req.cn.clone()));
+    audit(&app, &user, "security.csr", Some(req.cn.clone()));
     Ok(Json(serde_json::json!({ "csr": csr, "private_key": key })))
 }
 
