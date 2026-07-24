@@ -163,15 +163,15 @@ pub fn build_router(state: AppState, static_dir: std::path::PathBuf) -> Router {
         .nest("/api/v1", api)
         .fallback_service(static_svc)
         .layer(session_layer)
-        // HTTP→HTTPS redirect is handled at the listener level in main.rs when
-        // both listeners run; the cookie policy above is shared.
+        // HTTP→HTTPS redirect is handled by the plaintext listener in
+        // server::serve (spec §4.8); the cookie policy above is shared.
         .layer(from_fn(http_to_https_hint))
         .with_state(state)
 }
 
-/// A no-op-by-default middleware that sets a `Strict-Transport-Security` hint
-/// on HTTPS requests (spec §4.8). On plain HTTP (first-boot opt-in) it is
-/// inert. The actual redirect lives in the listener wiring.
+/// A middleware that sets a `Strict-Transport-Security` header on every
+/// response (spec §4.8). The actual HTTP→HTTPS redirect lives in the plaintext
+/// listener wiring in `server::serve`; this layer only adds HSTS.
 async fn http_to_https_hint(
     req: axum::extract::Request,
     next: axum::middleware::Next,
@@ -179,7 +179,7 @@ async fn http_to_https_hint(
     use axum::http::header;
     let mut resp = next.run(req).await;
     // Strict-Transport-Security on all responses (spec §4.8). The actual
-    // HTTP→HTTPS redirect lives in the listener wiring in main.rs.
+    // HTTP→HTTPS redirect lives in the plaintext listener in server::serve.
     resp.headers_mut().insert(
         header::STRICT_TRANSPORT_SECURITY,
         axum::http::HeaderValue::from_static("max-age=31536000"),

@@ -61,7 +61,8 @@ async fn main() -> anyhow::Result<()> {
         alert_engine.clone(),
     ));
 
-    server::serve(app, &engine.sysroot.webconfig_dir(), &manifest).await
+    let webconfig_dir = engine.sysroot.webconfig_dir();
+    server::serve(app, engine, &webconfig_dir, &manifest).await
 }
 
 /// Resolve the sysroot from `WEBCONFIG_SYSROOT` (dev/CI fake sysroot) or `/`.
