@@ -29,7 +29,7 @@ export async function render(api, store) {
       el('div', { class: 'card-body' },
         Badge(p.kind, 'neutral'),
         el('h4', { style: 'margin-top:8px' }, p.human_name || p.id),
-        el('div', { class: 'muted', style: 'font-size:13px' }, p.device)))))
+        el('div', { class: 'muted text-sm' }, p.device)))))
     : EmptyState({ title: 'No peripherals in the board manifest' });
 
   // ---------- Serial ----------
@@ -89,7 +89,7 @@ export async function render(api, store) {
   // ---------- I2C ----------
   const i2cPeripherals = byKind(peripherals, 'i2c');
   const i2cSection = i2cPeripherals.length ? el('div', { class: 'card-grid' }, ...i2cPeripherals.map((p) => {
-    const result = el('div', { class: 'muted', style: 'font-size:13px;margin-top:8px' });
+    const result = el('div', { class: 'muted text-sm', style: 'margin-top:8px' });
     return el('div', { class: 'card' }, el('div', { class: 'card-header' }, el('div', {}, el('h4', {}, p.human_name || p.id), el('div', { class: 'card-header-sub' }, 'I2C bus discovery and address scanning.'))),
       el('div', { class: 'card-body' },
         Button({

@@ -47,7 +47,7 @@ export async function render(api, store) {
   const netHost = el('div', { class: 'card-grid' });
 
   const liveDot = el('span', { class: 'live-dot' });
-  const liveLabel = el('span', { class: 'muted', style: 'font-size:13px' }, 'Connecting…');
+  const liveLabel = el('span', { class: 'muted text-sm' }, 'Connecting…');
 
   function renderVitals(v) {
     cpu.update(v.load && v.load[0] != null ? v.load[0].toFixed(2) : '—', v.load && v.load[0]);

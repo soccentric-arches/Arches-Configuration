@@ -51,7 +51,7 @@ export async function render(api, store) {
         },
       }, 'Save'))),
   }, idle.wrap, plainHttp.wrap, el('div', { class: 'toggle-stack' }, wgEn.wrap), wgPort.wrap,
-    el('div', { class: 'row' }, el('span', { class: 'muted', style: 'font-size:13px' }, 'WireGuard public key:'),
+    el('div', { class: 'row' }, el('span', { class: 'muted text-sm' }, 'WireGuard public key:'),
       wg.public_key ? el('code', { class: 'mono' }, wg.public_key) : Badge(wg.has_private_key ? 'key present, no peer' : 'not generated yet', 'neutral')));
 
   // ---------- TLS: CSR generator + certificate inventory ----------
@@ -83,7 +83,7 @@ export async function render(api, store) {
       el('div', {}, el('div', { class: 'field-label' }, 'UI reachability'), el('div', { class: 'field-help' }, 'The WebConfig interface remains reachable for local recovery.'), Badge(exposure.ui_always_reachable ? 'yes' : 'no', exposure.ui_always_reachable ? 'info' : 'neutral')),
       el('div', {}, el('div', { class: 'field-label' }, 'Plain HTTP'), el('div', { class: 'field-help' }, 'Whether unencrypted HTTP access is permitted.'), Badge(exposure.plain_http ? 'allowed' : 'blocked', exposure.plain_http ? 'warning' : 'success'))),
     el('div', { class: 'stack' }, ...(exposure.per_interface || []).map(p =>
-      el('div', { class: 'row', style: 'font-size:13px' }, el('strong', {}, p.interface + ':'), (p.open_services || []).join(', ') || 'none'))));
+      el('div', { class: 'row text-sm' }, el('strong', {}, p.interface + ':'), (p.open_services || []).join(', ') || 'none'))));
 
   return el('div', {},
     el('div', { class: 'page-header' }, el('h1', {}, 'Security'), el('p', {}, 'Sessions, WireGuard, TLS, and exposure/trust posture.')),

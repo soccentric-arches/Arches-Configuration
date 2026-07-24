@@ -140,6 +140,15 @@ See `docs/webconfig-spec.md` for the full spec.
 - The frontend Logs page must NOT offer a "remove audit log" / `DELETE
   /logs/audit` action — the audit log is append-only (spec §4.8). There is no
   such route; only a full factory reset wipes audit. (Removed the dead button.)
+- Frontend typography is fully tokenized — no hardcoded `font-size`/`font-weight`
+  in CSS and no inline `font-size` in JS. Sizes come from `--text-xs…--text-2xl`,
+  weights from `--weight-regular/medium/semibold/bold`, line-height from
+  `--leading-none/normal/relaxed`, letter-spacing from `--tracking-tight/normal/wide`
+  (all in `frontend/styles/tokens.css`). For "secondary text" use the `.text-sm`
+  utility class (with `.muted` for color) — never inline `style: 'font-size:…'`.
+  Uppercase eyebrow/section labels use `--tracking-wide`; large titles use
+  `--tracking-tight`. `--primary` (light blue `#0ea5e9`) is the single accent —
+  buttons/toggles derive shades via `color-mix(in srgb, var(--primary) N%, …)`.
 
 ## Don't
 

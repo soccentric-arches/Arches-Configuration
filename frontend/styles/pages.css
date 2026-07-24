@@ -20,7 +20,7 @@
 .auth-card .logo-mark {
   width: 40px;
   height: 40px;
-  font-size: 18px;
+  font-size: var(--text-xl);
   margin: 0 auto var(--space-4);
 }
 
@@ -40,8 +40,9 @@
 /* Monitoring tiles */
 .tile-value {
   font-size: var(--text-2xl);
-  font-weight: 700;
-  letter-spacing: 0;
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-normal);
+  line-height: var(--leading-none);
 }
 
 .content>.card:last-child,
@@ -75,15 +76,16 @@
 .overview-metric-label {
   color: var(--muted-foreground);
   font-size: var(--text-xs);
-  font-weight: 600;
-  letter-spacing: .04em;
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
 }
 
 .overview-hero-title {
   margin: 3px 0;
   font-size: var(--text-xl);
-  font-weight: 700;
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
 }
 
 .overview-hero-meta {
@@ -165,8 +167,8 @@
   padding: var(--space-3);
   border-radius: var(--radius-md);
   font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.6;
+  font-size: var(--text-xs);
+  line-height: var(--leading-relaxed);
 }
 
 .log-viewer:empty::before {

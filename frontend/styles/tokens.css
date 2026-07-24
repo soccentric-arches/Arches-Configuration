@@ -1,5 +1,5 @@
 /* Design tokens — shadcn/ui-inspired light theme. Zinc neutral scale +
-  blue accent. Every color/spacing/radius value used elsewhere in the
+  light-blue accent. Every color/spacing/radius value used elsewhere in the
    stylesheet is defined here so the whole theme can be retuned in one file. */
 
 :root {
@@ -28,11 +28,12 @@
   --input: var(--zinc-200);
   --ring: #93c5fd;
 
-  /* Accent (blue) */
-  --sidebar-bg: var(--muted);
+  /* Accent (light blue) */
+  --primary: #0ea5e9;
   --primary-foreground: #ffffff;
-  --primary-hover: #1d4ed8;
-  --primary-light: #60a5fa;
+  --primary-hover: #0284c7;
+  --primary-light: #7dd3fc;
+  --sidebar-bg: var(--muted);
   --secondary: var(--zinc-100);
   --secondary-foreground: var(--zinc-900);
   --secondary-hover: var(--zinc-200);
@@ -86,7 +87,7 @@
   --space-8: 32px;
 
   /* Typography */
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Inter", Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   --text-xs: 12px;
   --text-sm: 13px;
@@ -94,6 +95,19 @@
   --text-lg: 16px;
   --text-xl: 20px;
   --text-2xl: 24px;
+  /* Weights — one scale, used everywhere so emphasis is consistent. */
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  /* Line-height — body 1.5, dense UI 1.5, logs/pre relaxed. */
+  --leading-none: 1;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.6;
+  /* Letter-spacing — tight for large titles, wide for uppercase labels. */
+  --tracking-tight: -0.01em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.06em;
 
   /* Layout */
   --sidebar-width: 248px;

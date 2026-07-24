@@ -21,7 +21,7 @@ export function showShortcutsHelp() {
   return infoDialog({
     title: 'Keyboard shortcuts',
     body: el('div', { class: 'stack' }, ...rows.map(r => el('div', { class: 'row', style: 'justify-content:space-between' },
-      el('span', { class: 'muted', style: 'font-size:13px' }, r.description),
+      el('span', { class: 'muted text-sm' }, r.description),
       el('span', { class: 'row' }, ...r.keys.map(kbd))))),
     closeLabel: 'Got it',
   });

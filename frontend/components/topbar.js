@@ -6,7 +6,7 @@ import { Button } from './button.js';
 export function Topbar({ onToggleSidebar, onOpenPalette, onLogout }) {
   const title = el('span', { class: 'page-title' }, '');
   const badge = el('span', { class: 'badge badge-info', hidden: true });
-  const session = el('span', { class: 'muted', style: 'font-size:13px' });
+  const session = el('span', { class: 'muted text-sm' });
   const desktopToggle = Button({
     variant: 'ghost', size: 'sm', icon: 'menu', title: 'Collapse navigation',
     onClick: onToggleSidebar,

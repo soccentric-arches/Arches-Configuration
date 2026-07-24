@@ -80,7 +80,7 @@ export async function render(api, store) {
   function renderWebhooks() {
     webhookHost.replaceChildren(webhooks.length
       ? el('div', { class: 'list-stack' }, ...webhooks.map((url, idx) => el('div', { class: 'row list-row' },
-          el('div', { class: 'mono', style: 'font-size:13px;word-break:break-all' }, url),
+          el('div', { class: 'mono', style: 'word-break:break-all' }, url),
           Button({ variant: 'link', size: 'sm', onClick: () => { webhooks.splice(idx, 1); renderWebhooks(); } }, 'Remove'))))
       : EmptyState({ title: 'No webhook targets' }));
   }
@@ -111,7 +111,7 @@ export async function render(api, store) {
   const historyItems = (data.history || []).slice(-20).reverse();
   const historyCard = Card({ title: 'Recent events', subtitle: 'The most recent alert transitions recorded by the daemon.' },
     historyItems.length
-      ? el('div', { class: 'stack' }, ...historyItems.map(ev => el('div', { class: 'row muted', style: 'font-size:13px' },
+      ? el('div', { class: 'stack' }, ...historyItems.map(ev => el('div', { class: 'row muted text-sm' },
         el('span', { class: 'mono' }, ev.ts), el('span', {}, ev.rule_id), el('span', {}, ev.state), el('span', {}, `val=${ev.value}`))))
       : EmptyState({ title: 'No events recorded yet' }));
 

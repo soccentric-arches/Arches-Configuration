@@ -15,7 +15,8 @@ body {
   margin: 0;
   font-family: var(--font-sans);
   font-size: var(--text-base);
-  line-height: 1.5;
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-normal);
   color: var(--foreground);
   background: var(--muted);
   -webkit-font-smoothing: antialiased;
@@ -33,27 +34,31 @@ figure {
 
 h1 {
   font-size: var(--text-2xl);
-  font-weight: 600;
-  letter-spacing: 0;
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-normal);
+  line-height: var(--leading-normal);
 }
 
 h2 {
   font-size: var(--text-xl);
-  font-weight: 600;
-  letter-spacing: 0;
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-normal);
+  line-height: var(--leading-normal);
 }
 
 h3 {
   font-size: var(--text-sm);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   color: var(--muted-foreground);
   text-transform: uppercase;
-  letter-spacing: .04em;
+  letter-spacing: var(--tracking-wide);
+  line-height: var(--leading-normal);
 }
 
 h4 {
   font-size: var(--text-base);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-normal);
 }
 
 a {
@@ -77,7 +82,7 @@ svg {
 }
 
 ::selection {
-  background: #c7d2fe;
+  background: color-mix(in srgb, var(--primary) 25%, transparent);
 }
 
 /* Scrollbars (WebKit) — thin, unobtrusive, matches the light theme. */
@@ -116,7 +121,7 @@ select:focus-visible,
 textarea:focus-visible {
   outline: none;
   border-color: var(--ring);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, .18);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
 }
 
 .muted {
@@ -127,6 +132,15 @@ textarea:focus-visible {
   font-family: var(--font-mono);
   font-size: var(--text-sm);
 }
+
+/* Size utilities — use these instead of inline font-size on elements, so the
+   whole UI draws from the type scale in tokens.css. */
+.text-xs { font-size: var(--text-xs); }
+.text-sm { font-size: var(--text-sm); }
+.text-base { font-size: var(--text-base); }
+.text-lg { font-size: var(--text-lg); }
+.text-xl { font-size: var(--text-xl); }
+.text-2xl { font-size: var(--text-2xl); }
 
 [hidden] {
   display: none !important;
