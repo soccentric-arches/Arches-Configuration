@@ -132,18 +132,29 @@ impl NetworkdApplier {
                         message: format!("static iface {} missing prefix", iface.name),
                     });
                 };
-                if prefix > 32 {
-                    return Err(ApplyError::Validation {
-                        stage: crate::applier::ApplyStage::Validate,
-                        message: format!("iface {} prefix > 32", iface.name),
-                    });
-                }
                 let Ok(addr) = addr_s.parse::<IpAddr>() else {
                     return Err(ApplyError::Validation {
                         stage: crate::applier::ApplyStage::Validate,
                         message: format!("iface {} bad address {addr_s}", iface.name),
                     });
                 };
+                // Prefix limits are per-family: 32 for IPv4, 128 for IPv6. A
+                // blanket `> 32` check rejects valid IPv6 prefixes (e.g. /64)
+                // before the address is parsed, so static IPv6 interfaces can
+                // never be configured (spec §4.2). Validate against the family.
+                let max_prefix = match addr {
+                    IpAddr::V4(_) => 32u8,
+                    IpAddr::V6(_) => 128u8,
+                };
+                if prefix > max_prefix {
+                    return Err(ApplyError::Validation {
+                        stage: crate::applier::ApplyStage::Validate,
+                        message: format!(
+                            "iface {} prefix {prefix} > {max_prefix} for address {addr_s}",
+                            iface.name
+                        ),
+                    });
+                }
                 if !seen_ips.insert(addr_s.clone()) {
                     return Err(ApplyError::Validation {
                         stage: crate::applier::ApplyStage::Validate,
@@ -428,6 +439,47 @@ mod tests {
             .push(iface("eth1", false, Some("192.168.1.10"), Some(24), None));
         let err = a.validate(&sys, &c).unwrap_err();
         assert!(err.to_string().contains("duplicate IP"));
+    }
+
+    #[test]
+    fn accepts_static_ipv6_with_64_prefix() {
+        // A family-blind `prefix > 32` check used to reject /64 before the
+        // address was parsed, making static IPv6 unconfigurable (spec §4.2).
+        let sys = Sysroot::at("/tmp/never");
+        let a = NetworkdApplier::new();
+        let mut c = Config::default();
+        c.network.interfaces.push(iface(
+            "eth0",
+            false,
+            Some("fd00:1:2:3::10"),
+            Some(64),
+            Some("fd00:1:2:3::1"),
+        ));
+        a.validate(&sys, &c).unwrap();
+    }
+
+    #[test]
+    fn rejects_ipv4_prefix_over_32() {
+        let sys = Sysroot::at("/tmp/never");
+        let a = NetworkdApplier::new();
+        let mut c = Config::default();
+        c.network
+            .interfaces
+            .push(iface("eth0", false, Some("192.168.1.10"), Some(33), None));
+        let err = a.validate(&sys, &c).unwrap_err();
+        assert!(err.to_string().contains("> 32"));
+    }
+
+    #[test]
+    fn rejects_ipv6_prefix_over_128() {
+        let sys = Sysroot::at("/tmp/never");
+        let a = NetworkdApplier::new();
+        let mut c = Config::default();
+        c.network
+            .interfaces
+            .push(iface("eth0", false, Some("fd00::10"), Some(129), None));
+        let err = a.validate(&sys, &c).unwrap_err();
+        assert!(err.to_string().contains("> 128"));
     }
 
     #[test]
