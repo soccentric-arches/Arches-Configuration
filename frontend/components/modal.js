@@ -1,5 +1,6 @@
 import { el } from '../core/dom.js';
 import { Button } from './button.js';
+import { Field } from './field.js';
 
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 let modalSeq = 0;
@@ -106,23 +107,25 @@ export function promptDialog({ title = 'Enter a value', label, placeholder, type
 }
 
 /**
- * formDialog({ title, fields: [{ key, label, type, placeholder }], confirmLabel })
+ * formDialog({ title, fields: [{ key, label, type, placeholder, options, help, required }], confirmLabel })
  * -> Promise<Record<string,string>|null>. Multi-field variant of promptDialog,
  * used where a native prompt() chain would otherwise be needed (e.g. add user).
+ * Each field is rendered via the shared Field() component, so `type` may be
+ * 'text' | 'password' | 'number' | 'email' | 'textarea' | 'select' (with
+ * `options: [{ value, label }]`) — the same set every other form uses.
  */
 export function formDialog({ title = 'New', fields = [], confirmLabel = 'Create' } = {}) {
   return new Promise((resolve) => {
-    const inputs = fields.map(f => ({ key: f.key, input: el('input', { class: 'input', type: f.type || 'text', placeholder: f.placeholder }) }));
+    const fields2 = fields.map(f => ({ key: f.key, field: Field({ label: f.label, type: f.type, placeholder: f.placeholder, options: f.options, help: f.help, required: f.required }) }));
     let modal;
     const finish = (v) => { modal.close(); resolve(v); };
-    const body = el('div', { class: 'stack' }, ...fields.map((f, i) =>
-      el('label', { class: 'field' }, el('span', { class: 'field-label' }, f.label), inputs[i].input)));
+    const body = el('div', { class: 'stack' }, ...fields2.map(f => f.field.wrap));
     modal = openModal({
       title,
       body,
       footer: [
         Button({ variant: 'outline', onClick: () => finish(null) }, 'Cancel'),
-        Button({ onClick: () => finish(Object.fromEntries(inputs.map(i => [i.key, i.input.value]))) }, confirmLabel),
+        Button({ onClick: () => finish(Object.fromEntries(fields2.map(f => [f.key, f.field.get()]))) }, confirmLabel),
       ],
     });
   });

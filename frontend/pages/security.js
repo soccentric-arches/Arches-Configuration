@@ -1,5 +1,6 @@
-// Security page (spec §4.8): session/WireGuard config, TLS CSR generation,
-// certificate inventory and exposure/trust (read-only).
+// Security page (spec §4.8): session/WireGuard config, TLS identity + CSR
+// generation, certificate inventory (upload/delete) and exposure/trust
+// (read-only).
 
 import { el } from '../core/dom.js';
 import { Card } from '../components/card.js';
@@ -9,7 +10,7 @@ import { Button } from '../components/button.js';
 import { Table } from '../components/table.js';
 import { Badge } from '../components/badge.js';
 import { EmptyState } from '../components/empty-state.js';
-import { promptDialog } from '../components/modal.js';
+import { confirmDialog, formDialog, infoDialog } from '../components/modal.js';
 import { ActionList, ActionRow } from '../components/action-row.js';
 
 function downloadText(name, text) {
@@ -54,7 +55,25 @@ export async function render(api, store) {
     el('div', { class: 'row' }, el('span', { class: 'muted text-sm' }, 'WireGuard public key:'),
       wg.public_key ? el('code', { class: 'mono' }, wg.public_key) : Badge(wg.has_private_key ? 'key present, no peer' : 'not generated yet', 'neutral')));
 
-  // ---------- TLS: CSR generator + certificate inventory ----------
+  // ---------- TLS identity: customer cert/key upload + CSR generator ----------
+  const tlsCert = Field({ label: 'Certificate (PEM)', type: 'textarea', placeholder: '-----BEGIN CERTIFICATE-----\n…', help: 'Leaf cert first, then any intermediates. Replaces the self-signed identity.' });
+  const tlsKey = Field({ label: 'Private key (PEM)', type: 'textarea', placeholder: '-----BEGIN PRIVATE KEY-----\n…', help: 'Must match the leaf cert above. Stored mode 0600.' });
+  const tlsCard = Card({
+    title: 'TLS identity',
+    subtitle: 'Replace the per-device self-signed cert with a customer-provided cert/key pair.',
+    footer: ActionList(ActionRow('Upload cert/key', 'Validate the pair and atomically replace the device TLS identity. The running listener keeps the old cert until the daemon restarts.', Button({
+      onClick: async () => {
+        if (!tlsCert.get().trim() || !tlsKey.get().trim()) { store.toast('Paste both the cert and the key', 'error'); return; }
+        try {
+          await api.post('/api/v1/security/tls', { cert: tlsCert.get(), key: tlsKey.get() });
+          tlsCert.set(''); tlsKey.set('');
+          await infoDialog({ title: 'Identity updated', body: el('div', { class: 'stack text-sm' }, el('p', {}, 'The cert/key pair was validated and written. Restart the WebConfig daemon (or reboot) for it to take effect — the running listener still serves the previous cert.'), el('p', { class: 'muted' }, 'A mismatched pair is rejected before anything is written, so a bad upload cannot break TLS on the next boot.')) });
+          store.toast('TLS identity updated', 'success');
+        } catch (e) { store.toast(e.message, 'error'); }
+      },
+    }, 'Upload'))),
+  }, tlsCert.wrap, tlsKey.wrap);
+
   const cn = Field({ label: 'Common name', placeholder: 'device.example.com' });
   const csrOutput = el('div', { hidden: true });
   const csrCard = Card({ title: 'Generate CSR', subtitle: 'For a customer CA to sign — no OpenSSL involved (rustls/rcgen).' },
@@ -73,9 +92,39 @@ export async function render(api, store) {
     }, 'Generate'))),
     csrOutput);
 
-  const certRows = (certs || []).map(c => [c.id, Badge(c.kind, 'neutral'), c.subject, c.not_after]);
-  const certsCard = Card({ title: 'Certificates', subtitle: 'Certificates currently known to the device and their expiry dates.' },
-    certRows.length ? Table({ columns: ['ID', 'Kind', 'Subject', 'Expires'] }, certRows).element : EmptyState({ title: 'No certificates on file' }));
+  // ---------- Certificate store: inventory + upload/delete ----------
+  const certRows = (certs || []).map(c => [
+    c.id, Badge(c.kind, 'neutral'), c.subject, c.not_after,
+    Button({ variant: 'outline', size: 'sm', title: 'Remove this certificate from the device store', onClick: async () => {
+      if (await confirmDialog({ title: `Remove ${c.id}?`, description: 'Deletes the PEM file and its metadata from the device.', confirmLabel: 'Remove', variant: 'destructive' })) {
+        try { await api.del(`/api/v1/security/certs/${encodeURIComponent(c.id)}`); store.toast(`${c.id} removed`, 'success'); store.reload(); }
+        catch (e) { store.toast(e.message, 'error'); }
+      }
+    } }, 'Remove'),
+  ]);
+  const certsCard = Card({
+    title: 'Certificates',
+    subtitle: 'CA + client certs for MQTT/VPN, stored on the device and referenced elsewhere. Expiry feeds the alert engine.',
+    footer: ActionList(ActionRow('Upload certificate', 'Add a CA or client cert to the device store. The PEM is validated before it is saved.', Button({
+      onClick: async () => {
+        const v = await formDialog({
+          title: 'Upload certificate',
+          confirmLabel: 'Upload',
+          fields: [
+            { key: 'id', label: 'ID', placeholder: 'ca-root', help: 'Alphanumeric, dash, underscore only.', required: true },
+            { key: 'kind', label: 'Kind', type: 'select', options: [{ value: 'ca', label: 'CA' }, { value: 'client', label: 'Client' }] },
+            { key: 'subject', label: 'Subject', placeholder: 'CN=ca.example', required: true },
+            { key: 'not_after', label: 'Expires', placeholder: '2026-08-23', help: 'ISO-8601 date — feeds the cert-expiry alert.', required: true },
+            { key: 'pem', label: 'PEM', type: 'textarea', placeholder: '-----BEGIN CERTIFICATE-----\n…', required: true },
+          ],
+        });
+        if (!v) return;
+        if (!v.id || !v.subject || !v.pem || !v.not_after) { store.toast('Fill in every field', 'error'); return; }
+        try { await api.post('/api/v1/security/certs', v); store.toast(`${v.id} uploaded`, 'success'); store.reload(); }
+        catch (e) { store.toast(e.message, 'error'); }
+      },
+    }, 'Upload'))),
+  }, certRows.length ? Table({ columns: ['ID', 'Kind', 'Subject', 'Expires', ''] }, certRows).element : EmptyState({ title: 'No certificates on file' }));
 
   // ---------- Exposure (read-only) ----------
   const exposureCard = Card({ title: 'Exposure', subtitle: 'Effective UI reachability and open services by interface.' },
@@ -88,5 +137,5 @@ export async function render(api, store) {
   return el('div', {},
     el('div', { class: 'page-header' }, el('h1', {}, 'Security'), el('p', {}, 'Sessions, WireGuard, TLS, and exposure/trust posture.')),
     configCard,
-    el('div', { class: 'card-grid' }, csrCard, certsCard, exposureCard));
+    el('div', { class: 'card-grid' }, tlsCard, csrCard, certsCard, exposureCard));
 }
