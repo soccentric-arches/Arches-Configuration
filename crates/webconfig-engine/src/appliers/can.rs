@@ -104,7 +104,25 @@ impl Applier for CanApplier {
     fn apply(&self, sysroot: &Sysroot, config: &Config) -> Result<ApplyOutcome, ApplyError> {
         let mut backups = self.backups.lock().unwrap();
         backups.clear();
+        // The CAN subsystem is gated by `io.can_enabled` (spec §4.9 / API
+        // reference: can_enabled gates the subsystem detail settings). When
+        // off, do not write or start any CAN units — previously every entry was
+        // written/enabled/started unconditionally.
+        if !config.io.can_enabled {
+            return Ok(ApplyOutcome::Committed);
+        }
         for c in &config.io.can {
+            // Per-entry `enabled` flag: skip disabled interfaces, and on the
+            // real root stop+disable a unit we previously brought up so that
+            // disabling an entry actually takes effect (not just "not started").
+            if !c.enabled {
+                if sysroot.is_real_root() {
+                    let unit = format!("can-{}.service", c.name);
+                    let _ = run_cmd("systemctl", &["stop", &unit]);
+                    let _ = run_cmd("systemctl", &["disable", &unit]);
+                }
+                continue;
+            }
             Self::validate_one(c)?;
             let path = Self::unit_path(sysroot, &c.name);
             let backup = FileBackup::capture(path.clone())?;
@@ -195,11 +213,38 @@ mod tests {
         let sys = Sysroot::at(dir.path());
         let a = CanApplier::new();
         let mut c = Config::default();
+        c.io.can_enabled = true;
         c.io.can.push(can("can0", 500_000, false, 0));
         a.apply(&sys, &c).unwrap();
         let f = sys.join("/etc/systemd/system/can-can0.service");
         assert!(f.exists());
         a.rollback(&sys).unwrap();
         assert!(!f.exists());
+    }
+
+    #[test]
+    fn subsystem_disabled_writes_no_units() {
+        let dir = tempfile::tempdir().unwrap();
+        let sys = Sysroot::at(dir.path());
+        let a = CanApplier::new();
+        let mut c = Config::default();
+        c.io.can_enabled = false; // CAN subsystem off — nothing should apply.
+        c.io.can.push(can("can0", 500_000, false, 0));
+        a.apply(&sys, &c).unwrap();
+        assert!(!sys.join("/etc/systemd/system/can-can0.service").exists());
+    }
+
+    #[test]
+    fn disabled_entry_writes_no_unit() {
+        let dir = tempfile::tempdir().unwrap();
+        let sys = Sysroot::at(dir.path());
+        let a = CanApplier::new();
+        let mut c = Config::default();
+        c.io.can_enabled = true;
+        let mut entry = can("can0", 500_000, false, 0);
+        entry.enabled = false; // subsystem on, but this entry disabled.
+        c.io.can.push(entry);
+        a.apply(&sys, &c).unwrap();
+        assert!(!sys.join("/etc/systemd/system/can-can0.service").exists());
     }
 }
