@@ -677,3 +677,125 @@ async fn factory_reset_wipes_certs_and_alert_history() {
         .unwrap();
     assert_eq!(count, 0);
 }
+
+#[tokio::test]
+async fn cert_store_upload_list_delete_round_trip() {
+    // spec §4.8: device cert store accepts uploaded CA/client certs, lists
+    // their metadata, and removes them. PEM is validated server-side; the PEM
+    // file lands in <webconfig_dir>/certs/<id>.pem and the metadata in
+    // config.security.certificates.
+    let (app, dir) = build_app().await;
+    let webconfig_dir = dir.path().join("data/webconfig");
+
+    // Bootstrap admin + csrf.
+    let (_, ck, _) = send(
+        &app,
+        "POST",
+        "/api/v1/auth/first-boot",
+        None,
+        None,
+        Some(r#"{"username":"admin","password":"password1"}"#),
+    )
+    .await;
+    let cookie = ck.unwrap();
+    let (_, _, text) = send(
+        &app,
+        "GET",
+        "/api/v1/auth/whoami",
+        Some(&cookie),
+        None,
+        None,
+    )
+    .await;
+    let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+    let csrf = v["csrf"].as_str().unwrap().to_string();
+
+    // A real self-signed cert PEM generated with rcgen.
+    let mut params = rcgen::CertificateParams::new(vec!["ca.example".to_string()]).unwrap();
+    params.distinguished_name = rcgen::DistinguishedName::new();
+    params
+        .distinguished_name
+        .push(rcgen::DnType::CommonName, "ca.example");
+    let key_pair = rcgen::KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256).unwrap();
+    let pem = params.self_signed(&key_pair).unwrap().pem();
+
+    let body = serde_json::json!({
+        "id": "ca-root",
+        "kind": "ca",
+        "subject": "CN=ca.example",
+        "not_after": "2026-08-23",
+        "pem": pem,
+    })
+    .to_string();
+    let (st, _, text) = send(
+        &app,
+        "POST",
+        "/api/v1/security/certs",
+        Some(&cookie),
+        Some(&csrf),
+        Some(&body),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let resp: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(resp["id"], "ca-root");
+    assert_eq!(resp["kind"], "ca");
+
+    // The PEM file is on the data partition.
+    assert!(webconfig_dir.join("certs/ca-root.pem").exists());
+
+    // GET /security/certs lists it.
+    let (st, _, text) = send(
+        &app,
+        "GET",
+        "/api/v1/security/certs",
+        Some(&cookie),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let list: Vec<serde_json::Value> = serde_json::from_str(&text).unwrap();
+    assert!(list.iter().any(|c| c["id"] == "ca-root"));
+
+    // A garbage PEM is rejected at save.
+    let bad = serde_json::json!({
+        "id": "bad", "kind": "ca", "subject": "x", "not_after": "2026-08-23", "pem": "not a cert"
+    })
+    .to_string();
+    let (st, _, _) = send(
+        &app,
+        "POST",
+        "/api/v1/security/certs",
+        Some(&cookie),
+        Some(&csrf),
+        Some(&bad),
+    )
+    .await;
+    assert_eq!(st, StatusCode::BAD_REQUEST);
+
+    // DELETE removes file + metadata.
+    let (st, _, _) = send(
+        &app,
+        "DELETE",
+        "/api/v1/security/certs/ca-root",
+        Some(&cookie),
+        Some(&csrf),
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    assert!(!webconfig_dir.join("certs/ca-root.pem").exists());
+
+    // Deleting a missing id → NotFound.
+    let (st, _, _) = send(
+        &app,
+        "DELETE",
+        "/api/v1/security/certs/nope",
+        Some(&cookie),
+        Some(&csrf),
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::NOT_FOUND);
+}

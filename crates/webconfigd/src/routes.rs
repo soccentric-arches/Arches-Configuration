@@ -136,6 +136,8 @@ pub fn build_router(state: AppState, static_dir: std::path::PathBuf) -> Router {
         .route("/security/exposure", get(security::exposure))
         .route("/security/trust", get(security::trust))
         .route("/security/certs", get(security::certs))
+        .route("/security/certs", post(security::upload_cert))
+        .route("/security/certs/:id", delete(security::delete_cert))
         // I/O (§4.9)
         .route("/io", get(io::get).put(io::put))
         .route("/io/usb", get(io::usb_devices))

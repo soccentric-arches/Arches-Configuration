@@ -150,3 +150,210 @@ pub async fn certs(
 ) -> ApiResult<Json<Vec<webconfig_engine::store::security::CertMeta>>> {
     Ok(Json(app.engine.load()?.security.certificates))
 }
+
+#[derive(serde::Deserialize)]
+pub struct CertUploadRequest {
+    pub id: String,
+    pub kind: String, // "ca" | "client"
+    pub subject: String,
+    /// Cert expiry, ISO-8601 (`YYYY-MM-DD` or `YYYY-MM-DDTHH:MM:SSZ`). Operator-
+    /// supplied because the daemon has no X.509 parser in its vendored supply
+    /// chain (rustls_pemfile only extracts DER blobs); it is shown in the UI and
+    /// feeds the cert-expiry alert (spec §4.8). The PEM itself is validated below.
+    pub not_after: String,
+    pub pem: String,
+}
+
+/// The on-disk cert store: `<webconfig_dir>/certs/<id>.pem`. Created on demand.
+fn cert_store_dir(app: &AppState) -> std::path::PathBuf {
+    app.engine.sysroot.webconfig_dir().join("certs")
+}
+
+/// A cert id must be a safe filename component — alnum, dash, underscore only —
+/// so it can never escape the `certs/` directory via `..` or a path separator.
+fn validate_cert_id(id: &str) -> ApiResult<()> {
+    if id.is_empty()
+        || !id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(ApiError::BadRequest(
+            "cert id must be non-empty alnum/-/_ only".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// Confirm the PEM actually contains at least one certificate (defends against
+/// storing a key-only or garbage blob as a "cert"). Uses the already-vendored
+/// `rustls_pemfile` — no new X.509 dependency.
+fn validate_pem_cert(pem: &str) -> ApiResult<()> {
+    let mut cursor = pem.as_bytes();
+    let mut found = false;
+    for item in rustls_pemfile::certs(&mut cursor) {
+        item.map_err(|e| ApiError::BadRequest(format!("pem parse error: {e}")))?;
+        found = true;
+    }
+    if !found {
+        return Err(ApiError::BadRequest("no certificate found in pem".into()));
+    }
+    Ok(())
+}
+
+/// `POST /api/v1/security/certs` — upload a CA or client cert PEM into the
+/// device cert store (spec §4.8: "CA + client certs for MQTT/VPN, uploaded
+/// here, referenced elsewhere"). The PEM is written to `certs/<id>.pem` and its
+/// metadata upserted into `config.security.certificates` so `/security/certs`
+/// and the cert-expiry alert reflect it. Admin only.
+pub async fn upload_cert(
+    State(app): State<AppState>,
+    role: AuthRole,
+    session: Session,
+    Json(req): Json<CertUploadRequest>,
+) -> ApiResult<Json<webconfig_engine::store::security::CertMeta>> {
+    role.require_admin("security.certs.upload")?;
+    validate_cert_id(&req.id)?;
+    if req.kind != "ca" && req.kind != "client" {
+        return Err(ApiError::BadRequest("kind must be ca|client".into()));
+    }
+    if req.subject.trim().is_empty() {
+        return Err(ApiError::BadRequest("subject required".into()));
+    }
+    if !looks_like_iso_date(&req.not_after) {
+        return Err(ApiError::BadRequest(
+            "not_after must be ISO-8601 (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ)".into(),
+        ));
+    }
+    validate_pem_cert(&req.pem)?;
+    let dir = cert_store_dir(&app);
+    std::fs::create_dir_all(&dir).map_err(|_| ApiError::Internal)?;
+    std::fs::write(dir.join(format!("{}.pem", req.id)), &req.pem)
+        .map_err(|_| ApiError::Internal)?;
+    let meta = webconfig_engine::store::security::CertMeta {
+        id: req.id.clone(),
+        kind: req.kind.clone(),
+        subject: req.subject.clone(),
+        not_after: req.not_after.clone(),
+    };
+    let user = username(&session).await;
+    let id_for_closure = req.id.clone();
+    let meta_for_closure = meta.clone();
+    app.engine.update(move |c| {
+        // Upsert by id — re-uploading a same-id cert replaces it.
+        if let Some(existing) = c
+            .security
+            .certificates
+            .iter_mut()
+            .find(|m| m.id == id_for_closure)
+        {
+            *existing = meta_for_closure.clone();
+        } else {
+            c.security.certificates.push(meta_for_closure.clone());
+        }
+        Ok(())
+    })?;
+    audit(
+        &app,
+        &user,
+        "security.certs.upload",
+        Some(format!("{}:{}", req.kind, req.id)),
+    );
+    Ok(Json(meta))
+}
+
+/// `DELETE /api/v1/security/certs/:id` — remove a cert from the store (spec
+/// §4.8). Deletes the PEM file and the metadata entry. Admin only.
+pub async fn delete_cert(
+    State(app): State<AppState>,
+    role: AuthRole,
+    session: Session,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> ApiResult<Json<serde_json::Value>> {
+    role.require_admin("security.certs.delete")?;
+    validate_cert_id(&id)?;
+    let pem_path = cert_store_dir(&app).join(format!("{id}.pem"));
+    let _ = std::fs::remove_file(&pem_path);
+    // NotFound if the id was never in the store (the PEM file removal is
+    // best-effort either way, so a stray file is still cleaned up).
+    let exists = app
+        .engine
+        .load()?
+        .security
+        .certificates
+        .iter()
+        .any(|m| m.id == id);
+    if !exists {
+        return Err(ApiError::NotFound);
+    }
+    let user = username(&session).await;
+    let id_for_closure = id.clone();
+    app.engine.update(move |c| {
+        c.security.certificates.retain(|m| m.id != id_for_closure);
+        Ok(())
+    })?;
+    audit(&app, &user, "security.certs.delete", Some(id.clone()));
+    Ok(Json(serde_json::json!({ "deleted": id })))
+}
+
+/// Lenient ISO-8601 date shape check: accepts `YYYY-MM-DD` and a full
+/// `YYYY-MM-DDTHH:MM:SSZ` stamp. The cert-expiry alert parses the same shape.
+fn looks_like_iso_date(s: &str) -> bool {
+    let s = s.trim();
+    s.len() >= 10
+        && s[4..5].contains('-')
+        && s[7..8].contains('-')
+        && s[0..4].chars().all(|c| c.is_ascii_digit())
+        && s[5..7].chars().all(|c| c.is_ascii_digit())
+        && s[8..10].chars().all(|c| c.is_ascii_digit())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn valid_pem() -> String {
+        // Generate a real self-signed cert PEM via rcgen (already vendored) so
+        // validate_pem_cert sees a genuine certificate, not a placeholder.
+        let mut params = rcgen::CertificateParams::new(vec!["ca.example".to_string()]).unwrap();
+        params.distinguished_name = rcgen::DistinguishedName::new();
+        params
+            .distinguished_name
+            .push(rcgen::DnType::CommonName, "ca.example");
+        let key_pair = rcgen::KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256).unwrap();
+        params.self_signed(&key_pair).unwrap().pem()
+    }
+
+    #[test]
+    fn accepts_a_real_cert_pem() {
+        assert!(validate_pem_cert(&valid_pem()).is_ok());
+    }
+
+    #[test]
+    fn rejects_non_cert_pem() {
+        // A private key alone is not a cert.
+        let key_pair = rcgen::KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256).unwrap();
+        let key_pem = key_pair.serialize_pem();
+        assert!(validate_pem_cert(&key_pem).is_err());
+        assert!(validate_pem_cert("not a pem at all").is_err());
+    }
+
+    #[test]
+    fn cert_id_must_be_safe_filename() {
+        assert!(validate_cert_id("ca-root").is_ok());
+        assert!(validate_cert_id("mqtt_client_1").is_ok());
+        // Path traversal and separators rejected — can never escape certs/.
+        assert!(validate_cert_id("").is_err());
+        assert!(validate_cert_id("../etc").is_err());
+        assert!(validate_cert_id("ca/root").is_err());
+        assert!(validate_cert_id("ca root").is_err());
+    }
+
+    #[test]
+    fn iso_date_shape_check() {
+        assert!(looks_like_iso_date("2026-08-23"));
+        assert!(looks_like_iso_date("2026-08-23T12:00:00Z"));
+        assert!(!looks_like_iso_date("2026/08/23"));
+        assert!(!looks_like_iso_date("soon"));
+        assert!(!looks_like_iso_date("2026-8-3"));
+    }
+}

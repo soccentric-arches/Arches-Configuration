@@ -145,6 +145,8 @@ Base URL: `https://<device>:8443/api/v1`. All responses are JSON.
 | GET | `/security/exposure` | any | per-interface open services. |
 | GET | `/security/trust` | any | secure boot / TPM / verity / encryption status (read-only). |
 | GET | `/security/certs` | any | `[{id, kind, subject, not_after}]`. |
+| POST | `/security/certs` | **[admin]** | `{id, kind, subject, not_after, pem}` → `CertMeta`. Validates the PEM parses (contains ≥1 cert via rustls_pemfile), writes `<data>/webconfig/certs/<id>.pem`, upserts metadata into `config.security.certificates`. `id` is alnum/-/_ only (path-traversal safe). `kind` is `ca`\|`client`; `not_after` is ISO-8601. |
+| DELETE | `/security/certs/:id` | **[admin]** | remove the PEM + metadata; 404 if absent. |
 
 ## I/O (§4.9)
 
