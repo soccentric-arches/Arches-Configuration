@@ -351,7 +351,7 @@ fn command_error(command: &str, output: &std::process::Output) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_i2cdetect, parse_lspci, parse_lsusb, parse_spidev_name};
+    use super::{parse_gpio_device, parse_i2cdetect, parse_lspci, parse_lsusb, parse_spidev_name};
 
     #[test]
     fn parses_lsusb_ids_and_description() {
@@ -404,6 +404,26 @@ mod tests {
     fn parses_spidev_bus_and_chip_select() {
         assert_eq!(parse_spidev_name("spidev0.1"), Some((0, 1)));
         assert_eq!(parse_spidev_name("spi0.0"), None);
+    }
+
+    #[test]
+    fn parses_gpio_device_chip_and_line() {
+        // Manifest form: "gpiochip1 line 7" -> chip + line offset.
+        assert_eq!(
+            parse_gpio_device("gpiochip1 line 7"),
+            Some(("gpiochip1", "7"))
+        );
+        assert_eq!(
+            parse_gpio_device("gpiochip2 line 5"),
+            Some(("gpiochip2", "5"))
+        );
+    }
+
+    #[test]
+    fn rejects_malformed_gpio_device() {
+        assert_eq!(parse_gpio_device("gpiochip1"), None);
+        assert_eq!(parse_gpio_device("gpiochip1 offset 7"), None);
+        assert_eq!(parse_gpio_device(""), None);
     }
 }
 
@@ -462,6 +482,7 @@ pub async fn apply_can(
 }
 
 /// `POST /api/v1/io/gpio/:name/toggle` — manual toggle for an output (spec §4.9).
+/// Reads the current line level and drives the opposite; output pins only.
 pub async fn toggle_gpio(
     State(app): State<AppState>,
     role: AuthRole,
@@ -476,13 +497,37 @@ pub async fn toggle_gpio(
         .iter()
         .find(|p| p.id == name && p.kind == IoKind::Gpio)
         .ok_or_else(|| ApiError::BadRequest("gpio not in manifest".into()))?;
+    // Only output lines can be driven — reject inputs (e.g. the recovery
+    // button) so a toggle never tries to drive a read-only line (spec §4.9).
+    let is_output = p
+        .caps
+        .get("direction")
+        .and_then(|v| v.as_str())
+        .map(|d| d == "out")
+        .unwrap_or(false);
+    if !is_output {
+        return Err(ApiError::BadRequest(format!(
+            "gpio {name} is not an output"
+        )));
+    }
+    let (chip, line) = parse_gpio_device(&p.device)
+        .ok_or_else(|| ApiError::BadRequest(format!("gpio {name} device malformed")))?;
     let value = if app.engine.sysroot.is_real_root() {
-        // Best-effort via the line name. Real impl uses libgpiod; here we shell
-        // out to `gpioset`/`gpioget` (assumption per spec §7).
-        let _ = webconfig_engine::applier::run_cmd("gpioset", &[&p.device, "1=1"]);
-        1
+        // Read the current level with `gpioget`, then drive the opposite with
+        // `gpioset` (assumption per spec §7: libgpiod CLI). Previously this
+        // always drove `1=1` against a malformed arg, so "toggle" was a no-op
+        // that only ever set high.
+        let cur = webconfig_engine::applier::run_cmd("gpioget", &[chip, line])
+            .ok()
+            .and_then(|s| s.trim().parse::<u8>().ok())
+            .unwrap_or(0);
+        let next = if cur == 1 { 0 } else { 1 };
+        let spec = format!("{line}={next}");
+        let _ = webconfig_engine::applier::run_cmd("gpioset", &[chip, &spec]);
+        next
     } else {
-        0
+        // Fake sysroot has no real line state; report a deterministic toggle.
+        1
     };
     audit(
         &app,
@@ -491,6 +536,17 @@ pub async fn toggle_gpio(
         Some(name.clone()),
     );
     Ok(Json(serde_json::json!({ "pin": name, "value": value })))
+}
+
+/// Parse a manifest GPIO `device` string of the form `gpiochip1 line 7` into
+/// its chip id and line offset, the shape `gpioset`/`gpioget` expect.
+fn parse_gpio_device(device: &str) -> Option<(&str, &str)> {
+    let parts: Vec<&str> = device.split_whitespace().collect();
+    if parts.len() == 3 && parts[1] == "line" {
+        Some((parts[0], parts[2]))
+    } else {
+        None
+    }
 }
 
 /// `POST /api/v1/io/i2c/scan` — admin-only bus scan (spec §4.9).
