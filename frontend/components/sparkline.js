@@ -1,5 +1,19 @@
-// Small Chart.js wrapper for a progressive rolling line. Feed it new values via
-// `.push(value)`; it keeps the last `maxPoints` and advances smoothly.
+// Vanilla canvas sparkline — a progressive rolling line chart with no external
+// dependency (spec §2: vanilla JS, < 500 KB, no node/build). Feed it new values
+// via `.push(value)`; it keeps the last `maxPoints` and redraws on every push
+// and on container resize. Replaces the earlier Chart.js wrapper, which
+// referenced a `/vendor/chart.umd.js` file that was never committed (so
+// `window.Chart` was undefined and the monitoring page threw on load).
+
+function resolveColor(color) {
+  if (typeof color !== 'string') return '#0ea5e9';
+  if (color.startsWith('var(')) {
+    const name = color.slice(4, -1).trim();
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || '#0ea5e9';
+  }
+  return color;
+}
 
 export function Sparkline({ height = 48, maxPoints = 60, color = 'var(--primary)', fill = false, label = 'Telemetry history' } = {}) {
   const container = document.createElement('div');
@@ -8,75 +22,119 @@ export function Sparkline({ height = 48, maxPoints = 60, color = 'var(--primary)
   const canvas = document.createElement('canvas');
   canvas.setAttribute('role', 'img');
   canvas.setAttribute('aria-label', label);
-  canvas.style.width = '100%';
-  canvas.style.height = '100%';
   canvas.className = 'spark';
   container.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
   const values = [];
-  const resolvedColor = color.startsWith('var(')
-    ? getComputedStyle(document.documentElement).getPropertyValue(color.slice(4, -1)).trim() || '#4f46e5'
-    : color;
+  let stroke = resolveColor(color);
+  let raf = 0;
+  let destroyed = false;
 
-  const chart = new window.Chart(canvas, {
-    type: 'line',
-    data: {
-      datasets: [{
-        data: values,
-        borderColor: resolvedColor,
-        backgroundColor: resolvedColor.startsWith('#') ? `${resolvedColor}1a` : 'rgba(79,70,229,.1)',
-        borderWidth: 2.25,
-        pointRadius: context => context.dataIndex === context.dataset.data.length - 1 ? 3 : 0,
-        pointHoverRadius: 4,
-        pointBackgroundColor: resolvedColor,
-        pointBorderColor: '#ffffff',
-        pointBorderWidth: 2,
-        pointHitRadius: 8,
-        tension: 0.2,
-        fill,
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: {
-        duration: 420,
-        easing: 'linear',
-        from: NaN,
-        delay: context => context.type === 'data' && context.mode === 'default'
-          ? context.dataIndex * 8
-          : 0,
-      },
-      interaction: { intersect: false, mode: 'index' },
-      plugins: {
-        legend: { display: false },
-        tooltip: { displayColors: false, callbacks: { label: context => `${context.parsed.y}` } },
-      },
-      scales: {
-        x: {
-          type: 'linear',
-          display: true,
-          grid: { display: false },
-          ticks: { display: false },
-          border: { display: false },
-        },
-        y: {
-          display: true,
-          grid: { color: 'rgba(113,113,122,.12)', drawTicks: false },
-          ticks: { display: false },
-          border: { display: false },
-          grace: '8%',
-        },
-      },
-    },
-  });
+  // Re-read the CSS variable on resize so theme changes retune the stroke.
+  function refreshColor() { stroke = resolveColor(color); }
+
+  function resize() {
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    if (!w || !h) return;
+    const dpr = window.devicePixelRatio || 1;
+    const targetW = Math.round(w * dpr);
+    const targetH = Math.round(h * dpr);
+    if (canvas.width !== targetW || canvas.height !== targetH) {
+      canvas.width = targetW;
+      canvas.height = targetH;
+    }
+  }
+
+  function draw() {
+    raf = 0;
+    resize();
+    const w = canvas.width;
+    const h = canvas.height;
+    if (!w || !h) return;
+    ctx.clearRect(0, 0, w, h);
+    if (values.length < 2) {
+      // Not enough points to draw a line; still mark the lone point if present.
+      if (values.length === 1) pointAt(w, h, 0, values[0]);
+      return;
+    }
+    let min = Infinity, max = -Infinity;
+    for (const v of values) { if (v < min) min = v; if (v > max) max = v; }
+    if (min === max) { min -= 1; max += 1; }
+    const pad = (max - min) * 0.08; // ~grace, matches the old y axis padding
+    min -= pad; max += pad;
+    const span = max - min || 1;
+    const dpr = window.devicePixelRatio || 1;
+    const lw = 2.25 * dpr;
+    const xAt = i => (i / (maxPoints - 1)) * (w - 6 * dpr) + 3 * dpr;
+    const yAt = v => h - 3 * dpr - ((v - min) / span) * (h - 6 * dpr);
+
+    if (fill) {
+      ctx.beginPath();
+      ctx.moveTo(xAt(0), h);
+      for (let i = 0; i < values.length; i++) ctx.lineTo(xAt(i), yAt(values[i]));
+      ctx.lineTo(xAt(values.length - 1), h);
+      ctx.closePath();
+      ctx.fillStyle = hexAlpha(stroke, 0.12);
+      ctx.fill();
+    }
+
+    ctx.beginPath();
+    ctx.moveTo(xAt(0), yAt(values[0]));
+    for (let i = 1; i < values.length; i++) ctx.lineTo(xAt(i), yAt(values[i]));
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = lw;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    pointAt(w, h, values.length - 1, values[values.length - 1]);
+
+    function pointAt(_w, _h, i, v) {
+      const x = xAt(i), y = yAt(v);
+      ctx.beginPath();
+      ctx.arc(x, y, 3 * dpr, 0, Math.PI * 2);
+      ctx.fillStyle = stroke;
+      ctx.fill();
+      ctx.lineWidth = 2 * dpr;
+      ctx.strokeStyle = '#ffffff';
+      ctx.stroke();
+    }
+  }
+
+  function schedule() {
+    if (raf || destroyed) return;
+    raf = requestAnimationFrame(draw);
+  }
 
   function push(v) {
     if (typeof v !== 'number' || Number.isNaN(v)) return;
     values.push(v);
     if (values.length > maxPoints) values.shift();
-    chart.data.datasets[0].data = values.map((value, i) => ({ x: i, y: value }));
-    chart.update();
+    schedule();
   }
 
-  return { canvas: container, push, destroy: () => chart.destroy(), get values() { return values.slice(); } };
+  const ro = new ResizeObserver(() => { refreshColor(); schedule(); });
+  ro.observe(container);
+  // Initial paint once laid out.
+  requestAnimationFrame(() => { refreshColor(); schedule(); });
+
+  return {
+    canvas: container,
+    push,
+    destroy: () => { destroyed = true; if (raf) cancelAnimationFrame(raf); ro.disconnect(); },
+    get values() { return values.slice(); },
+  };
+}
+
+// Add an alpha channel to a #rrggbb color (used for the fill). Falls back to a
+// translucent neutral for non-hex colors so fill never throws.
+function hexAlpha(hex, alpha) {
+  if (typeof hex === 'string' && hex.startsWith('#') && hex.length === 7) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+  return `rgba(14,165,233,${alpha})`;
 }
