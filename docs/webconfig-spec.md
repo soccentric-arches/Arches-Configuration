@@ -86,7 +86,7 @@ Implement each page below. Items marked **[v2]** are deferred: design the config
 - eMMC wear from lifetime registers (`mmc extcsd`) where present.
 - Network summary + connectivity test (shared with Networking), per-interface traffic counters from `/sys/class/net/*/statistics`. No live bandwidth graphs.
 - Service health strip (green/yellow/red) linking to Services. Uptime, boot count, last boot reason where the platform/MCU reports it.
-- **Platform tiles via manifest/schema plugin:** Arches (GPU util/mem, power mode, fan RPM, companion STM32 MCU heartbeat + fw version).
+- **Platform tiles via manifest/schema plugin:** Arches (GPU util/mem, power mode, fan RPM, companion STM32 MCU heartbeat + fw version). **Current status:** `board-manifests/arches.json`'s `dashboard_tiles` declares these (metrics `gpu.util`, `gpu.mem`, `arches.nvpmodel`, `arches.fan_rpm`) and `GET /monitoring/tiles` serves the manifest data verbatim, but no backend data source populates those specific metric values yet, and the frontend does not yet render `dashboard_tiles`/platform tiles generically at all (only the hand-built CPU/memory/disk/swap/temperature tiles in `frontend/pages/monitoring.js` are wired up). Treat GPU/fan/power-mode tiles as declared-but-not-yet-implemented, not a working feature.
 
 ### 4.6 Logs
 - Journal viewer: filter by unit, priority, time range; **follow mode via SSE**; last-N paging. No regex/search builder.
@@ -117,7 +117,7 @@ Implement each page below. Items marked **[v2]** are deferred: design the config
 - GPIO: manifest-**named** pins only (never raw banks): direction, initial state, active-low, live value, manual toggle for outputs.
 - I2C: manifest-declared devices + admin-only bus scan button. SPI: display only.
 - **Companion MCU panel** (Arches STM32): fw version, heartbeat, **signed firmware upload + flash** (same signing/compat rules as OS bundles), reset button; MCU-side settings rendered via the same schema engine if the protocol exposes them.
-- Platform panel: **Arches** — camera enumeration, nvpmodel power mode.
+- Platform panel: **Arches** — camera enumeration is real (manifest-driven); nvpmodel power mode is currently a static list of possible mode names (`GET /io/platform-panel`), not the live current mode read from `nvpmodel -q` — treat as not-yet-implemented.
 - **[v2]** Display/HMI settings (resolution, rotation, brightness, blank timeout).
 
 ## 5. Yocto integration
