@@ -22,14 +22,18 @@ export async function render(api, store) {
     const result = el('div', { class: 'field-help' }, 'Changes apply to the journald forwarding service.');
 
     async function save() {
+        // Always send the host/port/protocol the operator entered, toggling
+        // only `enabled` — sending null on disable used to discard the
+        // remembered destination entirely, forcing it to be re-typed to
+        // re-enable later.
         await api.put('/api/v1/logs/config', {
             ...cfg,
-            remote_syslog: enabled.get() ? {
-                enabled: true,
+            remote_syslog: {
+                enabled: enabled.get(),
                 host: host.get(),
                 port: Number(port.get()) || 514,
                 protocol: protocol.get(),
-            } : null,
+            },
         });
         result.textContent = 'Remote log forwarding settings applied.';
         store.toast('Remote log settings applied', 'success');
