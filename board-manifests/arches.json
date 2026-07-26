@@ -211,7 +211,7 @@
       "title": "Thermal / throttle",
       "metrics": [
         "thermal.temp",
-        "arches.throttled"
+        "temp.throttled"
       ],
       "render": "state"
     },
