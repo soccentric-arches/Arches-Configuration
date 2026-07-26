@@ -25,6 +25,7 @@ export async function render(api, store) {
         return { peripheral, enabled: Toggle({ label: 'Enable serial port', checked: existing.enabled !== false }), baud, mode, owner };
     });
     const save = async () => { await saveIo(api, data, { serial_enabled: subsystemEnabled.get(), serial: rows.map(row => ({ device: row.peripheral.device, enabled: row.enabled.get(), baud: Number(row.baud.get()) || 115200, mode: row.mode.get(), owner: row.owner.get() })) }); store.toast('Serial settings saved', 'success'); };
+    const apply = async () => { await api.post('/api/v1/io/serial/apply', {}); store.toast('Serial applied', 'success'); };
     const i2cTable = Table({ columns: ['Bus', 'Address', 'Status'] }, (i2cData.devices || []).map(device => [
         el('code', {}, `i2c-${device.bus}`), el('code', {}, device.address), device.status,
     ])).element;
@@ -37,7 +38,9 @@ export async function render(api, store) {
     return el('div', {}, el('div', { class: 'page-header' }, el('h1', {}, 'Serial Peripherals'), el('p', {}, 'Configure serial ports and inspect live I2C and SPI buses.')),
         Card({ title: 'Serial subsystem', subtitle: 'Enable serial before configuring individual ports.' }, subsystemEnabled.wrap),
         rows.length ? rows.map(row => Card({ title: row.peripheral.human_name || row.peripheral.device, subtitle: row.peripheral.device }, row.enabled.wrap, row.baud.wrap, row.mode.wrap, row.owner.wrap)) : el('p', { class: 'muted' }, 'No serial peripherals on this board.'),
-        rows.length ? Card({ title: 'Serial actions' }, ActionList(ActionRow('Save settings', 'Persist the serial peripheral configuration.', Button({ onClick: save }, 'Save settings')))) : null,
+        rows.length ? Card({ title: 'Serial actions' }, ActionList(
+            ActionRow('Save settings', 'Persist the serial peripheral configuration.', Button({ onClick: save }, 'Save settings')),
+            ActionRow('Apply serial', 'Apply serial configuration (baud, ownership) to the device.', Button({ variant: 'outline', onClick: apply }, 'Apply serial')))) : null,
         scanCard('I2C devices', 'Live addresses discovered with i2cdetect.', i2cTable, i2cData),
         scanCard('SPI devices', 'Kernel-created spidev nodes; SPI is enumerated without probing unknown devices.', spiTable, spiData));
 }
