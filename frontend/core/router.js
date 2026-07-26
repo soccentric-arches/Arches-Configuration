@@ -33,9 +33,13 @@ export function initRouter({ sidebar, topbar }) {
   window.addEventListener('hashchange', handleHashChange);
 }
 
+/** Returns the route id, or `null` if the hash names a segment that isn't a
+ * known route (an empty hash is the index route, not a 404 — only a
+ * non-empty, unrecognized segment counts as "not found"). */
 function parse() {
-  const h = location.hash.replace(/^#\/?/, '').split('/')[0] || 'overview';
-  return ROUTE_IDS.includes(h) ? h : 'overview';
+  const h = location.hash.replace(/^#\/?/, '').split('/')[0];
+  if (!h) return 'overview';
+  return ROUTE_IDS.includes(h) ? h : null;
 }
 
 /** Ask "discard unsaved changes?" and act on the answer. Returns true if the
@@ -107,15 +111,27 @@ export async function renderCurrent() {
   current = route;
   if (sidebarApi) sidebarApi.setActive(route);
 
-  const meta = routeMeta(route);
-  if (topbarApi) topbarApi.setTitle(meta ? meta.label : route);
-  document.title = meta ? `${meta.label} — SoCcentric WebConfig` : 'SoCcentric WebConfig';
-
   Store.clearTimers();
   Store.runCleanups();
 
   const view = document.getElementById('view');
   view.hidden = false;
+
+  if (route == null) {
+    if (topbarApi) topbarApi.setTitle('Not found');
+    document.title = 'Not found — SoCcentric WebConfig';
+    mount(view, EmptyState({
+      iconName: 'alertTriangle',
+      title: 'Page not found',
+      description: `There's no page at "${location.hash.replace(/^#\/?/, '') || '/'}".`,
+    }));
+    return;
+  }
+
+  const meta = routeMeta(route);
+  if (topbarApi) topbarApi.setTitle(meta ? meta.label : route);
+  document.title = meta ? `${meta.label} — SoCcentric WebConfig` : 'SoCcentric WebConfig';
+
   mount(view, el('div', { class: 'page-loading' }, PageSkeleton()));
   startProgress();
 
