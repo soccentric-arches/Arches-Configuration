@@ -1216,6 +1216,56 @@ async fn network_scan_and_connectivity_test_via_http() {
     assert!(v.get("dns").is_some());
 }
 
+#[tokio::test(start_paused = true)]
+async fn events_sse_requires_auth_and_emits_vitals_over_http() {
+    // Checkpoint 4.4: /events at the HTTP layer — the auth gate (checked
+    // before the stream starts, so no waiting involved) and a real emitted
+    // `vitals` frame (the journal-parsing/cursor logic itself already has
+    // dedicated pure-parser unit tests in sse.rs). `start_paused` lets
+    // tokio's virtual clock auto-advance through the handler's internal
+    // JOURNAL_TICK_SECS sleep instead of a real multi-second wait.
+    let (app, _dir) = build_app().await;
+
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/events")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+    let (cookie, _csrf) = boot_admin(&app).await;
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/events")
+        .header("cookie", &cookie)
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(
+        resp.headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .starts_with("text/event-stream"),
+        "SSE response must be text/event-stream"
+    );
+
+    use futures_util::StreamExt;
+    let mut stream = resp.into_body().into_data_stream();
+    let chunk = tokio::time::timeout(std::time::Duration::from_secs(10), stream.next())
+        .await
+        .expect("first SSE frame must arrive")
+        .expect("stream must yield at least one item")
+        .expect("frame must not be an error");
+    let text = String::from_utf8_lossy(&chunk);
+    assert!(
+        text.contains("event: vitals") || text.contains("vitals"),
+        "first SSE frame must be a vitals event: {text}"
+    );
+}
+
 #[tokio::test]
 async fn updates_install_ota_backup_restore_via_http() {
     // Checkpoint 4.3: install (path-based), ota get/put/check, backup

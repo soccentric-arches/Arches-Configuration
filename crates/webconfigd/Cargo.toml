@@ -50,3 +50,7 @@ http = "1.0"
 tempfile = "3.10"
 tower = { workspace = true, features = ["util"] }
 http-body-util = "0.1"
+# test-util (paused/virtual clock for the SSE test) is dev-only — the union
+# of features across [dependencies]/[dev-dependencies] only actually compiles
+# in for test builds, never the release binary (spec §2 size budget).
+tokio = { workspace = true, features = ["test-util"] }
