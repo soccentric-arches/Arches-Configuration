@@ -51,32 +51,32 @@ pub struct LoginThrottle {
     attempts: Mutex<HashMap<String, Attempt>>,
 }
 
+/// Outcome of atomically checking and reserving a login attempt slot.
+enum AttemptDecision {
+    /// Hard-locked; the login must be rejected without even calling
+    /// `authenticate()`.
+    Locked,
+    /// Not locked — the slot has already been reserved (count incremented)
+    /// against the threshold; sleep `delay_ms` before authenticating.
+    Allowed { delay_ms: u64 },
+}
+
 impl LoginThrottle {
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// How many milliseconds to wait before processing the next login for this
-    /// user. Exponential: 2^n * 200ms capped at 5s (spec §4.8 incremental delay).
-    async fn delay_ms(&self, username: &str) -> u64 {
-        let map = self.attempts.lock().await;
-        let n = map.get(username).map(|a| a.count).unwrap_or(0);
-        let base = 200u64;
-        let cap = 5_000u64;
-        base.saturating_mul(1u64 << n.min(10)).min(cap)
-    }
-
-    /// True once `LOCKOUT_THRESHOLD` failures have accumulated within the
-    /// current `LOCKOUT_DURATION` window — the lockout self-expires once that
-    /// long has passed since the last failure, no background sweep needed.
-    async fn is_locked_out(&self, username: &str) -> bool {
-        let map = self.attempts.lock().await;
-        map.get(username).is_some_and(|a| {
-            a.count >= LOCKOUT_THRESHOLD && a.last_attempt.elapsed() < LOCKOUT_DURATION
-        })
-    }
-
-    async fn record_failure(&self, username: &str) {
+    /// Atomically check lockout state and reserve this attempt's slot in one
+    /// lock acquisition. Checking and recording used to be two separate
+    /// locked operations (`is_locked_out` then, much later, `record_failure`)
+    /// with the actual authentication check running in between unlocked —
+    /// concurrent requests for the same username could all read "not locked
+    /// yet" before any single one's failure was recorded, letting an
+    /// attacker's parallel guesses race past the hard lockout entirely.
+    /// Reserving the slot up front (before authentication even runs) closes
+    /// that race: the `LOCKOUT_THRESHOLD`-th concurrent caller queued behind
+    /// this lock sees the prior callers' counts already applied.
+    async fn begin_attempt(&self, username: &str) -> AttemptDecision {
         let mut map = self.attempts.lock().await;
         if !map.contains_key(username) && map.len() >= MAX_TRACKED_USERNAMES {
             if let Some(oldest) = map
@@ -97,8 +97,19 @@ impl LoginThrottle {
         if now.duration_since(e.last_attempt) >= LOCKOUT_DURATION {
             e.count = 0;
         }
+        if e.count >= LOCKOUT_THRESHOLD {
+            // Already locked: don't touch last_attempt, so the lockout
+            // expires LOCKOUT_DURATION after the last *counted* failure
+            // rather than being extended indefinitely by continued hammering.
+            return AttemptDecision::Locked;
+        }
+        // Exponential delay uses the count *before* this attempt (spec §4.8).
+        let base = 200u64;
+        let cap = 5_000u64;
+        let delay_ms = base.saturating_mul(1u64 << e.count.min(10)).min(cap);
         e.count = e.count.saturating_add(1);
         e.last_attempt = now;
+        AttemptDecision::Allowed { delay_ms }
     }
 
     async fn record_success(&self, username: &str) {
@@ -134,13 +145,13 @@ pub async fn login(
         ));
     }
 
-    // Hard lockout: reject outright once too many failures have piled up in
-    // the current window, rather than only slowing the attacker down.
-    if throttle.is_locked_out(&req.username).await {
-        return Err(ApiError::Unauthorized);
-    }
-
-    let delay = throttle.delay_ms(&req.username).await;
+    // Hard lockout + incremental delay: checked and reserved atomically so
+    // concurrent requests for the same username can't race past the lockout
+    // (see `LoginThrottle::begin_attempt`'s doc comment).
+    let delay = match throttle.begin_attempt(&req.username).await {
+        AttemptDecision::Locked => return Err(ApiError::Unauthorized),
+        AttemptDecision::Allowed { delay_ms } => delay_ms,
+    };
     if delay > 0 {
         tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
     }
@@ -157,7 +168,7 @@ pub async fn login(
             }))
         }
         Err(_) => {
-            throttle.record_failure(&req.username).await;
+            // Failure was already counted by begin_attempt's reservation.
             Err(ApiError::Unauthorized)
         }
     }
@@ -342,42 +353,73 @@ pub(crate) async fn csrf_token_from_session(session: &Session) -> String {
 mod tests {
     use super::*;
 
+    async fn is_locked(t: &LoginThrottle, username: &str) -> bool {
+        matches!(t.begin_attempt(username).await, AttemptDecision::Locked)
+    }
+
     #[tokio::test]
     async fn lockout_does_not_trigger_below_threshold() {
         let t = LoginThrottle::new();
         for _ in 0..(LOCKOUT_THRESHOLD - 1) {
-            t.record_failure("alice").await;
+            t.begin_attempt("alice").await;
         }
-        assert!(!t.is_locked_out("alice").await);
+        assert!(!is_locked(&t, "alice").await);
     }
 
     #[tokio::test]
     async fn lockout_triggers_at_threshold() {
         let t = LoginThrottle::new();
         for _ in 0..LOCKOUT_THRESHOLD {
-            t.record_failure("alice").await;
+            t.begin_attempt("alice").await;
         }
-        assert!(t.is_locked_out("alice").await);
+        assert!(is_locked(&t, "alice").await);
         // A different username is unaffected — lockout is per-username.
-        assert!(!t.is_locked_out("bob").await);
+        assert!(!is_locked(&t, "bob").await);
     }
 
     #[tokio::test]
     async fn record_success_clears_lockout() {
         let t = LoginThrottle::new();
         for _ in 0..LOCKOUT_THRESHOLD {
-            t.record_failure("alice").await;
+            t.begin_attempt("alice").await;
         }
-        assert!(t.is_locked_out("alice").await);
+        assert!(is_locked(&t, "alice").await);
         t.record_success("alice").await;
-        assert!(!t.is_locked_out("alice").await);
+        assert!(!is_locked(&t, "alice").await);
+    }
+
+    #[tokio::test]
+    async fn concurrent_attempts_cannot_race_past_lockout() {
+        // Regression test: check-then-later-record (two separate lock
+        // acquisitions with unlocked work in between) let concurrent requests
+        // for the same username all read "not locked" before any single
+        // one's failure was recorded, bypassing the hard lockout entirely.
+        // begin_attempt's atomic check-and-reserve must cap the number of
+        // attempts ever allowed through at exactly LOCKOUT_THRESHOLD, no
+        // matter how many fire concurrently.
+        let t = Arc::new(LoginThrottle::new());
+        let mut tasks = Vec::new();
+        for _ in 0..(LOCKOUT_THRESHOLD as usize * 3) {
+            let t = t.clone();
+            tasks.push(tokio::spawn(async move { t.begin_attempt("alice").await }));
+        }
+        let mut allowed = 0;
+        for task in tasks {
+            if matches!(task.await.unwrap(), AttemptDecision::Allowed { .. }) {
+                allowed += 1;
+            }
+        }
+        assert_eq!(
+            allowed, LOCKOUT_THRESHOLD as usize,
+            "at most LOCKOUT_THRESHOLD attempts may ever be allowed through, regardless of concurrency"
+        );
     }
 
     #[tokio::test]
     async fn bounded_map_evicts_oldest_when_over_capacity() {
         let t = LoginThrottle::new();
         for i in 0..(MAX_TRACKED_USERNAMES + 50) {
-            t.record_failure(&format!("user-{i}")).await;
+            t.begin_attempt(&format!("user-{i}")).await;
         }
         let size = t.attempts.lock().await.len();
         assert!(
