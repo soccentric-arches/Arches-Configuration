@@ -45,13 +45,9 @@ pub async fn start(
 ) -> ApiResult<Json<serde_json::Value>> {
     role.require_mutate_apps("services.start")?;
     guard_allowed(&app, &unit)?;
-    app.systemd.start(&unit).await.ok();
-    audit(
-        &app,
-        &username(&session).await,
-        "services.start",
-        Some(unit.clone()),
-    );
+    let result = app.systemd.start(&unit).await;
+    audit_outcome(&app, &session, "services.start", &unit, &result).await;
+    result?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
@@ -63,13 +59,9 @@ pub async fn stop(
 ) -> ApiResult<Json<serde_json::Value>> {
     role.require_mutate_apps("services.stop")?;
     guard_allowed(&app, &unit)?;
-    app.systemd.stop(&unit).await.ok();
-    audit(
-        &app,
-        &username(&session).await,
-        "services.stop",
-        Some(unit.clone()),
-    );
+    let result = app.systemd.stop(&unit).await;
+    audit_outcome(&app, &session, "services.stop", &unit, &result).await;
+    result?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
@@ -81,14 +73,26 @@ pub async fn restart(
 ) -> ApiResult<Json<serde_json::Value>> {
     role.require_mutate_apps("services.restart")?;
     guard_allowed(&app, &unit)?;
-    app.systemd.restart(&unit).await.ok();
-    audit(
-        &app,
-        &username(&session).await,
-        "services.restart",
-        Some(unit.clone()),
-    );
+    let result = app.systemd.restart(&unit).await;
+    audit_outcome(&app, &session, "services.restart", &unit, &result).await;
+    result?;
     Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+/// Audit the real outcome of a systemd verb — never just "attempted" (spec
+/// §4.1/§4.3: the audit trail must reflect what actually happened).
+async fn audit_outcome(
+    app: &AppState,
+    session: &Session,
+    action: &str,
+    unit: &str,
+    result: &Result<(), crate::systemd::SystemdError>,
+) {
+    let detail = match result {
+        Ok(()) => format!("{unit}: ok"),
+        Err(e) => format!("{unit}: failed ({e})"),
+    };
+    audit(app, &username(session).await, action, Some(detail));
 }
 
 #[derive(serde::Deserialize)]
@@ -106,17 +110,22 @@ pub async fn set_enabled(
 ) -> ApiResult<Json<serde_json::Value>> {
     role.require_mutate_apps("services.enable")?;
     guard_allowed(&app, &unit)?;
-    let _ = if req.enabled {
+    let result = if req.enabled {
         app.systemd.enable(&unit).await
     } else {
         app.systemd.disable(&unit).await
+    };
+    let detail = match &result {
+        Ok(()) => format!("{unit}={}: ok", req.enabled),
+        Err(e) => format!("{unit}={}: failed ({e})", req.enabled),
     };
     audit(
         &app,
         &username(&session).await,
         "services.set_enabled",
-        Some(format!("{unit}={}", req.enabled)),
+        Some(detail),
     );
+    result?;
     Ok(Json(
         serde_json::json!({ "unit": unit, "enabled": req.enabled }),
     ))

@@ -79,6 +79,12 @@ impl From<std::io::Error> for ApiError {
     }
 }
 
+impl From<crate::systemd::SystemdError> for ApiError {
+    fn from(e: crate::systemd::SystemdError) -> Self {
+        ApiError::Engine(e.to_string())
+    }
+}
+
 impl From<webconfig_engine::users::UserError> for ApiError {
     fn from(e: webconfig_engine::users::UserError) -> Self {
         match e {

@@ -36,6 +36,16 @@ async fn build_app() -> (axum::Router, tempfile::TempDir) {
 /// Like [`build_app`] but with a caller-supplied schema (e.g. one loaded from a
 /// tempdir to exercise schema-driven paths like app `apply_hook`s).
 async fn build_app_with(schema: Schema) -> (axum::Router, tempfile::TempDir) {
+    build_app_with_systemd(schema, None).await
+}
+
+/// Like [`build_app_with`] but lets the caller substitute the systemd client
+/// (e.g. a client that fails every verb) to exercise error-path handling that
+/// the fake sysroot's always-succeeding mock can't reach.
+async fn build_app_with_systemd(
+    schema: Schema,
+    systemd: Option<Arc<dyn crate::systemd::SystemdClient>>,
+) -> (axum::Router, tempfile::TempDir) {
     let dir = tempfile::tempdir().unwrap();
     let sysroot = Sysroot::at(dir.path());
     let webconfig_dir = sysroot.webconfig_dir();
@@ -95,7 +105,10 @@ async fn build_app_with(schema: Schema) -> (axum::Router, tempfile::TempDir) {
         audit: Arc::new(AuditLog::new(webconfig_dir.join("audit.jsonl"), 64 * 1024)),
         alert_engine: Arc::new(tokio::sync::Mutex::new(AlertEngine::new())),
         update_backend: crate::update_backend::make_backend(&sysroot),
-        systemd: crate::systemd::make_client(&sysroot).await,
+        systemd: match systemd {
+            Some(s) => s,
+            None => crate::systemd::make_client(&sysroot).await,
+        },
         users_path: webconfig_dir.join("users.json"),
         login_throttle: Arc::new(crate::auth::LoginThrottle::new()),
     };
@@ -977,4 +990,113 @@ async fn serial_apply_writes_baud_unit_and_rejects_conflicts() {
     )
     .await;
     assert_eq!(st, StatusCode::BAD_REQUEST);
+}
+
+/// A systemd client that fails every verb — used to prove failures propagate
+/// as real HTTP errors and land in the audit trail as failures, not "ok".
+#[derive(Debug, Default)]
+struct FailingSystemd;
+
+#[async_trait::async_trait]
+impl crate::systemd::SystemdClient for FailingSystemd {
+    async fn status(
+        &self,
+        unit: &str,
+    ) -> Result<crate::systemd::UnitState, crate::systemd::SystemdError> {
+        Err(crate::systemd::SystemdError::NotFound(unit.to_string()))
+    }
+    async fn start(&self, _unit: &str) -> Result<(), crate::systemd::SystemdError> {
+        Err(crate::systemd::SystemdError::Dbus(
+            "simulated failure".into(),
+        ))
+    }
+    async fn stop(&self, _unit: &str) -> Result<(), crate::systemd::SystemdError> {
+        Err(crate::systemd::SystemdError::Dbus(
+            "simulated failure".into(),
+        ))
+    }
+    async fn restart(&self, _unit: &str) -> Result<(), crate::systemd::SystemdError> {
+        Err(crate::systemd::SystemdError::Dbus(
+            "simulated failure".into(),
+        ))
+    }
+    async fn enable(&self, _unit: &str) -> Result<(), crate::systemd::SystemdError> {
+        Err(crate::systemd::SystemdError::Dbus(
+            "simulated failure".into(),
+        ))
+    }
+    async fn disable(&self, _unit: &str) -> Result<(), crate::systemd::SystemdError> {
+        Err(crate::systemd::SystemdError::Dbus(
+            "simulated failure".into(),
+        ))
+    }
+    async fn journal_tail(
+        &self,
+        _unit: &str,
+        _n: usize,
+    ) -> Result<String, crate::systemd::SystemdError> {
+        Ok(String::new())
+    }
+}
+
+#[tokio::test]
+async fn services_verbs_report_real_failure_not_fake_ok() {
+    // Spec §4.1/§4.3 (P0 0.2): a systemd failure must surface as a non-200
+    // error and the audit entry must show "failed", never "ok":true.
+    let (app, _dir) =
+        build_app_with_systemd(Schema::default_permissive(), Some(Arc::new(FailingSystemd))).await;
+    let (cookie, csrf) = boot_admin(&app).await;
+
+    for (method, path) in [
+        ("POST", "/api/v1/services/sshd.service/start"),
+        ("POST", "/api/v1/services/sshd.service/stop"),
+        ("POST", "/api/v1/services/sshd.service/restart"),
+    ] {
+        let (st, _, _) = send(&app, method, path, Some(&cookie), Some(&csrf), None).await;
+        assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{method} {path}");
+    }
+
+    let (st, _, _) = send(
+        &app,
+        "PUT",
+        "/api/v1/services/sshd.service/enabled",
+        Some(&cookie),
+        Some(&csrf),
+        Some(r#"{"enabled": true}"#),
+    )
+    .await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY);
+
+    // The audit log reflects failure for every verb, never a fabricated "ok".
+    let (st, _, text) = send(
+        &app,
+        "GET",
+        "/api/v1/logs/audit",
+        Some(&cookie),
+        Some(&csrf),
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let entries: serde_json::Value = serde_json::from_str(&text).unwrap();
+    let entries = entries.as_array().expect("audit log is a JSON array");
+    let failed_count = entries
+        .iter()
+        .filter(|e| {
+            e["action"]
+                .as_str()
+                .map(|a| a.starts_with("services."))
+                .unwrap_or(false)
+        })
+        .filter(|e| {
+            e["detail"]
+                .as_str()
+                .map(|d| d.contains("failed"))
+                .unwrap_or(false)
+        })
+        .count();
+    assert_eq!(
+        failed_count, 4,
+        "expected all 4 services.* audit entries to record failure: {text}"
+    );
 }
