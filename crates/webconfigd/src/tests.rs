@@ -1062,6 +1062,161 @@ async fn network_apply_surfaces_provisional_state_when_a_later_applier_fails() {
 }
 
 #[tokio::test]
+async fn network_apply_confirm_and_rollback_via_http() {
+    // Checkpoint 4.1: /network/apply, /network/confirm, /network/rollback
+    // exercised end to end via real HTTP, with a real (not directly-planted)
+    // provisional state — confirm clears it and leaves the applied config in
+    // place; rollback (in a fresh apply) restores the pre-apply state.
+    let (app, dir) = build_app().await;
+    let (cookie, csrf) = boot_admin(&app).await;
+
+    let severing_body = serde_json::json!({
+        "interfaces": [{
+            "name": "eth0", "enabled": true, "dhcp": false,
+            "address": "192.168.1.50", "prefix": 24
+        }],
+        "wifi": [], "dns_servers": [], "confirm_window_secs": 90,
+        "ap_mode": { "enabled": false, "trigger": "no-config", "ssid": "unused", "passphrase": "unused123" }
+    })
+    .to_string();
+
+    // --- apply -> confirm ---
+    let (st, _, _) = send(
+        &app,
+        "PUT",
+        "/api/v1/network",
+        Some(&cookie),
+        Some(&csrf),
+        Some(&severing_body),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+
+    let (st, _, body) = send(
+        &app,
+        "POST",
+        "/api/v1/network/apply",
+        Some(&cookie),
+        Some(&csrf),
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        v["provisional"], true,
+        "static-IP change must be provisional: {body}"
+    );
+
+    let network_unit = dir.path().join("etc/systemd/network/10-eth0.network");
+    assert!(
+        network_unit.exists(),
+        "networkd unit must be written by apply"
+    );
+
+    let (st, _, body) = send(
+        &app,
+        "POST",
+        "/api/v1/network/confirm",
+        Some(&cookie),
+        Some(&csrf),
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(v["confirmed"], true, "{body}");
+    // Confirmed — the applied config stays in place.
+    assert!(network_unit.exists());
+
+    // --- rollback, on a fresh app so there's genuinely no prior state ---
+    let (app2, dir2) = build_app().await;
+    let (cookie2, csrf2) = boot_admin(&app2).await;
+    let (st, _, _) = send(
+        &app2,
+        "PUT",
+        "/api/v1/network",
+        Some(&cookie2),
+        Some(&csrf2),
+        Some(&severing_body),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let (st, _, _) = send(
+        &app2,
+        "POST",
+        "/api/v1/network/apply",
+        Some(&cookie2),
+        Some(&csrf2),
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let network_unit2 = dir2.path().join("etc/systemd/network/10-eth0.network");
+    assert!(
+        network_unit2.exists(),
+        "networkd unit must be written by apply"
+    );
+
+    let (st, _, body) = send(
+        &app2,
+        "POST",
+        "/api/v1/network/rollback",
+        Some(&cookie2),
+        Some(&csrf2),
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "{body}");
+    // No prior networkd unit existed before this apply, so rollback must
+    // restore that "did not exist" state.
+    assert!(
+        !network_unit2.exists(),
+        "rollback must restore the pre-apply state (no unit existed before)"
+    );
+}
+
+#[tokio::test]
+async fn network_scan_and_connectivity_test_via_http() {
+    // Checkpoint 4.1: GET /network/scan and POST /network/connectivity-test
+    // exercised via real HTTP against the fake sysroot (deterministic,
+    // hardware-free).
+    let (app, _dir) = build_app().await;
+    let (cookie, csrf) = boot_admin(&app).await;
+
+    let (st, _, body) = send(
+        &app,
+        "GET",
+        "/api/v1/network/scan",
+        Some(&cookie),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert!(
+        v.as_array().unwrap().is_empty(),
+        "fake sysroot has no wireless hardware: {body}"
+    );
+
+    let (st, _, body) = send(
+        &app,
+        "POST",
+        "/api/v1/network/connectivity-test",
+        Some(&cookie),
+        Some(&csrf),
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert!(v.get("gateway").is_some());
+    assert!(v.get("public").is_some());
+    assert!(v.get("dns").is_some());
+}
+
+#[tokio::test]
 async fn factory_reset_reports_partial_failure_and_skips_reboot_on_broken_db() {
     // Checkpoint 1.6: a locked/corrupt config.db must not be presented as a
     // clean success — the failure is logged and surfaced in the response
