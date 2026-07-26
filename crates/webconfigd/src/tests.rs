@@ -376,6 +376,83 @@ async fn viewer_role_cannot_mutate_admin_only_routes() {
 }
 
 #[tokio::test]
+async fn operator_role_can_mutate_apps_but_not_admin_only_routes() {
+    // Checkpoint 4.6: Role::Operator sits strictly between admin and viewer —
+    // can_mutate_apps() is true (unlike viewer) but is_admin() is false
+    // (unlike admin). No existing test exercised this boundary; only
+    // admin-vs-viewer was covered.
+    let (app, _dir) = build_app().await;
+    let (admin_cookie, admin_csrf) = boot_admin(&app).await;
+
+    let (st, _, _) = send(
+        &app,
+        "POST",
+        "/api/v1/system/users",
+        Some(&admin_cookie),
+        Some(&admin_csrf),
+        Some(r#"{"username":"tech","password":"password1","role":"operator"}"#),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+
+    let (st, op_ck, _) = send(
+        &app,
+        "POST",
+        "/api/v1/auth/login",
+        None,
+        None,
+        Some(r#"{"username":"tech","password":"password1"}"#),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let op_cookie = op_ck.unwrap();
+    let (_, _, text) = send(
+        &app,
+        "GET",
+        "/api/v1/auth/whoami",
+        Some(&op_cookie),
+        None,
+        None,
+    )
+    .await;
+    let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(v["role"], "operator");
+    let op_csrf = v["csrf"].as_str().unwrap().to_string();
+
+    // Operator CAN hit a require_mutate_apps-gated route (services start).
+    let (st, _, body) = send(
+        &app,
+        "POST",
+        "/api/v1/services/sshd.service/start",
+        Some(&op_cookie),
+        Some(&op_csrf),
+        None,
+    )
+    .await;
+    assert_eq!(
+        st,
+        StatusCode::OK,
+        "operator must be able to start a service: {body}"
+    );
+
+    // Operator CANNOT hit a require_admin-gated route (factory reset).
+    let (st, _, body) = send(
+        &app,
+        "POST",
+        "/api/v1/system/factory-reset",
+        Some(&op_cookie),
+        Some(&op_csrf),
+        Some(r#"{"confirm":"RESET","mode":"settings"}"#),
+    )
+    .await;
+    assert_eq!(
+        st,
+        StatusCode::FORBIDDEN,
+        "operator must not be able to factory-reset: {body}"
+    );
+}
+
+#[tokio::test]
 async fn confirm_timer_rolls_back_when_window_expires() {
     // The flagship commit/confirm rollback (spec §4.2): a provisional apply
     // not confirmed within its window is auto-rolled-back by tick_confirm.
