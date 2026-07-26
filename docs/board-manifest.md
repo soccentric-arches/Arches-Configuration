@@ -32,9 +32,16 @@ path — an earlier YAML variant at `<share>/board.yaml` has been removed.
   "peripherals": [ { /* Peripheral */ } ],
   "dashboard_tiles": [ { /* DashboardTile */ } ],
   "default_alert_rules": [ { /* AlertRule */ } ],  // per-platform default rule packs (§4.7)
-  "config_defaults": { /* a full Config tree, optional */ }
+  "config_defaults": { /* a full Config tree, optional */ },
+  "wifi_radio": { "interface": "wlan0", "hw_mode": "g", "channel": 7 }  // AP-mode radio params, optional
 }
 ```
+
+`wifi_radio` parameterizes the AP-provisioning-mode radio (`ApApplier`) — a
+board with a 5 GHz-only radio or a non-`wlan0` interface name overrides it
+here instead of needing a code change (spec §4.9: zero hardcoded I/O). Any
+field, or the whole section, may be omitted; each falls back independently to
+the previous hardcoded defaults (`wlan0`/`g`/`7`).
 
 `config_defaults` seeds the live SQLite configuration **only on first boot**
 (`ConfigStore::with_defaults`, `crates/webconfigd/src/bootstrap.rs`) — every

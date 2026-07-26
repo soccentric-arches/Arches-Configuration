@@ -33,18 +33,19 @@ pub use wifi::WifiApplier;
 pub use wireguard::WireGuardApplier;
 
 use crate::applier::Applier;
-use crate::manifest::Peripheral;
+use crate::manifest::{Peripheral, WifiRadio};
 
 /// The full ordered applier set for a platform. Order matters only where one
 /// applier depends on another's output (e.g. CAN uses interfaces networkd
 /// brought up); here each is independent so ordering is by spec §4 section.
 ///
-/// `manifest_peripherals` is a snapshot of the board manifest's peripherals
-/// (only `GpioApplier` currently needs it, to resolve a GPIO pin's manifest
-/// `name` to its `gpiochip<N> line <M>` device string — the manifest doesn't
-/// change at runtime, so a one-time snapshot at construction is sufficient;
-/// no need to thread it through every applier's `apply()` call).
-pub fn all(manifest_peripherals: &[Peripheral]) -> Vec<Box<dyn Applier>> {
+/// `manifest_peripherals` and `wifi_radio` are snapshots of the board
+/// manifest (only `GpioApplier` needs the former, to resolve a GPIO pin's
+/// manifest `name` to its `gpiochip<N> line <M>` device string; only
+/// `ApApplier` needs the latter, for its interface/hw_mode/channel) — the
+/// manifest doesn't change at runtime, so a one-time snapshot at construction
+/// is sufficient; no need to thread it through every applier's `apply()` call.
+pub fn all(manifest_peripherals: &[Peripheral], wifi_radio: &WifiRadio) -> Vec<Box<dyn Applier>> {
     vec![
         Box::new(HostnameApplier::new()),
         Box::new(TimeApplier::new()),
@@ -52,7 +53,7 @@ pub fn all(manifest_peripherals: &[Peripheral]) -> Vec<Box<dyn Applier>> {
         Box::new(NetworkdApplier::new()),
         Box::new(FirewallApplier::new()),
         Box::new(WifiApplier::new()),
-        Box::new(ApApplier::new()),
+        Box::new(ApApplier::new(wifi_radio)),
         Box::new(CanApplier::new()),
         Box::new(SerialApplier::new()),
         Box::new(GpioApplier::new(manifest_peripherals)),

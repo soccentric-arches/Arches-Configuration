@@ -80,6 +80,44 @@ pub struct DashboardTile {
     pub render: String,
 }
 
+/// AP-provisioning-mode radio parameters (spec §4.9: zero hardcoded I/O — the
+/// interface name, hw_mode, and channel used to be hardcoded constants in
+/// `ApApplier`; a board with a different radio (5 GHz-only, a non-`wlan0`
+/// interface name) had no way to override them). Falls back to the previous
+/// hardcoded defaults when a manifest omits this section, so existing
+/// manifests keep working unchanged.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WifiRadio {
+    #[serde(default = "WifiRadio::default_interface")]
+    pub interface: String,
+    #[serde(default = "WifiRadio::default_hw_mode")]
+    pub hw_mode: String,
+    #[serde(default = "WifiRadio::default_channel")]
+    pub channel: u8,
+}
+
+impl WifiRadio {
+    fn default_interface() -> String {
+        "wlan0".into()
+    }
+    fn default_hw_mode() -> String {
+        "g".into()
+    }
+    fn default_channel() -> u8 {
+        7
+    }
+}
+
+impl Default for WifiRadio {
+    fn default() -> Self {
+        Self {
+            interface: Self::default_interface(),
+            hw_mode: Self::default_hw_mode(),
+            channel: Self::default_channel(),
+        }
+    }
+}
+
 /// The board manifest.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct BoardManifest {
@@ -116,6 +154,11 @@ pub struct BoardManifest {
     /// operator can override or disable a default by id.
     #[serde(default)]
     pub default_alert_rules: Vec<crate::store::alerts::AlertRule>,
+    /// AP-provisioning-mode radio parameters (spec §4.9). Absent in existing
+    /// manifests → falls back to `WifiRadio::default()` (wlan0/g/7, the
+    /// previous hardcoded behavior).
+    #[serde(default)]
+    pub wifi_radio: WifiRadio,
 }
 
 impl BoardManifest {

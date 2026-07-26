@@ -20,7 +20,7 @@ use tower::ServiceExt;
 
 use webconfig_engine::alert::AlertEngine;
 use webconfig_engine::audit::AuditLog;
-use webconfig_engine::manifest::{BoardManifest, IoKind};
+use webconfig_engine::manifest::{BoardManifest, IoKind, WifiRadio};
 use webconfig_engine::schema::Schema;
 use webconfig_engine::{ConfigStore, Sysroot};
 
@@ -107,7 +107,12 @@ async fn build_app_full(
         ],
         ..Default::default()
     });
-    let engine = EngineBridge::new(store, sysroot.clone(), &manifest.peripherals);
+    let engine = EngineBridge::new(
+        store,
+        sysroot.clone(),
+        &manifest.peripherals,
+        &manifest.wifi_radio,
+    );
 
     let state = AppState {
         engine: engine.clone(),
@@ -497,7 +502,7 @@ async fn confirm_timer_rolls_back_when_window_expires() {
     let dir = tempfile::tempdir().unwrap();
     let sysroot = Sysroot::at(dir.path());
     let store = ConfigStore::new(sysroot.clone(), Schema::default_permissive());
-    let bridge = EngineBridge::new(store, sysroot.clone(), &[]);
+    let bridge = EngineBridge::new(store, sysroot.clone(), &[], &WifiRadio::default());
 
     // Plant a provisional apply with a zero-second window.
     bridge
@@ -526,7 +531,7 @@ async fn confirm_pending_clears_on_explicit_confirm() {
     let dir = tempfile::tempdir().unwrap();
     let sysroot = Sysroot::at(dir.path());
     let store = ConfigStore::new(sysroot.clone(), Schema::default_permissive());
-    let bridge = EngineBridge::new(store, sysroot, &[]);
+    let bridge = EngineBridge::new(store, sysroot, &[], &WifiRadio::default());
 
     bridge
         .confirm
