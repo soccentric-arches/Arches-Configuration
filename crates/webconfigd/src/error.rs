@@ -74,7 +74,11 @@ impl From<webconfig_engine::ApplyError> for ApiError {
 }
 
 impl From<std::io::Error> for ApiError {
-    fn from(_: std::io::Error) -> Self {
+    fn from(e: std::io::Error) -> Self {
+        // The client only ever sees the generic "internal error" (never leak
+        // internal paths/details), but the real cause must survive server-side
+        // for field debugging — it was previously discarded entirely.
+        tracing::error!(error = %e, "io error converted to ApiError::Internal");
         ApiError::Internal
     }
 }
