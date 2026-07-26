@@ -1108,6 +1108,27 @@ async fn tls_identity_upload_replaces_cert_and_rejects_mismatch() {
 }
 
 #[tokio::test]
+async fn oversized_request_body_is_rejected_before_buffering() {
+    // Checkpoint 1.8: upload-heavy routes must reject an oversized body
+    // rather than buffering it unbounded (spec §2 RAM budget). /security/tls
+    // is capped well below 1 MB; send a body well past that cap.
+    let (app, _dir) = build_app().await;
+    let (cookie, csrf) = boot_admin(&app).await;
+
+    let huge_body = "x".repeat(2 * 1024 * 1024); // 2 MiB, well over the 64 KiB cap
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/security/tls")
+        .header("cookie", &cookie)
+        .header("X-CSRF-Token", &csrf)
+        .header("content-type", "application/json")
+        .body(Body::from(huge_body))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+}
+
+#[tokio::test]
 async fn mcu_firmware_verifies_real_signature_and_rejects_tampering() {
     // Spec §4.9 (P0 0.1): firmware upload must cryptographically verify a
     // detached signature against a manifest-declared trust anchor — a

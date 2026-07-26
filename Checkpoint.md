@@ -137,10 +137,14 @@ No item in this document is considered done if this gate is failing.
     `tracing::warn!` exactly when that predicate is true. `make build && make test && make
     lint` green (64/64 tests).
 
-- [ ] **1.6 Factory reset surfaces and handles partial failure**
+- [x] **1.6 Factory reset surfaces and handles partial failure**
   Where: `crates/webconfigd/src/api/system.rs::factory_reset`.
   Acceptance: SQL errors during reset are logged (`tracing::error!`), and the reboot step is either skipped or the response clearly indicates a partial/failed reset rather than presenting it as a clean success.
-  Verify: test with a deliberately locked/corrupt `config.db` and confirm the response and logs reflect the failure, and the device does not silently reboot claiming success.
+  Verify: `cargo test factory_reset_reports_partial_failure_and_skips_reboot_on_broken_db`
+    (commit ee05d3a) — makes `config.db` a directory (so `Connection::open` fails), asserts
+    the response is `{"factory_reset": false, "partial": true, "errors": [...]}` with a
+    `config.db`-mentioning error, not a fabricated clean success. `make build && make test &&
+    make lint` green (68/68 tests).
 
 - [x] **1.7 First-boot admin audit entry uses the shared ISO-8601 timestamp helper**
   Where: `crates/webconfigd/src/auth.rs`.

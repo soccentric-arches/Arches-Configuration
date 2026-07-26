@@ -4,9 +4,22 @@
 use axum::middleware::{from_fn, from_fn_with_state};
 use axum::routing::{delete, get, post, put};
 use axum::Router;
+use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::services::{ServeDir, ServeFile};
 use tower_sessions::cookie::SameSite;
 use tower_sessions::{MemoryStore, SessionManagerLayer};
+
+/// Per-route request-body caps (spec §2 RAM budget). Sized generously above
+/// any legitimate payload for that route while still rejecting an
+/// arbitrarily large body before it's fully buffered (Checkpoint 1.8) — none
+/// of these routes accept large binary uploads today (`/updates/install`
+/// still takes a JSON `bundle_path` reference, not raw bytes; see Checkpoint
+/// 1.4), so a modest JSON/PEM-sized cap is correct for all of them.
+const TLS_UPLOAD_LIMIT: usize = 64 * 1024; // cert + key PEM
+const CERT_UPLOAD_LIMIT: usize = 64 * 1024; // one PEM cert
+const BACKUP_SECRET_LIMIT: usize = 4 * 1024; // {"passphrase": "..."}
+const RESTORE_LIMIT: usize = 8 * 1024 * 1024; // a full config backup (JSON or encrypted envelope)
+const INSTALL_LIMIT: usize = 4 * 1024; // {"bundle_path": "..."} — a path string only, for now
 
 use crate::api::{
     alerts, io, logs, meta, monitoring, network, security, services, system, updates,
@@ -94,7 +107,10 @@ pub fn build_router(state: AppState, static_dir: std::path::PathBuf) -> Router {
         )
         // Updates (§4.4)
         .route("/updates/slots", get(updates::slots))
-        .route("/updates/install", post(updates::install))
+        .route(
+            "/updates/install",
+            post(updates::install).layer(RequestBodyLimitLayer::new(INSTALL_LIMIT)),
+        )
         .route("/updates/confirm", post(updates::confirm))
         .route("/updates/reboot-to-apply", post(updates::reboot_to_apply))
         .route("/updates/ota", get(updates::get_ota).put(updates::put_ota))
@@ -106,9 +122,14 @@ pub fn build_router(state: AppState, static_dir: std::path::PathBuf) -> Router {
         .route("/updates/backup/check", get(updates::backup_check))
         .route(
             "/updates/backup",
-            get(updates::backup).post(updates::backup_encrypted),
+            get(updates::backup)
+                .post(updates::backup_encrypted)
+                .layer(RequestBodyLimitLayer::new(BACKUP_SECRET_LIMIT)),
         )
-        .route("/updates/restore", post(updates::restore))
+        .route(
+            "/updates/restore",
+            post(updates::restore).layer(RequestBodyLimitLayer::new(RESTORE_LIMIT)),
+        )
         .route("/updates/diagnostics", get(updates::diagnostics))
         .route("/updates/factory-reset", post(updates::factory_reset))
         // Monitoring (§4.5)
@@ -133,11 +154,18 @@ pub fn build_router(state: AppState, static_dir: std::path::PathBuf) -> Router {
         .route("/security/apply", post(security::apply))
         .route("/security/wireguard/pubkey", get(security::wg_pubkey))
         .route("/security/csr", post(security::generate_csr))
-        .route("/security/tls", post(security::upload_tls_identity))
+        .route(
+            "/security/tls",
+            post(security::upload_tls_identity).layer(RequestBodyLimitLayer::new(TLS_UPLOAD_LIMIT)),
+        )
         .route("/security/exposure", get(security::exposure))
         .route("/security/trust", get(security::trust))
-        .route("/security/certs", get(security::certs))
-        .route("/security/certs", post(security::upload_cert))
+        .route(
+            "/security/certs",
+            get(security::certs)
+                .post(security::upload_cert)
+                .layer(RequestBodyLimitLayer::new(CERT_UPLOAD_LIMIT)),
+        )
         .route("/security/certs/:id", delete(security::delete_cert))
         // I/O (§4.9)
         .route("/io", get(io::get).put(io::put))

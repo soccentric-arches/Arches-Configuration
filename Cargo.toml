@@ -37,7 +37,7 @@ tower = { version = "0.4", default-features = false, features = ["util"] }
 # TcpListener). Mirrors axum's own internal `serve()` implementation.
 hyper = { version = "1", default-features = false }
 hyper-util = { version = "0.1", default-features = false, features = ["server-auto", "tokio", "service"] }
-tower-http = { version = "0.5", default-features = false, features = ["fs", "trace", "compression-gzip", "cors"] }
+tower-http = { version = "0.5", default-features = false, features = ["fs", "trace", "compression-gzip", "cors", "limit"] }
 tower-sessions = { version = "0.10", default-features = false, features = ["axum-core"] }
 
 # TLS — no OpenSSL anywhere (spec §2)
