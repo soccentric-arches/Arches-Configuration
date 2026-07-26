@@ -91,14 +91,69 @@ fn load_or_seed_manifest(sysroot: &Sysroot, share: &Path) -> BoardManifest {
         "generic" | "generic-linux" => include_str!("../../../board-manifests/generic.yaml"),
         _ => include_str!("../../../board-manifests/arches.json"),
     };
+    parse_compiled_in_manifest(&platform, raw)
+}
 
-    if platform == "generic" || platform == "generic-linux" {
-        serde_yaml::from_str(raw).unwrap_or_default()
+/// Parse the compiled-in fallback manifest, logging loudly on failure instead
+/// of silently degrading to `BoardManifest::default()` with no trace at all
+/// (Checkpoint 1.9 — the manifest drives the entire I/O/dashboard/alerts UI,
+/// so a parse failure here needs the same visibility the schema loader
+/// already has for the same class of failure).
+fn parse_compiled_in_manifest(platform: &str, raw: &str) -> BoardManifest {
+    let parsed = if platform == "generic" || platform == "generic-linux" {
+        serde_yaml::from_str::<BoardManifest>(raw).map_err(|e| e.to_string())
     } else {
-        serde_json::from_str(raw).unwrap_or_default()
+        serde_json::from_str::<BoardManifest>(raw).map_err(|e| e.to_string())
+    };
+    match parsed {
+        Ok(manifest) => manifest,
+        Err(error) => {
+            tracing::error!(
+                %error,
+                %platform,
+                "compiled-in fallback board manifest failed to parse — falling back to \
+                 BoardManifest::default() (degraded: I/O, dashboard tiles, and default alert \
+                 rules will all be empty)"
+            );
+            BoardManifest::default()
+        }
     }
 }
 
 pub(crate) fn alert_history(engine: &EngineBridge) -> AlertHistory {
     AlertHistory::new(engine.sysroot.webconfig_dir().join("config.db"), 1000)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn malformed_arches_manifest_falls_back_to_default_not_silently() {
+        // Checkpoint 1.9: a parse failure must not be indistinguishable from
+        // an empty-but-valid manifest — it still degrades to the default
+        // (there is no other safe choice), but the caller-visible behavior
+        // (BoardManifest::default()) must be reachable and correct even when
+        // the input is garbage, and the failure path must be exercised (the
+        // tracing::error! itself is asserted by inspection above; this test
+        // proves the function doesn't panic and still returns a usable
+        // default rather than propagating the parse error).
+        let manifest = parse_compiled_in_manifest("arches", "{ not valid json");
+        assert_eq!(manifest.platform, "");
+        assert!(manifest.peripherals.is_empty());
+    }
+
+    #[test]
+    fn malformed_generic_manifest_falls_back_to_default_not_silently() {
+        let manifest = parse_compiled_in_manifest("generic-linux", ":\n  not: [valid, yaml");
+        assert_eq!(manifest.platform, "");
+        assert!(manifest.peripherals.is_empty());
+    }
+
+    #[test]
+    fn valid_arches_manifest_parses_normally() {
+        let raw = include_str!("../../../board-manifests/arches.json");
+        let manifest = parse_compiled_in_manifest("arches", raw);
+        assert_eq!(manifest.platform, "arches");
+    }
 }

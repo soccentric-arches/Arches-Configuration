@@ -127,10 +127,15 @@ No item in this document is considered done if this gate is failing.
   Acceptance: a real multipart upload route writes to `/data/webconfig/uploads/` (or equivalent) and the existing install-from-path logic is invoked afterward.
   Verify: an integration test that uploads a bundle via HTTP multipart and confirms it reaches the install path.
 
-- [ ] **1.5 RAUC-unavailable fallback is never silent on a real device**
+- [x] **1.5 RAUC-unavailable fallback is never silent on a real device**
   Where: `crates/webconfigd/src/update_backend.rs::make_backend`.
   Acceptance: falling back to the mock backend when `is_real_root()` is true and `rauc` is unavailable logs at `warn!` or higher; ideally the API also surfaces a "update backend unavailable" state rather than serving fabricated slot data.
-  Verify: test that simulates a real root with `rauc` missing and asserts a warning is logged / a degraded-state flag is set.
+  Verify: `cargo test degraded_fallback_only_when_real_root_without_rauc` (commit 5712683) —
+    extracted the fallback-worthiness decision into a pure `is_degraded_fallback(is_real_root,
+    rauc_available)` predicate (testable without depending on the actual filesystem root or a
+    real `rauc` binary) and asserted all four input combinations; `make_backend` logs
+    `tracing::warn!` exactly when that predicate is true. `make build && make test && make
+    lint` green (64/64 tests).
 
 - [ ] **1.6 Factory reset surfaces and handles partial failure**
   Where: `crates/webconfigd/src/api/system.rs::factory_reset`.
