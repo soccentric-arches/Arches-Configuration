@@ -43,7 +43,3 @@ export function Button(opts = {}, label) {
   }
   return btn;
 }
-
-export function IconButton(opts = {}) {
-  return Button({ ...opts, variant: opts.variant || 'ghost' });
-}

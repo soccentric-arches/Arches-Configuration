@@ -207,27 +207,6 @@ impl EngineBridge {
         }
     }
 
-    /// Validate-and-apply-all for the "apply everything" action.
-    pub async fn apply_all(&self) -> ApiResult<()> {
-        let sys = self.sysroot.clone();
-        let store = self.store.clone();
-        let appliers = self.appliers.clone();
-        tokio::task::spawn_blocking(move || {
-            let cfg = store.load()?.config;
-            for a in appliers.iter() {
-                a.validate(&sys, &cfg).map_err(ApiError::from)?;
-                let outcome = a.apply(&sys, &cfg).map_err(ApiError::from)?;
-                if let ApplyOutcome::Provisional { .. } = outcome {
-                    // Networking drives its own confirm flow; stop here.
-                    break;
-                }
-            }
-            Ok::<(), ApiError>(())
-        })
-        .await
-        .map_err(|_| ApiError::Internal)?
-    }
-
     /// Convenience for handlers that need to know an applier exists.
     pub fn has_applier(&self, id: &str) -> bool {
         self.find(id).is_some()
