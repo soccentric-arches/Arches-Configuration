@@ -50,7 +50,7 @@ pub async fn username(session: &tower_sessions::Session) -> String {
 /// is documented as "ISO-8601 timestamp (UTC)"). The HTTP layer owns the wall
 /// clock — the deterministic engine never does. Uses the already-vendored
 /// `time` crate (no new dependency).
-fn now_iso() -> String {
+pub(crate) fn now_iso() -> String {
     use time::OffsetDateTime;
     let now = OffsetDateTime::now_utc();
     now.format(time::macros::format_description!(

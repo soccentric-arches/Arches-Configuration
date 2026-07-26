@@ -167,7 +167,7 @@ pub async fn first_boot(
 
     app.audit
         .append(&webconfig_engine::audit::AuditEntry {
-            ts: now_iso(),
+            ts: crate::api::now_iso(),
             user: req.username.clone(),
             action: "auth.first-boot".into(),
             detail: None,
@@ -273,12 +273,6 @@ fn now_secs() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)
-}
-
-fn now_iso() -> String {
-    let secs = now_secs();
-    // ISO-8601 UTC from the unix seconds (no chrono dep; manual format).
-    format!("t={secs}")
 }
 
 /// CSRF token derivation from the session id (spec §4.8). tower-sessions

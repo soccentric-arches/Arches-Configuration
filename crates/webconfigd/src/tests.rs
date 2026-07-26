@@ -216,6 +216,28 @@ async fn first_boot_creates_admin_and_authenticates() {
     assert_eq!(st, StatusCode::OK);
     let cookie = ck.expect("first-boot sets a session cookie");
 
+    // The first-boot audit entry — the very first audit entry any device ever
+    // produces — must use the shared RFC3339 timestamp helper, not the stale
+    // local `t=<epoch>` placeholder (Checkpoint 1.7).
+    let (_, _, audit_text) =
+        send(&app, "GET", "/api/v1/logs/audit", Some(&cookie), None, None).await;
+    let audit: serde_json::Value = serde_json::from_str(&audit_text).unwrap();
+    let first_boot_entry = audit
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["action"] == "auth.first-boot")
+        .expect("first-boot audit entry present");
+    let ts = first_boot_entry["ts"].as_str().unwrap();
+    assert!(
+        !ts.starts_with("t="),
+        "first-boot audit ts is a stale placeholder: {ts}"
+    );
+    assert!(
+        ts.ends_with('Z'),
+        "first-boot audit ts must be RFC3339 UTC: {ts}"
+    );
+
     // Now whoami reports an authenticated admin.
     let (st, _, text) = send(
         &app,
