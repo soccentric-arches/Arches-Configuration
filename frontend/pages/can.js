@@ -21,6 +21,18 @@ export async function render(api, store) {
 
     return el('div', {}, el('div', { class: 'page-header' }, el('h1', {}, 'CAN'), el('p', {}, 'Configure CAN bitrate, FD mode, listen-only behavior, and startup.')),
         Card({ title: 'CAN subsystem', subtitle: 'Enable CAN before configuring individual interfaces.' }, subsystemEnabled.wrap),
-        rows.length ? rows.map(row => Card({ title: row.peripheral.human_name || row.peripheral.device, subtitle: row.peripheral.device }, el('div', { class: 'toggle-stack' }, row.enabled.wrap, row.fd.wrap, row.listenOnly.wrap, row.upOnBoot.wrap), row.bitrate.wrap, row.dataBitrate.wrap)) : el('p', { class: 'muted' }, 'No CAN interfaces on this board.'),
+        rows.length ? rows.map(row => {
+            const terminationGpio = row.peripheral.caps?.termination_gpio;
+            return Card({ title: row.peripheral.human_name || row.peripheral.device, subtitle: row.peripheral.device },
+                el('div', { class: 'toggle-stack' }, row.enabled.wrap, row.fd.wrap, row.listenOnly.wrap, row.upOnBoot.wrap),
+                row.bitrate.wrap, row.dataBitrate.wrap,
+                terminationGpio ? Button({
+                    variant: 'outline', size: 'sm',
+                    onClick: async () => {
+                        const result = await api.post(`/api/v1/io/gpio/${encodeURIComponent(terminationGpio)}/toggle`, {});
+                        store.toast(`Termination → ${result.value ? 'on' : 'off'}`, 'success');
+                    },
+                }, 'Toggle termination') : null);
+        }) : el('p', { class: 'muted' }, 'No CAN interfaces on this board.'),
         rows.length ? Card({ title: 'CAN actions' }, ActionList(ActionRow('Save settings', 'Persist CAN configuration.', Button({ onClick: save }, 'Save settings')), ActionRow('Apply CAN', 'Apply CAN configuration to the device.', Button({ variant: 'outline', onClick: apply }, 'Apply CAN')))) : null);
 }
