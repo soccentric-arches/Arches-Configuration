@@ -154,10 +154,14 @@ No item in this document is considered done if this gate is failing.
   Acceptance: `tower_http::limit::RequestBodyLimitLayer` (or equivalent) applied at minimum to `/security/tls`, `/security/certs`, `/updates/install`, `/updates/restore`, `/updates/backup`, sized against the 15 MB RAM budget in spec §2.
   Verify: a test sending an oversized body to at least one of these routes and asserting rejection (413 or equivalent) rather than an OOM/hang.
 
-- [ ] **1.9 Malformed compiled-in board manifest fails loudly**
+- [x] **1.9 Malformed compiled-in board manifest fails loudly**
   Where: `crates/webconfigd/src/bootstrap.rs::load_or_seed_manifest`.
   Acceptance: a parse failure on the compiled-in fallback manifest logs at `error!` level (matching the schema loader's existing `warn!` pattern), and ideally the daemon surfaces a degraded-manifest signal to the UI.
-  Verify: test with a deliberately malformed compiled-in manifest asserting a log line is emitted.
+  Verify: extracted `parse_compiled_in_manifest()`, which logs `tracing::error!` with the real
+    parse error on failure. `cargo test malformed_arches_manifest_falls_back_to_default_not_silently
+    malformed_generic_manifest_falls_back_to_default_not_silently valid_arches_manifest_parses_normally`
+    (commit 6ba03f1) cover malformed JSON, malformed YAML, and the valid-manifest case.
+    `make build && make test && make lint` green (67/67 tests).
 
 - [ ] **1.10 Provisional network-apply failure state is visible to the operator**
   Where: `crates/webconfigd/src/api/network.rs::apply`.

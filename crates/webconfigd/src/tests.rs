@@ -865,6 +865,43 @@ async fn factory_reset_wipes_certs_and_alert_history() {
 }
 
 #[tokio::test]
+async fn factory_reset_reports_partial_failure_and_skips_reboot_on_broken_db() {
+    // Checkpoint 1.6: a locked/corrupt config.db must not be presented as a
+    // clean success — the failure is logged and surfaced in the response
+    // rather than silently swallowed with `let _ =`.
+    let (app, dir) = build_app().await;
+    let webconfig_dir = dir.path().join("data/webconfig");
+    std::fs::create_dir_all(&webconfig_dir).unwrap();
+    // A directory where config.db should be a file — Connection::open fails.
+    std::fs::create_dir_all(webconfig_dir.join("config.db")).unwrap();
+
+    let (cookie, csrf) = boot_admin(&app).await;
+    let (st, _, body) = send(
+        &app,
+        "POST",
+        "/api/v1/system/factory-reset",
+        Some(&cookie),
+        Some(&csrf),
+        Some(r#"{"confirm":"RESET","mode":"settings"}"#),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        v["factory_reset"], false,
+        "must not report clean success: {body}"
+    );
+    assert_eq!(v["partial"], true);
+    let errors = v["errors"].as_array().expect("errors array present");
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.as_str().unwrap_or("").contains("config.db")),
+        "expected a config.db failure reported: {body}"
+    );
+}
+
+#[tokio::test]
 async fn cert_store_upload_list_delete_round_trip() {
     // spec §4.8: device cert store accepts uploaded CA/client certs, lists
     // their metadata, and removes them. PEM is validated server-side; the PEM

@@ -288,23 +288,30 @@ pub async fn factory_reset(
     let user = username(&session).await;
     audit(&app, &user, "system.factory-reset", Some(req.mode.clone()));
     let dir = app.engine.sysroot.webconfig_dir();
+    let mut failures: Vec<String> = Vec::new();
     if dir.exists() {
         // Settings only: reset the SQLite config and audit tables but keep users.
         let database = dir.join("config.db");
-        if let Ok(conn) = rusqlite::Connection::open(&database) {
-            let _ = conn.execute("DELETE FROM config_state", []);
-            let _ = conn.execute("DELETE FROM audit_entries", []);
-            // The alert history ring buffer lives in config.db when the history
-            // path ends in .db (it does in production). The legacy alert.jsonl
-            // file is removed below; the SQLite table must be cleared too or
-            // fired/cleared events survive a factory reset (spec §4.1: "wipe
-            // data partition"). Missing-table is harmless — execute is best-effort.
-            let _ = conn.execute("DELETE FROM alert_history", []);
+        match rusqlite::Connection::open(&database) {
+            Ok(conn) => {
+                exec_best_effort(&conn, "DELETE FROM config_state", &mut failures);
+                exec_best_effort(&conn, "DELETE FROM audit_entries", &mut failures);
+                // The alert history ring buffer lives in config.db when the
+                // history path ends in .db (it does in production). The
+                // legacy alert.jsonl file is removed below; the SQLite table
+                // must be cleared too or fired/cleared events survive a
+                // factory reset (spec §4.1: "wipe data partition").
+                exec_best_effort(&conn, "DELETE FROM alert_history", &mut failures);
+            }
+            Err(e) => {
+                tracing::error!(error = %e, db = %database.display(), "factory reset: failed to open config.db");
+                failures.push(format!("could not open config.db: {e}"));
+            }
         }
-        let _ = std::fs::remove_file(dir.join("config.json"));
-        let _ = std::fs::remove_file(dir.join("config.json.bak"));
-        let _ = std::fs::remove_file(dir.join("audit.jsonl"));
-        let _ = std::fs::remove_file(dir.join("alert.jsonl"));
+        remove_file_best_effort(&dir.join("config.json"), &mut failures);
+        remove_file_best_effort(&dir.join("config.json.bak"), &mut failures);
+        remove_file_best_effort(&dir.join("audit.jsonl"), &mut failures);
+        remove_file_best_effort(&dir.join("alert.jsonl"), &mut failures);
         // Device identity + cert store (spec §4.8): a factory reset returns the
         // device to a clean provisioning state, so drop the TLS cert/key (the
         // next boot regenerates a fresh self-signed identity via
@@ -313,24 +320,86 @@ pub async fn factory_reset(
         // distinction is about user accounts, not security material. The cert
         // store directory is created on demand by the upload route, so its
         // absence here is normal.
-        let _ = std::fs::remove_file(dir.join("cert.pem"));
-        let _ = std::fs::remove_file(dir.join("key.pem"));
-        let _ = std::fs::remove_dir_all(dir.join("certs"));
+        remove_file_best_effort(&dir.join("cert.pem"), &mut failures);
+        remove_file_best_effort(&dir.join("key.pem"), &mut failures);
+        remove_dir_best_effort(&dir.join("certs"), &mut failures);
         if req.mode == "settings+users" {
-            if let Ok(conn) = rusqlite::Connection::open(&database) {
-                let _ = conn.execute("DELETE FROM group_members", []);
-                let _ = conn.execute("DELETE FROM groups", []);
-                let _ = conn.execute("DELETE FROM users", []);
+            match rusqlite::Connection::open(&database) {
+                Ok(conn) => {
+                    exec_best_effort(&conn, "DELETE FROM group_members", &mut failures);
+                    exec_best_effort(&conn, "DELETE FROM groups", &mut failures);
+                    exec_best_effort(&conn, "DELETE FROM users", &mut failures);
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, db = %database.display(), "factory reset: failed to open config.db for user wipe");
+                    failures.push(format!("could not open config.db for user wipe: {e}"));
+                }
             }
-            let _ = std::fs::remove_file(dir.join("users.json"));
+            remove_file_best_effort(&dir.join("users.json"), &mut failures);
         }
     }
+
+    // A partial failure means the device is in an unknown, possibly
+    // inconsistent state — rebooting it now would present that as a clean
+    // reset. Skip the reboot and report the failure explicitly instead
+    // (Checkpoint 1.6).
+    if !failures.is_empty() {
+        tracing::error!(
+            failures = failures.join("; "),
+            "factory reset completed with errors — reboot skipped"
+        );
+        return Ok(Json(serde_json::json!({
+            "factory_reset": false,
+            "mode": req.mode,
+            "partial": true,
+            "errors": failures,
+        })));
+    }
+
     if app.engine.sysroot.is_real_root() {
         let _ = webconfig_engine::applier::run_cmd("systemctl", &["reboot"]);
     }
     Ok(Json(
         serde_json::json!({ "factory_reset": true, "mode": req.mode }),
     ))
+}
+
+/// Run a best-effort `DELETE`, logging and recording a real failure — but
+/// tolerating "no such table" (the table genuinely may not exist yet on a
+/// freshly-provisioned device, which is not a failure).
+fn exec_best_effort(conn: &rusqlite::Connection, sql: &str, failures: &mut Vec<String>) {
+    if let Err(e) = conn.execute(sql, []) {
+        let msg = e.to_string();
+        if msg.contains("no such table") {
+            return;
+        }
+        tracing::error!(error = %e, sql, "factory reset: SQL delete failed");
+        failures.push(format!("{sql}: {e}"));
+    }
+}
+
+/// Remove a file, logging and recording a real failure — but tolerating
+/// "not found" (the file may legitimately never have existed, e.g. a device
+/// that was never provisioned with an uploaded cert store).
+fn remove_file_best_effort(path: &std::path::Path, failures: &mut Vec<String>) {
+    if let Err(e) = std::fs::remove_file(path) {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            return;
+        }
+        tracing::error!(error = %e, path = %path.display(), "factory reset: failed to remove file");
+        failures.push(format!("remove {}: {e}", path.display()));
+    }
+}
+
+/// Same as [`remove_file_best_effort`] for a directory tree.
+fn remove_dir_best_effort(path: &std::path::Path, failures: &mut Vec<String>) {
+    if let Err(e) = std::fs::remove_dir_all(path) {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            return;
+        }
+        tracing::error!(error = %e, path = %path.display(), "factory reset: failed to remove directory");
+        failures.push(format!("remove {}: {e}", path.display()));
+    }
 }
 
 // --- User management (spec §4.1) ------------------------------------------
