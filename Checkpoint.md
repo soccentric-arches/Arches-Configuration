@@ -21,13 +21,16 @@ No item in this document is considered done if this gate is failing.
   - [ ] If flashing is genuinely out of scope for this release, the route/UI explicitly returns/displays "not implemented" rather than `{"flashed": true}`.
   - Verify: submit a tampered/unsigned firmware payload → request is rejected (not silently accepted). Submit a valid payload against the fake sysroot and real sysroot paths → response accurately reflects what happened in each case. Add/confirm a test covering the rejection case.
 
-- [ ] **0.2 Service start/stop/restart/enable report the real outcome**
+- [x] **0.2 Service start/stop/restart/enable report the real outcome**
   Where: `crates/webconfigd/src/api/services.rs` (`start`, `stop`, `restart`, `set_enabled`).
   Acceptance:
-  - [ ] `.ok()` / swallowed `Result` on the systemd call is removed from all four handlers.
-  - [ ] A failed systemd operation returns a non-200 `ApiError`, not `{"ok": true}`.
-  - [ ] The audit log entry reflects actual success/failure, not just "attempted."
-  - Verify: a test that makes the mock systemd backend return an error for one of the four verbs and asserts the HTTP response is an error and the audit entry shows failure.
+  - [x] `.ok()` / swallowed `Result` on the systemd call is removed from all four handlers.
+  - [x] A failed systemd operation returns a non-200 `ApiError`, not `{"ok": true}`.
+  - [x] The audit log entry reflects actual success/failure, not just "attempted."
+  - Verify: `cargo test services_verbs_report_real_failure_not_fake_ok` (commit 0f49bb7) — a
+    `FailingSystemd` test double drives all four verbs, asserts HTTP 422 on each, and asserts
+    the audit log records "failed" for all 4 `services.*` entries. `make build && make test &&
+    make lint` green.
 
 - [ ] **0.3 `/security/trust` no longer permanently hardcodes unknown values**
   Where: `crates/webconfigd/src/api/security.rs` (`trust` handler).

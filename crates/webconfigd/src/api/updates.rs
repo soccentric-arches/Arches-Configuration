@@ -255,7 +255,7 @@ pub async fn backup(
     axum::extract::Query(q): axum::extract::Query<BackupQuery>,
 ) -> ApiResult<Json<serde_json::Value>> {
     let mut cfg = app.engine.load()?;
-    redact_secrets(&mut cfg);
+    redact_secrets(&mut cfg, &app.schema);
     // `include_secrets` is accepted for backward compatibility with older
     // clients but is ignored on GET — secrets never travel in plaintext. The
     // response always reports `secrets_included: false`.
@@ -373,7 +373,7 @@ pub async fn diagnostics(
     _role: AuthRole,
 ) -> ApiResult<Json<serde_json::Value>> {
     let mut cfg = app.engine.load()?;
-    redact_secrets(&mut cfg);
+    redact_secrets(&mut cfg, &app.schema);
     let slots = app.update_backend.slots().unwrap_or_default();
     let audit = app.audit.read_all().unwrap_or_default();
     let sys = &app.engine.sysroot;
@@ -461,7 +461,13 @@ fn map_upd(e: webconfig_engine::update::UpdateError) -> ApiError {
 /// private key lives in a separate file (never in the config tree) and user
 /// password hashes live in the separate users store (not exported here), so
 /// neither needs redaction in this tree.
-fn redact_secrets(cfg: &mut webconfig_engine::Config) {
+///
+/// Beyond the hardcoded top-level `Config` fields below, this also walks
+/// `cfg.app_settings` using the loaded schema and blanks any field the app's
+/// schema declares `field_type: "secret"` (spec §3: `secret` is a first-class,
+/// schema-declared field type — any app can define one, not just the fields
+/// baked into this struct).
+fn redact_secrets(cfg: &mut webconfig_engine::Config, schema: &webconfig_engine::schema::Schema) {
     const REDACTED: &str = "[redacted]";
 
     // Wi-Fi PSKs.
@@ -488,5 +494,32 @@ fn redact_secrets(cfg: &mut webconfig_engine::Config) {
     // Telemetry publish password.
     if !cfg.monitoring.telemetry.password.is_empty() {
         cfg.monitoring.telemetry.password = REDACTED.into();
+    }
+
+    // App-schema-declared secret fields, keyed by descriptor stem (spec §3:
+    // app settings live at `config.app_settings[<stem>]`).
+    for (stem, descriptor) in schema.descriptors() {
+        if !descriptor.id.starts_with("app:") {
+            continue;
+        }
+        let Some(obj) = cfg
+            .app_settings
+            .get_mut(stem)
+            .and_then(|v| v.as_object_mut())
+        else {
+            continue;
+        };
+        for group in &descriptor.groups {
+            for field in &group.fields {
+                if field.field_type != "secret" {
+                    continue;
+                }
+                if let Some(v) = obj.get_mut(&field.id) {
+                    if !v.is_null() {
+                        *v = serde_json::Value::String(REDACTED.into());
+                    }
+                }
+            }
+        }
     }
 }

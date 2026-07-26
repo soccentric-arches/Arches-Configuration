@@ -555,6 +555,86 @@ async fn updates_diagnostics_bundle_carries_journal_and_network_state() {
 }
 
 #[tokio::test]
+async fn app_schema_secret_field_never_appears_in_backup_or_diagnostics() {
+    // Spec §4.4 (P0 0.4): a schema-declared `secret`-typed field inside
+    // `app_settings` must never leave the device in plaintext via the
+    // (unencrypted) GET backup or diagnostics routes — only the hardcoded
+    // top-level Config fields were redacted before this fix.
+    let schema_dir = tempfile::tempdir().unwrap();
+    let schema = r#"{
+        "id": "app:demo",
+        "title": "Demo app",
+        "groups": [
+            {
+                "id": "main",
+                "title": "Main",
+                "fields": [
+                    { "id": "api_token", "title": "API Token", "field_type": "secret" },
+                    { "id": "site_id", "title": "Site ID", "field_type": "string" }
+                ]
+            }
+        ]
+    }"#;
+    std::fs::write(schema_dir.path().join("app-demo.schema.json"), schema).unwrap();
+    let loaded = Schema::load_dir(schema_dir.path()).unwrap();
+    let (app, _dir) = build_app_with(loaded).await;
+    let (cookie, csrf) = boot_admin(&app).await;
+
+    const PLANTED_SECRET: &str = "sk-live-planted-secret-value";
+    let body = serde_json::json!({ "api_token": PLANTED_SECRET, "site_id": "site-42" }).to_string();
+    let (st, _, _) = send(
+        &app,
+        "PUT",
+        "/api/v1/apps/app-demo/settings",
+        Some(&cookie),
+        Some(&csrf),
+        Some(&body),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+
+    let (st, _, backup_body) = send(
+        &app,
+        "GET",
+        "/api/v1/updates/backup",
+        Some(&cookie),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    assert!(
+        !backup_body.contains(PLANTED_SECRET),
+        "plaintext backup leaked the app secret: {backup_body}"
+    );
+    let v: serde_json::Value = serde_json::from_str(&backup_body).unwrap();
+    assert_eq!(
+        v["config"]["app_settings"]["app-demo"]["api_token"],
+        "[redacted]"
+    );
+    // Non-secret sibling fields must survive redaction untouched.
+    assert_eq!(
+        v["config"]["app_settings"]["app-demo"]["site_id"],
+        "site-42"
+    );
+
+    let (st, _, diag_body) = send(
+        &app,
+        "GET",
+        "/api/v1/updates/diagnostics",
+        Some(&cookie),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    assert!(
+        !diag_body.contains(PLANTED_SECRET),
+        "diagnostics bundle leaked the app secret: {diag_body}"
+    );
+}
+
+#[tokio::test]
 async fn alerts_expose_default_packs_and_persist_push_targets() {
     // Spec §4.7: GET /alerts surfaces the per-platform default rule packs
     // (read-only) and the user-configured rules + push targets; PUT /alerts
