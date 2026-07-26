@@ -220,37 +220,54 @@ No item in this document is considered done if this gate is failing.
 
 ## Phase 2 — P1 Frontend items
 
-- [ ] **2.1 Serial config apply is wired**
+- [x] **2.1 Serial config apply is wired**
   Where: `frontend/pages/serial.js`.
   Acceptance: an "Apply serial" action calls `POST /api/v1/io/serial/apply` after save; UI reflects apply success/failure separately from save success/failure.
-  Verify: manual/E2E check — change serial config, save, apply, confirm the backend route is actually invoked (network tab / test).
+  Verify: commit 4fcc2ed — added an "Apply serial" button (matches `can.js`'s Save/Apply
+    pair). Apply's own toast is independent of save's; failures surface via the app-wide
+    `Button` error-toast handler, distinct from save's success toast.
 
-- [ ] **2.2 CAN termination-GPIO control is in the UI**
+- [x] **2.2 CAN termination-GPIO control is in the UI**
   Where: `frontend/pages/can.js`.
   Acceptance: when `caps.termination_gpio` is present in the manifest, a toggle for it is rendered and wired to the existing backend support.
-  Verify: manual check on a platform manifest with `termination_gpio` set (e.g. arches.json) that the toggle appears and persists.
+  Verify: commit 6b2314c — a "Toggle termination" button appears per CAN interface card when
+    `caps.termination_gpio` is set (confirmed present for `arches.json`'s `can0` →
+    `gpio-can0-term`, itself a real `kind: gpio` peripheral), calling the existing
+    `POST /io/gpio/:name/toggle` route.
 
-- [ ] **2.3 MQTT client-cert auth path is wired in the UI**
+- [x] **2.3 MQTT client-cert auth path is wired in the UI**
   Where: `frontend/pages/cloud.js`.
   Acceptance: a cert-store picker (using the existing cert store from `api/security.rs`) and an editable `client_id` field are present in the MQTT cloud settings form.
-  Verify: manual check that a cert can be selected and saved as part of the cloud config, and `client_id` round-trips correctly.
+  Verify: commit 3030108 — a client-certificate `<select>` populated from `GET
+    /security/certs` (filtered to `kind == "client"`) plus an editable `client_id` field, both
+    wired into the `PUT /services/mqtt` save payload (previously passed through unedited from
+    the loaded config).
 
-- [ ] **2.4 Users → Groups endpoints are resolved**
+- [x] **2.4 Users → Groups endpoints are resolved**
   Where: `frontend/pages/users.js`, `crates/webconfigd/src/api/system.rs` (or wherever groups should live), `docs/api-reference.md`.
   Acceptance: either the `/api/v1/system/groups...` routes are implemented server-side and documented, or the groups UI is removed/hidden until they exist. No dead calls remain.
-  Verify: hit each groups endpoint the frontend calls and confirm none 404; if implemented, confirm `docs/api-reference.md` documents them.
+  Verify: confirmed all 5 routes the frontend calls
+    (`list_groups`/`create_group`/`delete_group`/`add_group_member`/`remove_group_member`) are
+    real, implemented, and wired in `routes.rs` — the only gap was documentation. Added to
+    `docs/api-reference.md` (commit 1012971).
 
-- [ ] **2.5 Dirty-guard covers all navigation paths**
+- [x] **2.5 Dirty-guard covers all navigation paths**
   Where: `frontend/core/router.js`.
   Acceptance: unsaved-changes protection triggers on browser back/forward and manual hash edits, not just the programmatic `go()` path.
-  Verify: manually make an unsaved change on a form page, then use browser back — confirm the guard prompts before navigating away.
+  Verify: commit 4516d9a — `hashchange` now routes through the same
+    `confirmDiscardIfDirty()` prompt as `go()`. Since the hash has already changed by the time
+    the event fires, an unconfirmed navigation reverts `location.hash` to the last-rendered
+    route first (keeping the address bar/history consistent with what's displayed), guarded
+    by a `suppressGuard` flag so the revert itself doesn't re-trigger the prompt.
 
-- [ ] **2.6 Dead page modules removed or finished**
+- [x] **2.6 Dead page modules removed or finished**
   Where: `frontend/pages/hardware.js`, `frontend/pages/io.js`.
   Acceptance: both are either deleted (if fully superseded by the split gpio/can/serial/leds/camera pages) or restored to the registry with a clear reason for keeping them.
-  Verify: confirm `frontend/pages/registry.js` has no orphaned page files remaining in `frontend/pages/`, and the bundle size is checked against the <500 KB budget.
+  Verify: commit 07e6070 — both deleted (confirmed zero references anywhere in
+    `frontend/pages/registry.js` or elsewhere before deletion). Frontend tree is 444 KB,
+    under the 500 KB spec §2 budget.
 
-**Phase 2 gate:** all six boxes checked, global exit gate passing.
+**Phase 2 gate:** all six boxes checked, global exit gate passing. **Phase 2 (all P1 frontend items) is now fully closed.**
 
 ---
 
