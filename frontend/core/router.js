@@ -16,11 +16,21 @@ import { NAV, ROUTE_IDS, routeMeta } from '../pages/registry.js';
 let sidebarApi = null;
 let topbarApi = null;
 let current = null;
+// The last hash we actually rendered — lets the hashchange guard below revert
+// browser back/forward or a manual hash edit if the current page is dirty,
+// the same way `go()` already guards programmatic navigation.
+let lastHash = null;
+// Set just before we change `location.hash` ourselves (confirmed navigation,
+// or reverting an unconfirmed one) so the resulting hashchange event is
+// treated as "just render", not re-guarded — otherwise the guard would fire
+// on its own revert.
+let suppressGuard = false;
 
 export function initRouter({ sidebar, topbar }) {
   sidebarApi = sidebar;
   topbarApi = topbar;
-  window.addEventListener('hashchange', renderCurrent);
+  lastHash = location.hash;
+  window.addEventListener('hashchange', handleHashChange);
 }
 
 function parse() {
@@ -28,30 +38,68 @@ function parse() {
   return ROUTE_IDS.includes(h) ? h : 'overview';
 }
 
+/** Ask "discard unsaved changes?" and act on the answer. Returns true if the
+ * caller should proceed with navigation (nothing dirty, or the user chose to
+ * discard/save-and-continue), false if it should stay put (cancelled, or the
+ * save itself failed). */
+async function confirmDiscardIfDirty() {
+  if (!isDirty()) return true;
+  const choice = await choiceDialog({
+    title: 'Discard unsaved changes?',
+    description: 'You have edits on this page that haven’t been saved.',
+    choices: [
+      { value: 'cancel', label: 'Cancel', variant: 'outline' },
+      { value: 'discard', label: 'Discard', variant: 'destructive' },
+      { value: 'save', label: 'Save and continue' },
+    ],
+  });
+  if (choice === 'cancel' || choice == null) return false;
+  if (choice === 'save') {
+    try {
+      await saveDirtyPage();
+    } catch (e) {
+      console.error('[WebConfig] unable to save before navigation', e);
+      return false;
+    }
+  }
+  return true;
+}
+
 /** Programmatic navigation (sidebar, command palette). Guards unsaved edits. */
 export async function go(route) {
   if (route === current) { renderCurrent(); return; }
-  if (isDirty()) {
-    const choice = await choiceDialog({
-      title: 'Discard unsaved changes?',
-      description: 'You have edits on this page that haven’t been saved.',
-      choices: [
-        { value: 'cancel', label: 'Cancel', variant: 'outline' },
-        { value: 'discard', label: 'Discard', variant: 'destructive' },
-        { value: 'save', label: 'Save and continue' },
-      ],
-    });
-    if (choice === 'cancel' || choice == null) return;
-    if (choice === 'save') {
-      try {
-        await saveDirtyPage();
-      } catch (e) {
-        console.error('[WebConfig] unable to save before navigation', e);
-        return;
-      }
-    }
-  }
+  if (!(await confirmDiscardIfDirty())) return;
+  suppressGuard = true;
   location.hash = `/${route}`;
+}
+
+/** hashchange fires for browser back/forward AND manual hash edits/plain
+ * links — none of which go through `go()`, so this is the only place that
+ * can catch them. The hash has already changed by the time this runs, so an
+ * unconfirmed navigation is handled by reverting to `lastHash` first (to
+ * keep the address bar/history in sync with what's actually rendered), then
+ * re-applying the target hash only if the user confirms.
+ */
+async function handleHashChange() {
+  if (suppressGuard) {
+    suppressGuard = false;
+    lastHash = location.hash;
+    renderCurrent();
+    return;
+  }
+  if (!isDirty()) {
+    lastHash = location.hash;
+    renderCurrent();
+    return;
+  }
+  const targetHash = location.hash;
+  const previousHash = lastHash;
+  suppressGuard = true;
+  location.hash = previousHash; // revert while we ask; resolves via the branch above
+
+  if (!(await confirmDiscardIfDirty())) return; // stays reverted
+  suppressGuard = true;
+  location.hash = targetHash;
 }
 
 export async function renderCurrent() {
