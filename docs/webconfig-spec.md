@@ -94,7 +94,7 @@ Implement each page below. Items marked **[v2]** are deferred: design the config
 - Log configuration: journald persistent vs volatile (default volatile; persistent option size-capped — eMMC wear), max journal size, per-service log level where the service's schema declares one, remote syslog destination (host/port/protocol, one destination).
 
 ### 4.7 Alerts
-- Threshold rules: metric (temp, disk %, memory, service state, MCU heartbeat) + comparison + **duration** ("temp > 85 for 60 s") to prevent flapping.
+- Threshold rules: metric (temp, disk %, memory, service state, MCU heartbeat) + comparison + **duration** ("temp > 85 for 60 s") to prevent flapping. **Known gap:** `service.<unit>` and `mcu.heartbeat` are declared metric names but `alert.rs::resolve_metric` has no data source for either yet (no per-unit status is carried on `Vitals`, and no MCU heartbeat link exists) — a rule pack referencing them is accepted but silently never fires (resolves to `None`, the engine skips the rule that tick) until a real source is wired. Every other listed metric (temp, temp.throttled, disk.pct, memory.pct, cert.\*, boot.watchdog) is fully implemented.
 - Actions: UI red-state + event log (always); webhook POST; MQTT event topic. **[v2]** email.
 - Alert history: fired/cleared ring-buffer file with timestamps, viewable + exportable.
 - Default rule packs shipped as schema files (Arches: throttling; plus the always-on disk-full, watchdog-reset packs).
