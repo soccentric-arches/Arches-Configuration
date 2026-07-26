@@ -47,6 +47,18 @@ CAN termination, an MCU's `settings_schema` id, etc.) need **no code change**.
 The I/O page renders peripherals generically from `kind` + `human_name` +
 `device`; `caps` is shown as detail and consumed by platform panels (§4.9).
 
+For a `kind: "mcu"` peripheral, two `caps` keys are meaningful to
+`POST /io/mcu/firmware` (spec §4.9):
+- `firmware_pubkey_ed25519` — hex-encoded 32-byte Ed25519 public key, the
+  trust anchor a firmware upload's detached signature is verified against.
+  Required: without it, firmware upload is refused (409) rather than accepted
+  unverified.
+- `flash_command` — optional shell command invoked with the staged firmware
+  path as its sole argument on the real root after signature verification
+  succeeds. Absent means no flash mechanism exists for this platform yet; the
+  route still verifies + stores the firmware but reports `flashed: false`
+  with an explicit "not implemented" reason instead of fabricating success.
+
 ## DashboardTile
 
 ```jsonc

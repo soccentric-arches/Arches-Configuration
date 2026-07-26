@@ -43,10 +43,11 @@ export const api = {
   post: (url, body) => request('POST', url, body),
   put: (url, body) => request('PUT', url, body),
   del: (url) => request('DELETE', url, null),
+  // Raw byte upload (no multipart wrapping — the server reads the body as
+  // bytes directly). `file` is a File/Blob; metadata travels in the URL query
+  // string (e.g. `?version=...&signature=...`), not the body.
   upload(url, file) {
-    const form = new FormData();
-    form.append('bundle', file);
-    return request('POST', url, form, true);
+    return request('POST', url, file, true);
   },
   eventSource: (url) => new EventSource(url),
 };

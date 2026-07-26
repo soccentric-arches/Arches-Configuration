@@ -135,7 +135,9 @@
       "caps": {
         "protocol": "soccentric-mcu",
         "signed_fw": true,
-        "settings_schema": "app:mcu-stm32"
+        "settings_schema": "app:mcu-stm32",
+        "firmware_pubkey_ed25519": "33ae4551953ad8a7120b99bd7c7f36c0cd3458db3759fddf7ca98c40c9f7ae5d",
+        "_firmware_pubkey_note": "PLACEHOLDER — replace with the real MCU firmware-signing public key at BSP provisioning time; POST /io/mcu/firmware refuses uploads until this is a real trust anchor"
       }
     },
     {

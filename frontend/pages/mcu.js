@@ -22,7 +22,8 @@ export async function render(api, store) {
     const mcuCfg = mcuData.config || (data.config && data.config.mcu) || {};
     const enabled = Toggle({ label: 'Enable companion MCU', checked: mcuCfg.enabled !== false });
     const version = Field({ label: 'Firmware version' });
-    const signed = Toggle({ label: 'Package is signed', checked: true });
+    const firmwareFile = el('input', { type: 'file', accept: '.bin,application/octet-stream', class: 'input' });
+    const signatureFile = el('input', { type: 'file', accept: '.sig,application/octet-stream', class: 'input' });
     let schemaForm = null;
     let settings = el('p', { class: 'muted' }, 'No settings schema declared for this MCU.');
     const schemaId = mcu.caps && mcu.caps.settings_schema;
@@ -38,14 +39,28 @@ export async function render(api, store) {
     const firmwareCard = Card({
         title: mcu.human_name || 'Companion MCU',
         subtitle: `Current firmware: ${mcuCfg.firmware_version || 'unknown'} · ${mcu.device}`,
-        footer: ActionList(ActionRow('Flash firmware', 'Stage signed firmware for the companion MCU after validating its version.', Button({
+        footer: ActionList(ActionRow('Flash firmware', 'Upload the signed firmware image and its detached signature; the server verifies the signature against the board-manifest trust anchor before flashing.', Button({
             onClick: async () => {
                 if (!version.get()) { store.toast('Enter a firmware version', 'error'); return; }
-                await api.post('/api/v1/io/mcu/firmware', { version: version.get(), signed: signed.get() });
-                store.toast('Firmware staged', 'success');
+                const fw = firmwareFile.files && firmwareFile.files[0];
+                const sig = signatureFile.files && signatureFile.files[0];
+                if (!fw) { store.toast('Choose a firmware image', 'error'); return; }
+                if (!sig) { store.toast('Choose a detached signature file', 'error'); return; }
+                const sigBytes = new Uint8Array(await sig.arrayBuffer());
+                const sigHex = Array.from(sigBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+                try {
+                    const r = await api.upload(`/api/v1/io/mcu/firmware?version=${encodeURIComponent(version.get())}&signature=${sigHex}`, fw);
+                    if (r.flashed) {
+                        store.toast(`Firmware flashed (${r.bytes_written} bytes)`, 'success');
+                    } else {
+                        store.toast(`Verified and stored, not flashed: ${r.reason}`, 'info');
+                    }
+                } catch (e) { store.toast(e.message, 'error'); }
             },
-        }, 'Flash firmware'))),
-    }, el('div', { class: 'toggle-stack' }, enabled.wrap, signed.wrap), settings, version.wrap);
+        }, 'Verify + flash'))),
+    }, el('div', { class: 'toggle-stack' }, enabled.wrap), settings, version.wrap,
+        el('label', { class: 'field' }, el('span', { class: 'field-label' }, 'Firmware image (.bin)'), firmwareFile),
+        el('label', { class: 'field' }, el('span', { class: 'field-label' }, 'Detached signature (.sig)'), signatureFile));
 
     const saveSettings = async () => {
         const config = data.config || {};

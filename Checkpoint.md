@@ -12,14 +12,24 @@ No item in this document is considered done if this gate is failing.
 
 ## Phase 0 — P0 Blockers (must all be checked before any field deployment)
 
-- [ ] **0.1 MCU firmware upload/flash is real, not a no-op**
+- [x] **0.1 MCU firmware upload/flash is real, not a no-op**
   Where: `crates/webconfigd/src/api/io.rs` (`mcu_firmware` handler), `frontend/pages/mcu.js`.
   Acceptance:
-  - [ ] A real file-upload path exists (multipart or equivalent) that lands firmware bytes on disk — no longer just `{version, signed}` JSON.
-  - [ ] The server cryptographically verifies the firmware signature using the same trust chain as `update_backend.rs::verify_bundle` (or an equivalent, explicitly documented mechanism) — a client-supplied `signed: true` boolean is never trusted on its own.
-  - [ ] An actual flash operation is invoked on real hardware; on the fake sysroot it clearly simulates without claiming a real flash occurred.
-  - [ ] If flashing is genuinely out of scope for this release, the route/UI explicitly returns/displays "not implemented" rather than `{"flashed": true}`.
-  - Verify: submit a tampered/unsigned firmware payload → request is rejected (not silently accepted). Submit a valid payload against the fake sysroot and real sysroot paths → response accurately reflects what happened in each case. Add/confirm a test covering the rejection case.
+  - [x] A real file-upload path exists (multipart or equivalent) that lands firmware bytes on disk — no longer just `{version, signed}` JSON.
+  - [x] The server cryptographically verifies the firmware signature using the same trust chain as `update_backend.rs::verify_bundle` (or an equivalent, explicitly documented mechanism) — a client-supplied `signed: true` boolean is never trusted on its own.
+  - [x] An actual flash operation is invoked on real hardware; on the fake sysroot it clearly simulates without claiming a real flash occurred.
+  - [x] If flashing is genuinely out of scope for this release, the route/UI explicitly returns/displays "not implemented" rather than `{"flashed": true}`.
+  - Verify: `cargo test mcu_firmware_verifies_real_signature_and_rejects_tampering` — real
+    Ed25519 keypair generated via `ring`; tampered bytes and a garbage signature are both
+    rejected with 400; a real signature over the actual bytes succeeds, writes to
+    `<data>/webconfig/mcu-firmware/<version>.bin`, and the fake sysroot response reports
+    `flashed: false` with a `"simulated"` reason (never a fabricated `true`). Design note:
+    used a raw-bytes upload (`application/octet-stream` body + `?version=&signature=` query)
+    instead of multipart, to avoid adding axum's `multipart` feature (a new vendored
+    dependency) — see `docs/api-reference.md` and `docs/board-manifest.md` (new
+    `caps.firmware_pubkey_ed25519` / `caps.flash_command` manifest fields) for the contract.
+    No `flash_command` is declared for Arches yet, so real-root flashing explicitly reports
+    "not implemented" until BSP wires one up. `make build && make test && make lint` green.
 
 - [x] **0.2 Service start/stop/restart/enable report the real outcome**
   Where: `crates/webconfigd/src/api/services.rs` (`start`, `stop`, `restart`, `set_enabled`).
@@ -32,12 +42,17 @@ No item in this document is considered done if this gate is failing.
     the audit log records "failed" for all 4 `services.*` entries. `make build && make test &&
     make lint` green.
 
-- [ ] **0.3 `/security/trust` no longer permanently hardcodes unknown values**
+- [x] **0.3 `/security/trust` no longer permanently hardcodes unknown values**
   Where: `crates/webconfigd/src/api/security.rs` (`trust` handler).
   Acceptance:
-  - [ ] `update_signing_key_id`, `verity_status`, `encryption_status` are either read from a real BSP platform-status source, or the API/UI explicitly marks them "not available on this platform" (a distinct signal from a value that failed to read).
-  - [ ] No field silently reports `"unknown"`/`null` while looking like a completed read.
-  - Verify: on a platform with (and without) the platform-status source available, confirm the API response is distinguishable and the UI reflects the distinction.
+  - [x] `update_signing_key_id`, `verity_status`, `encryption_status` are either read from a real BSP platform-status source, or the API/UI explicitly marks them "not available on this platform" (a distinct signal from a value that failed to read).
+  - [x] No field silently reports `"unknown"`/`null` while looking like a completed read.
+  - Verify: `cargo test trust_status_distinguishes_unavailable_from_real_read` (commit 2ad4fb2)
+    — asserts `platform_status_available: false` + null fields with no `platform-status.json`
+    present, then writes a real file and asserts `platform_status_available: true` with the
+    real values populated. `frontend/pages/secure-boot.js` renders a distinct "not available
+    on this platform" badge instead of concatenating `${undefined}`. `make build && make test
+    && make lint` green.
 
 - [x] **0.4 `secret`-typed app-schema fields are redacted in backup/diagnostics**
   Where: `crates/webconfigd/src/api/updates.rs` (`redact_secrets`).

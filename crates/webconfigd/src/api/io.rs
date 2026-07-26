@@ -626,30 +626,147 @@ pub async fn mcu(
     })))
 }
 
-/// `POST /api/v1/io/mcu/firmware` — signed firmware upload + flash (spec §4.9).
-/// Same signing/compat rules as OS bundles (spec §4.9). v1 stores the bundle
-/// and records the action; the real flash protocol is MCU-specific.
+/// Firmware bodies are STM32 images — a few hundred KB at most. Bounded well
+/// under the spec §2 RAM budget so a malicious/broken client can't buffer an
+/// arbitrarily large body into memory (same concern as Checkpoint 1.8, applied
+/// locally here since no global body-limit layer exists yet).
+const MAX_MCU_FIRMWARE_BYTES: usize = 4 * 1024 * 1024;
+
+#[derive(serde::Deserialize)]
+pub struct FirmwareUploadQuery {
+    pub version: String,
+    /// Detached Ed25519 signature over the raw firmware bytes, hex-encoded
+    /// (128 hex chars = 64 bytes).
+    pub signature: String,
+}
+
+/// `POST /api/v1/io/mcu/firmware?version=...&signature=<hex>` — real firmware
+/// bytes upload + real signature verification + flash (spec §4.9). No
+/// multipart dependency: the request body *is* the firmware image
+/// (`application/octet-stream`); metadata travels in the query string.
+///
+/// Verification uses Ed25519 (via the already-vendored `ring` crate — no new
+/// dependency) against a manifest-declared public key
+/// (`caps.firmware_pubkey_ed25519` on the `mcu` peripheral), the same
+/// "trust anchor baked into platform data" pattern RAUC uses for OS bundles
+/// (there RAUC's own keyring; here the board manifest). A client-supplied
+/// `signed` boolean is never trusted — the signature is cryptographically
+/// verified against the firmware bytes actually received.
+///
+/// Flashing: a real flash operation is invoked when the manifest declares a
+/// `caps.flash_command` for the MCU peripheral (shelled out on the real
+/// root); when no flash mechanism is declared for this platform, the response
+/// explicitly reports `flashed: false` with a `not implemented` reason rather
+/// than fabricating success. On the fake sysroot, verification and the
+/// on-disk write still happen for real, but flashing is always reported as
+/// simulated (spec §6/§7: never claim a real flash without real hardware).
 pub async fn mcu_firmware(
     State(app): State<AppState>,
     role: AuthRole,
     session: Session,
-    Json(req): Json<FirmwareUpload>,
+    axum::extract::Query(q): axum::extract::Query<FirmwareUploadQuery>,
+    body: axum::body::Bytes,
 ) -> ApiResult<Json<serde_json::Value>> {
     role.require_admin("io.mcu.firmware")?;
-    if !req.signed {
-        return Err(ApiError::BadRequest("MCU firmware must be signed".into()));
-    }
     let user = username(&session).await;
-    audit(&app, &user, "io.mcu.firmware", Some(req.version.clone()));
-    Ok(Json(
-        serde_json::json!({ "flashed": app.engine.sysroot.is_real_root(), "version": req.version }),
-    ))
-}
 
-#[derive(serde::Deserialize)]
-pub struct FirmwareUpload {
-    pub version: String,
-    pub signed: bool,
+    if body.is_empty() {
+        return Err(ApiError::BadRequest("firmware body is empty".into()));
+    }
+    if body.len() > MAX_MCU_FIRMWARE_BYTES {
+        return Err(ApiError::BadRequest(format!(
+            "firmware body exceeds {MAX_MCU_FIRMWARE_BYTES} bytes"
+        )));
+    }
+
+    let mcu = app
+        .manifest
+        .of_kind(IoKind::Mcu)
+        .into_iter()
+        .next()
+        .ok_or_else(|| {
+            ApiError::BadRequest("no MCU peripheral declared in board manifest".into())
+        })?;
+
+    let pubkey_hex = mcu
+        .caps
+        .get("firmware_pubkey_ed25519")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            ApiError::Conflict(
+                "no firmware_pubkey_ed25519 configured for this platform's MCU — firmware \
+                 upload is refused rather than accepted unverified"
+                    .into(),
+            )
+        })?;
+    let pubkey = hex::decode(pubkey_hex).map_err(|_| {
+        ApiError::Engine("manifest firmware_pubkey_ed25519 is not valid hex".into())
+    })?;
+    let signature = hex::decode(&q.signature)
+        .map_err(|_| ApiError::BadRequest("signature is not valid hex".into()))?;
+
+    let verify_key = ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, &pubkey);
+    if verify_key.verify(&body, &signature).is_err() {
+        audit(
+            &app,
+            &user,
+            "io.mcu.firmware",
+            Some(format!("{}: signature rejected", q.version)),
+        );
+        return Err(ApiError::BadRequest(
+            "firmware signature verification failed".into(),
+        ));
+    }
+
+    // Signature is real and verified — land the bytes on disk.
+    let fw_dir = app.engine.sysroot.webconfig_dir().join("mcu-firmware");
+    std::fs::create_dir_all(&fw_dir)?;
+    let safe_version: String = q
+        .version
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '.' || *c == '-' || *c == '_')
+        .collect();
+    if safe_version.is_empty() {
+        return Err(ApiError::BadRequest(
+            "version must be non-empty and safe".into(),
+        ));
+    }
+    let fw_path = fw_dir.join(format!("{safe_version}.bin"));
+    std::fs::write(&fw_path, &body)?;
+
+    let (flashed, reason) = if !app.engine.sysroot.is_real_root() {
+        (
+            false,
+            "simulated (fake sysroot, no real hardware)".to_string(),
+        )
+    } else if let Some(cmd) = mcu.caps.get("flash_command").and_then(|v| v.as_str()) {
+        match webconfig_engine::applier::run_cmd(cmd, &[fw_path.to_string_lossy().as_ref()]) {
+            Ok(_) => (true, "ok".to_string()),
+            Err(e) => (false, format!("flash command failed: {e}")),
+        }
+    } else {
+        (
+            false,
+            "not implemented: no flash_command declared for this platform".to_string(),
+        )
+    };
+
+    audit(
+        &app,
+        &user,
+        "io.mcu.firmware",
+        Some(format!(
+            "{}: signature ok, {} bytes, flashed={flashed} ({reason})",
+            q.version,
+            body.len()
+        )),
+    );
+    Ok(Json(serde_json::json!({
+        "flashed": flashed,
+        "reason": reason,
+        "version": q.version,
+        "bytes_written": body.len(),
+    })))
 }
 
 /// Platform panel (spec §4.9): Arches cameras + Jetson power mode.

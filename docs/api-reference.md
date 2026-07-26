@@ -159,7 +159,7 @@ Base URL: `https://<device>:8443/api/v1`. All responses are JSON.
 | POST | `/io/gpio/:name/toggle` | **[op+]** | manifest-named pins only. |
 | POST | `/io/i2c/scan?bus=` | **[admin]** | `{bus, addresses}`. |
 | GET | `/io/mcu` | any | companion MCU panel. |
-| POST | `/io/mcu/firmware` | **[admin]** | signed firmware upload (version, signed). |
+| POST | `/io/mcu/firmware?version=&signature=` | **[admin]** | raw firmware bytes as the request body (`application/octet-stream`); `signature` is a hex-encoded detached Ed25519 signature over those bytes, verified against the MCU peripheral's manifest-declared `caps.firmware_pubkey_ed25519` (rejected with 400 on mismatch, and with 409 if the platform has no key configured). Response: `{flashed, reason, version, bytes_written}` — `flashed` is only ever `true` after a manifest-declared `caps.flash_command` actually ran on the real root; the fake sysroot always reports a simulated, non-flashed outcome. |
 | GET | `/io/platform-panel` | any | Arches cameras + nvpmodel power mode. |
 
 Feature configuration endpoints expose an explicit `enabled` field before their

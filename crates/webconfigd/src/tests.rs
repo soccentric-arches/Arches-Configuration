@@ -46,6 +46,17 @@ async fn build_app_with_systemd(
     schema: Schema,
     systemd: Option<Arc<dyn crate::systemd::SystemdClient>>,
 ) -> (axum::Router, tempfile::TempDir) {
+    build_app_full(schema, systemd, None).await
+}
+
+/// Like [`build_app_with_systemd`] but also lets the caller substitute the
+/// whole board manifest (e.g. to add an MCU peripheral with a real signing
+/// key for firmware-verification tests).
+async fn build_app_full(
+    schema: Schema,
+    systemd: Option<Arc<dyn crate::systemd::SystemdClient>>,
+    manifest_override: Option<BoardManifest>,
+) -> (axum::Router, tempfile::TempDir) {
     let dir = tempfile::tempdir().unwrap();
     let sysroot = Sysroot::at(dir.path());
     let webconfig_dir = sysroot.webconfig_dir();
@@ -56,7 +67,7 @@ async fn build_app_with_systemd(
 
     // Minimal manifest with a service allowlist + one peripheral so the I/O and
     // services pages have data.
-    let manifest = BoardManifest {
+    let manifest = manifest_override.unwrap_or_else(|| BoardManifest {
         platform: "arches".into(),
         peripherals: vec![
             webconfig_engine::manifest::Peripheral {
@@ -96,7 +107,7 @@ async fn build_app_with_systemd(
             },
         ],
         ..Default::default()
-    };
+    });
 
     let state = AppState {
         engine: engine.clone(),
@@ -1035,6 +1046,96 @@ async fn tls_identity_upload_replaces_cert_and_rejects_mismatch() {
     )
     .await;
     assert_eq!(st, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn mcu_firmware_verifies_real_signature_and_rejects_tampering() {
+    // Spec §4.9 (P0 0.1): firmware upload must cryptographically verify a
+    // detached signature against a manifest-declared trust anchor — a
+    // client-supplied "signed" boolean is never trusted on its own, and a
+    // convincing no-op must not report a fabricated flash.
+    use ring::signature::KeyPair;
+
+    let rng = ring::rand::SystemRandom::new();
+    let pkcs8 = ring::signature::Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
+    let keypair = ring::signature::Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
+    let pubkey_hex = hex::encode(keypair.public_key().as_ref());
+
+    let mut caps = serde_json::Map::new();
+    caps.insert(
+        "firmware_pubkey_ed25519".into(),
+        serde_json::Value::String(pubkey_hex),
+    );
+    let manifest = BoardManifest {
+        platform: "arches".into(),
+        peripherals: vec![webconfig_engine::manifest::Peripheral {
+            id: "mcu-stm32".into(),
+            device: "/dev/ttyACM0".into(),
+            human_name: "STM32 companion MCU".into(),
+            kind: IoKind::Mcu,
+            caps,
+        }],
+        ..Default::default()
+    };
+    let (app, dir) = build_app_full(Schema::default_permissive(), None, Some(manifest)).await;
+    let (cookie, csrf) = boot_admin(&app).await;
+
+    let firmware_bytes = b"fake-stm32-firmware-image-bytes-v1".to_vec();
+    let signature = keypair.sign(&firmware_bytes);
+    let sig_hex = hex::encode(signature.as_ref());
+
+    // Tampered bytes (the signature doesn't match this body) are rejected —
+    // proves verification runs against the bytes actually received, not a
+    // client-asserted flag.
+    let tampered = b"tampered-firmware-bytes-different".to_vec();
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!(
+            "/api/v1/io/mcu/firmware?version=1.0.0&signature={sig_hex}"
+        ))
+        .header("cookie", &cookie)
+        .header("X-CSRF-Token", &csrf)
+        .header("content-type", "application/octet-stream")
+        .body(Body::from(tampered))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // A garbage (non-matching-length) signature is rejected too.
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/io/mcu/firmware?version=1.0.0&signature=deadbeef")
+        .header("cookie", &cookie)
+        .header("X-CSRF-Token", &csrf)
+        .header("content-type", "application/octet-stream")
+        .body(Body::from(firmware_bytes.clone()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // Real bytes with a matching signature succeed, land on disk, and the
+    // fake sysroot honestly reports a simulated (not real) flash.
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!(
+            "/api/v1/io/mcu/firmware?version=1.0.0&signature={sig_hex}"
+        ))
+        .header("cookie", &cookie)
+        .header("X-CSRF-Token", &csrf)
+        .header("content-type", "application/octet-stream")
+        .body(Body::from(firmware_bytes.clone()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let v: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(v["flashed"], false);
+    assert_eq!(v["bytes_written"], firmware_bytes.len());
+    assert!(v["reason"].as_str().unwrap().contains("simulated"));
+    assert!(dir
+        .path()
+        .join("data/webconfig/mcu-firmware/1.0.0.bin")
+        .exists());
 }
 
 #[tokio::test]
