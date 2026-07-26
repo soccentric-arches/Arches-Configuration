@@ -166,7 +166,6 @@ mod tests {
         assert!(m.has("mcu-stm32"));
     }
 
-
     #[test]
     fn generic_yaml_manifest_parses_with_defaults() {
         let manifest: BoardManifest =

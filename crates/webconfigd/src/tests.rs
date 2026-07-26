@@ -898,7 +898,6 @@ async fn serial_apply_writes_baud_unit_and_rejects_conflicts() {
     // Spec §4.9: serial ownership + baud is applied (not just persisted), and
     // duplicate-device conflicts are prevented at PUT time.
     let (app, dir) = build_app().await;
-    let webconfig_dir = dir.path().join("data/webconfig");
     let (cookie, csrf) = boot_admin(&app).await;
 
     // A valid serial port on a manifest-declared UART.
@@ -909,14 +908,32 @@ async fn serial_apply_writes_baud_unit_and_rejects_conflicts() {
         "cameras": [], "cameras_enabled": true, "mcu": null, "board_leds": {},
     })
     .to_string();
-    let (st, _, _) = send(&app, "PUT", "/api/v1/io", Some(&cookie), Some(&csrf), Some(&body)).await;
+    let (st, _, _) = send(
+        &app,
+        "PUT",
+        "/api/v1/io",
+        Some(&cookie),
+        Some(&csrf),
+        Some(&body),
+    )
+    .await;
     assert_eq!(st, StatusCode::OK);
 
-    // Apply serial -> the baud unit lands on the data partition.
-    let (st, _, _) = send(&app, "POST", "/api/v1/io/serial/apply", Some(&cookie), Some(&csrf), None).await;
+    // Apply serial -> the baud unit lands under the sysroot's /etc, not the
+    // data partition (matches SerialApplier's `sysroot.join("/etc/...")`).
+    let (st, _, _) = send(
+        &app,
+        "POST",
+        "/api/v1/io/serial/apply",
+        Some(&cookie),
+        Some(&csrf),
+        None,
+    )
+    .await;
     assert_eq!(st, StatusCode::OK);
-    assert!(webconfig_dir
-        .join("/etc/systemd/system/webconfig-serial-ttyTHS0.service")
+    assert!(dir
+        .path()
+        .join("etc/systemd/system/webconfig-serial-ttyTHS0.service")
         .exists());
 
     // Duplicate device (same UART, two entries) is rejected at PUT (409), even
@@ -931,7 +948,15 @@ async fn serial_apply_writes_baud_unit_and_rejects_conflicts() {
         "cameras": [], "cameras_enabled": true, "mcu": null, "board_leds": {},
     })
     .to_string();
-    let (st, _, _) = send(&app, "PUT", "/api/v1/io", Some(&cookie), Some(&csrf), Some(&dup)).await;
+    let (st, _, _) = send(
+        &app,
+        "PUT",
+        "/api/v1/io",
+        Some(&cookie),
+        Some(&csrf),
+        Some(&dup),
+    )
+    .await;
     assert_eq!(st, StatusCode::CONFLICT);
 
     // A port not in the manifest is rejected at PUT (400).
@@ -942,6 +967,14 @@ async fn serial_apply_writes_baud_unit_and_rejects_conflicts() {
         "cameras": [], "cameras_enabled": true, "mcu": null, "board_leds": {},
     })
     .to_string();
-    let (st, _, _) = send(&app, "PUT", "/api/v1/io", Some(&cookie), Some(&csrf), Some(&bad)).await;
+    let (st, _, _) = send(
+        &app,
+        "PUT",
+        "/api/v1/io",
+        Some(&cookie),
+        Some(&csrf),
+        Some(&bad),
+    )
+    .await;
     assert_eq!(st, StatusCode::BAD_REQUEST);
 }
