@@ -9,14 +9,20 @@ let modalSeq = 0;
  * Low-level modal primitive. Returns { close, dialog }. Traps focus inside
  * the dialog while open, restores it to whatever was focused before opening,
  * and closes on Escape or a scrim click — the same contract native <dialog>
- * gives you, without relying on it (Safari/older-browser gaps).
+ * gives you, without relying on it (Safari/older-browser gaps). Exported so
+ * bespoke dialog-shaped overlays (e.g. the command palette) get the same
+ * focus-trap/ARIA/escape-to-close behavior instead of reimplementing it.
+ * `scrimClass`/`dialogClass` append extra classes for callers whose overlay
+ * needs different sizing/positioning than the default centered ~420px card
+ * (e.g. the command palette's wider, top-anchored panel) without losing the
+ * shared behavior.
  */
-function openModal({ title, body, footer }) {
+export function openModal({ title, body, footer, scrimClass, dialogClass }) {
   const titleId = `modal-title-${++modalSeq}`;
   const previouslyFocused = document.activeElement;
 
-  const scrim = el('div', { class: 'modal-scrim' });
-  const dialog = el('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': title ? titleId : null, tabindex: '-1' },
+  const scrim = el('div', { class: scrimClass ? `modal-scrim ${scrimClass}` : 'modal-scrim' });
+  const dialog = el('div', { class: dialogClass ? `modal ${dialogClass}` : 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': title ? titleId : null, tabindex: '-1' },
     title ? el('div', { class: 'modal-header' }, el('h2', { id: titleId }, title)) : null,
     el('div', { class: 'modal-body' }, body),
     footer ? el('div', { class: 'modal-footer' }, ...footer) : null);

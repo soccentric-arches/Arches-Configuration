@@ -369,13 +369,13 @@ Add real HTTP-level integration tests, in this priority order. Each sub-item is 
 - [ ] `std::io::Error` → `ApiError::Internal` conversions log the real underlying error server-side (`error.rs`).
 - [ ] Alert engine resolves `service.<unit>` and `mcu.heartbeat` metrics, or the gap is documented in the alert-rule authoring docs so rule packs don't silently reference dead metrics.
 - [ ] `read_emmc_wear` implements (or explicitly falls back with a logged reason from) the `mmc extcsd read` path for kernels without the sysfs `life_time_estimate` node.
-- [ ] Board-manifest loader supports exactly one format (resolved in 0.6); dead code path removed.
+- [x] Board-manifest loader supports exactly one format (resolved in 0.6); dead code path removed. Verify: commit 149efd9 — `webconfig-manifest.bb` now installs the real `board-manifests/arches.json` (JSON, the one canonical format) instead of defaulting to `generic.yaml`; `bootstrap::load_or_seed_manifest()` is a 2-tier fallback with the dead `<share>/board.yaml` check already removed.
 - [ ] Platform-specific monitoring tiles (Arches GPU/fan/power-mode) confirmed to have a real data source, or explicitly scoped as not-yet-implemented in docs.
 - [ ] `config_defaults` in `generic.yaml` documented in `docs/board-manifest.md`, or removed if not actually consumed.
 - [ ] `/api/v1/io` PUT has a concurrency guard (version/ETag or equivalent) preventing silent clobbering across concurrent editors.
 - [ ] Timezone list in `frontend/pages/time.js` sourced from tzdata, not a hardcoded 28-entry US-only list.
 - [ ] `remote-logs.js` disable path preserves host/port/protocol instead of nulling the whole config.
-- [ ] Command palette uses `modal.js`'s `openModal()` (focus trap + ARIA dialog semantics) instead of a bespoke overlay.
+- [x] Command palette uses `modal.js`'s `openModal()` (focus trap + ARIA dialog semantics) instead of a bespoke overlay. Verify: `openModal()` extended with `scrimClass`/`dialogClass` params; `command-palette.js` now calls `openModal({ body: panel, scrimClass: 'cmdk-scrim', dialogClass: 'cmdk-dialog' })` instead of building its own `.cmdk-overlay`/`.cmdk-panel` DOM, so it inherits focus-trap/ARIA/Escape-to-close for free; `.cmdk-scrim`/`.cmdk-dialog` in `components.css` only override sizing/positioning atop the shared `.modal-scrim`/`.modal` rules. `make build && make test && make lint` clean.
 - [ ] `LoginThrottle` has a bounded/evicting map and, ideally, an IP-based component or hard lockout after N attempts.
 - [ ] SSE/connection concurrency cap added given the `current_thread` runtime and RAM budget.
 - [ ] `meta-webconfig` directory-name-vs-docs mismatch (`meta-soccentric-webconfig` in docs, `meta-webconfig` on disk) fixed everywhere.

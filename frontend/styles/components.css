@@ -755,30 +755,31 @@ textarea.input {
   font-size: var(--text-sm);
 }
 
-/* ---------- Command palette (⌘K) ---------- */
-.cmdk-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(15, 20, 30, .4);
-  z-index: 100;
-  display: flex;
+/* ---------- Command palette (⌘K) ----------
+   Built on the shared .modal-scrim/.modal (modal.js's openModal()) for a
+   real focus trap + ARIA dialog semantics; these two classes only override
+   sizing/positioning (wider, top-anchored, no header padding around the
+   already-self-padded search row/list) — background/radius/shadow/animation
+   all come from the base .modal-scrim/.modal rules above. */
+.cmdk-scrim {
   align-items: flex-start;
-  justify-content: center;
   padding-top: 12vh;
-  animation: modal-fade var(--duration-fast) var(--ease);
 }
 
-.cmdk-panel {
-  width: 100%;
+.cmdk-dialog {
   max-width: 560px;
   max-height: 60vh;
-  background: var(--card);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  animation: modal-in var(--duration-normal) var(--ease);
+}
+
+.cmdk-dialog .modal-body {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex: 1 1 auto;
 }
 
 .cmdk-search-row {

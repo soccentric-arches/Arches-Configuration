@@ -1,12 +1,14 @@
 // Command palette (Cmd/Ctrl+K) — fuzzy-jump to any page or run a quick
-// action without touching the sidebar. A small, self-contained overlay;
+// action without touching the sidebar. Built on modal.js's openModal() for a
+// real focus trap and ARIA dialog semantics instead of a bespoke overlay;
 // register actions once at boot via registerCommands().
 
 import { el } from '../core/dom.js';
 import { icon } from '../core/icons.js';
+import { openModal } from './modal.js';
 
 let commands = [];
-let overlay = null;
+let modal = null;
 let inputEl = null;
 let listEl = null;
 let selected = 0;
@@ -60,32 +62,33 @@ function run(cmd) {
 }
 
 function close() {
-  if (!overlay) return;
-  overlay.remove();
-  overlay = null;
-  document.removeEventListener('keydown', onKeyInPalette, true);
+  if (!modal) return;
+  modal.close();
+  modal = null;
 }
 
 function onKeyInPalette(e) {
-  if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+  // Escape and Tab-cycling are already handled by openModal's own listener.
   if (e.key === 'ArrowDown') { e.preventDefault(); selected = Math.min(selected + 1, filtered.length - 1); render(); return; }
   if (e.key === 'ArrowUp') { e.preventDefault(); selected = Math.max(selected - 1, 0); render(); return; }
   if (e.key === 'Enter') { e.preventDefault(); if (filtered[selected]) run(filtered[selected]); }
 }
 
 export function openCommandPalette() {
-  if (overlay) return;
+  if (modal) return;
   selected = 0;
-  inputEl = el('input', { class: 'cmdk-input', placeholder: 'Search pages and actions…', autocomplete: 'off' });
+  inputEl = el('input', {
+    class: 'cmdk-input',
+    placeholder: 'Search pages and actions…',
+    autocomplete: 'off',
+    'aria-label': 'Search pages and actions',
+    onkeydown: onKeyInPalette,
+  });
   listEl = el('div', { class: 'cmdk-list' });
-  const panel = el('div', { class: 'cmdk-panel' },
+  const panel = el('div', {},
     el('div', { class: 'cmdk-search-row' }, icon('search', { size: 16 }), inputEl),
     listEl);
-  overlay = el('div', { class: 'cmdk-overlay' }, panel);
-  overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
   inputEl.addEventListener('input', () => { selected = 0; render(); });
-  document.body.appendChild(overlay);
-  document.addEventListener('keydown', onKeyInPalette, true);
+  modal = openModal({ body: panel, scrimClass: 'cmdk-scrim', dialogClass: 'cmdk-dialog' });
   render();
-  setTimeout(() => inputEl.focus(), 10);
 }
