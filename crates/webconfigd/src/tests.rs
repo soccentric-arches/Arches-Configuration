@@ -1329,6 +1329,200 @@ async fn network_scan_and_connectivity_test_via_http() {
 }
 
 #[tokio::test]
+async fn reboot_shutdown_root_password_last_admin_guard_and_groups_via_http() {
+    // Checkpoint 4.8: reboot/shutdown/root-password/last-admin-guard/group
+    // management, all via real HTTP (none had any coverage before).
+    let (app, _dir) = build_app().await;
+    let (cookie, csrf) = boot_admin(&app).await;
+
+    // --- reboot / shutdown (gated by is_real_root(), safe on fake sysroot) ---
+    let (st, _, body) = send(
+        &app,
+        "POST",
+        "/api/v1/system/reboot",
+        Some(&cookie),
+        Some(&csrf),
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "{body}");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(v["rebooting"], true);
+
+    let (st, _, body) = send(
+        &app,
+        "POST",
+        "/api/v1/system/shutdown",
+        Some(&cookie),
+        Some(&csrf),
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "{body}");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(v["shutting_down"], true);
+
+    // --- root password: too short is rejected, a valid one succeeds ---
+    let (st, _, _) = send(
+        &app,
+        "POST",
+        "/api/v1/system/root-password",
+        Some(&cookie),
+        Some(&csrf),
+        Some(r#"{"password":"short"}"#),
+    )
+    .await;
+    assert_eq!(st, StatusCode::BAD_REQUEST);
+
+    let (st, _, _) = send(
+        &app,
+        "POST",
+        "/api/v1/system/root-password",
+        Some(&cookie),
+        Some(&csrf),
+        Some(r#"{"password":"a-real-root-password"}"#),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+
+    // --- last-admin-delete guard: the only admin cannot be deleted ---
+    let (st, _, body) = send(
+        &app,
+        "DELETE",
+        "/api/v1/system/users/admin",
+        Some(&cookie),
+        Some(&csrf),
+        None,
+    )
+    .await;
+    assert_eq!(
+        st,
+        StatusCode::CONFLICT,
+        "must refuse to delete the last admin: {body}"
+    );
+
+    // A second admin makes the first one deletable.
+    let (st, _, _) = send(
+        &app,
+        "POST",
+        "/api/v1/system/users",
+        Some(&cookie),
+        Some(&csrf),
+        Some(r#"{"username":"admin2","password":"password1","role":"admin"}"#),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let (st, _, body) = send(
+        &app,
+        "DELETE",
+        "/api/v1/system/users/admin",
+        Some(&cookie),
+        Some(&csrf),
+        None,
+    )
+    .await;
+    assert_eq!(
+        st,
+        StatusCode::OK,
+        "a second admin exists, so this delete must succeed: {body}"
+    );
+
+    // --- group management (re-authenticate as admin2, since "admin" no
+    // longer has a valid account to keep using) ---
+    let (st, admin2_ck, _) = send(
+        &app,
+        "POST",
+        "/api/v1/auth/login",
+        None,
+        None,
+        Some(r#"{"username":"admin2","password":"password1"}"#),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let admin2_cookie = admin2_ck.unwrap();
+    let (_, _, text) = send(
+        &app,
+        "GET",
+        "/api/v1/auth/whoami",
+        Some(&admin2_cookie),
+        None,
+        None,
+    )
+    .await;
+    let admin2_csrf = serde_json::from_str::<serde_json::Value>(&text).unwrap()["csrf"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let (st, _, body) = send(
+        &app,
+        "POST",
+        "/api/v1/system/groups",
+        Some(&admin2_cookie),
+        Some(&admin2_csrf),
+        Some(r#"{"name":"field-techs"}"#),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "{body}");
+
+    let (st, _, _) = send(
+        &app,
+        "PUT",
+        "/api/v1/system/groups/field-techs/members/admin2",
+        Some(&admin2_cookie),
+        Some(&admin2_csrf),
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+
+    let (st, _, body) = send(
+        &app,
+        "GET",
+        "/api/v1/system/groups",
+        Some(&admin2_cookie),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let groups: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let group = groups
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|g| g["name"] == "field-techs")
+        .expect("group present");
+    assert!(group["members"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|m| m == "admin2"));
+
+    let (st, _, _) = send(
+        &app,
+        "DELETE",
+        "/api/v1/system/groups/field-techs/members/admin2",
+        Some(&admin2_cookie),
+        Some(&admin2_csrf),
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+
+    let (st, _, _) = send(
+        &app,
+        "DELETE",
+        "/api/v1/system/groups/field-techs",
+        Some(&admin2_cookie),
+        Some(&admin2_csrf),
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+}
+
+#[tokio::test]
 async fn security_put_apply_and_exposure_via_http() {
     // Checkpoint 4.5: PUT /security (idle timeout / plain-HTTP opt-in /
     // WireGuard config save), POST /security/apply (WireGuard applier), and
