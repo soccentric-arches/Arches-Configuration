@@ -253,6 +253,32 @@ mod tests {
     }
 
     #[test]
+    fn real_mcu_stm32_schema_loads_and_renders_real_fields() {
+        // Checkpoint 3.1: board-manifests/arches.json's mcu-stm32 peripheral
+        // declares settings_schema: "app:mcu-stm32" — the schema must
+        // actually exist and describe real fields, not render an empty/error
+        // panel. Loads the real repo-root schemas/ directory (the canonical
+        // source per docs/schema-format.md), not a fixture.
+        let dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../schemas"));
+        let s = Schema::load_dir(dir).unwrap();
+        let (stem, descriptor) = s
+            .descriptors()
+            .iter()
+            .find(|(stem, _)| stem == "app-mcu-stm32")
+            .expect("app-mcu-stm32.schema.json must be present in schemas/");
+        assert_eq!(stem, "app-mcu-stm32");
+        assert_eq!(descriptor.id, "app:mcu-stm32");
+        let field_ids: Vec<&str> = descriptor
+            .groups
+            .iter()
+            .flat_map(|g| g.fields.iter().map(|f| f.id.as_str()))
+            .collect();
+        assert!(field_ids.contains(&"heartbeat_interval_ms"));
+        assert!(field_ids.contains(&"watchdog_timeout_ms"));
+        assert!(!field_ids.is_empty(), "MCU schema must render real fields");
+    }
+
+    #[test]
     fn app_schema_validates_app_settings_by_stem() {
         // A schema whose descriptor id is `app:example` (file stem
         // `app-example`) must validate `config.app_settings["app-example"]`,

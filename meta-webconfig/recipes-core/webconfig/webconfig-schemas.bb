@@ -13,7 +13,7 @@ SUMMARY = "SoCcentric WebConfig schema files"
 LICENSE = "CLOSED"
 
 # Schemas shipped by default. Platform packs add more via bbappend.
-SRC_URI = "file://app-example.schema.json"
+SRC_URI = "file://app-example.schema.json file://app-mcu-stm32.schema.json"
 
 # Extra schemas contributed by bbappends (the schema-driven extension point).
 WEBCONFIG_SCHEMAS_EXTRA ?= ""
