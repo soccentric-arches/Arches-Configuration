@@ -1382,6 +1382,19 @@ async fn reboot_shutdown_root_password_last_admin_guard_and_groups_via_http() {
     .await;
     assert_eq!(st, StatusCode::BAD_REQUEST);
 
+    // An embedded newline would inject an extra `user:password` line into
+    // chpasswd's stdin — must be rejected, not passed through.
+    let (st, _, _) = send(
+        &app,
+        "POST",
+        "/api/v1/system/root-password",
+        Some(&cookie),
+        Some(&csrf),
+        Some(r#"{"password":"long-enough\nattacker:pwned"}"#),
+    )
+    .await;
+    assert_eq!(st, StatusCode::BAD_REQUEST);
+
     let (st, _, _) = send(
         &app,
         "POST",

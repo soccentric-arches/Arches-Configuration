@@ -677,6 +677,16 @@ pub async fn root_password(
     if req.password.len() < 8 {
         return Err(ApiError::BadRequest("password >= 8 chars".into()));
     }
+    // The password is written as a `root:{password}\n` line to chpasswd's
+    // stdin — an embedded newline would let it inject additional
+    // `user:password` lines (setting another account's password), and other
+    // control characters have no legitimate reason to appear in a password
+    // typed by a human.
+    if req.password.bytes().any(|b| b.is_ascii_control()) {
+        return Err(ApiError::BadRequest(
+            "password must not contain control characters or newlines".into(),
+        ));
+    }
     audit(
         &app,
         &username(&session).await,
