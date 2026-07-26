@@ -267,6 +267,41 @@ async fn first_boot_creates_admin_and_authenticates() {
 }
 
 #[tokio::test]
+async fn session_cookie_is_secure_and_http_only_on_the_wire() {
+    // Checkpoint 4.7: the test helper's session_cookie() deliberately strips
+    // everything after the first ';' (it only needs the id=value pair to
+    // resend as a request cookie) — so no existing test actually inspects
+    // the Secure/HttpOnly attributes on the real Set-Cookie header. Build
+    // the request directly here instead of going through send()/session_cookie().
+    let (app, _dir) = build_app().await;
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/auth/first-boot")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"username":"admin","password":"password1"}"#.to_string(),
+        ))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let set_cookie = resp
+        .headers()
+        .get("set-cookie")
+        .expect("first-boot must set a session cookie")
+        .to_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        set_cookie.to_lowercase().contains("secure"),
+        "session cookie must be Secure: {set_cookie}"
+    );
+    assert!(
+        set_cookie.to_lowercase().contains("httponly"),
+        "session cookie must be HttpOnly: {set_cookie}"
+    );
+}
+
+#[tokio::test]
 async fn csrf_guard_rejects_mutations_without_token() {
     let (app, _dir) = build_app().await;
     let (_, ck, _) = send(
