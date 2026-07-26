@@ -15,7 +15,7 @@ SUMMARY = "SoCcentric on-device web configuration daemon"
 DESCRIPTION = "Browser-based device configuration UI for embedded Linux; one Rust daemon, TLS, no database."
 HOMEPAGE = "https://soccentric.example/webconfig"
 LICENSE = "CLOSED"
-LIC_FILES_CHKSUM = "file://LICENSE;mdline=1;md5=TODO"
+LIC_FILES_CHKSUM = "file://LICENSE;md5=3382002c026d2dcb5817068a8f184313"
 
 SRC_URI = " \
     file://webconfigd-${PV}.tar.gz;unpack=1 \

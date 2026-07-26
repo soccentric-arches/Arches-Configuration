@@ -1,5 +1,5 @@
-# SoCcentric WebConfig — on-device configuration web UI for six Yocto/embedded
-# Linux platforms, from one codebase.
+# SoCcentric WebConfig — on-device configuration web UI for the Arches
+# (NVIDIA Jetson) Yocto/embedded Linux platform.
 #
 # This is a Cargo workspace. The daemon binary lives in `crates/webconfigd` and
 # the reusable, HTTP-free config engine lives in `crates/webconfig-engine` so
@@ -23,7 +23,12 @@ members = [
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.85"
-license = "MIT"
+# Proprietary/closed (matches README.md and every meta-webconfig/*.bb recipe's
+# LICENSE = "CLOSED") — this repo is SoCcentric internal IV&V tooling, not
+# open source. `license-file` (not `license`, which expects an SPDX
+# expression) points at the real LICENSE file the Yocto recipes'
+# LIC_FILES_CHKSUM already reference.
+license-file = "LICENSE"
 repository = "https://github.com/soccentric/Arches-Configuration"
 authors = ["SoCcentric IV&V"]
 
