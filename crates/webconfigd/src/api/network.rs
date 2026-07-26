@@ -284,14 +284,6 @@ pub async fn connectivity_test(
         .iter()
         .find_map(|i| i.gateway.clone())
         .unwrap_or_else(|| "192.168.1.1".into());
-    // Prefer the operator-configured global DNS for the resolve step so the
-    // test actually exercises the resolver the device will use.
-    let resolve_target = cfg
-        .network
-        .dns_servers
-        .first()
-        .cloned()
-        .unwrap_or_else(|| "1.1.1.1".into());
     let run = |cmd: &str, args: &[&str]| -> (bool, String) {
         if !sys.is_real_root() {
             return (true, "skipped (fake sysroot)".into());
@@ -314,15 +306,24 @@ pub async fn connectivity_test(
             LayerResult { ok, detail: d }
         },
         dns: {
-            // Resolve a well-known hostname; the resolver uses the configured
-            // DNS servers (global drop-in / per-interface). Pinging the DNS
-            // server itself would only prove L3 reachability, not resolution.
+            // Resolve a well-known hostname through the system resolver
+            // (global DNS override, per-interface DHCP-provided servers, or
+            // /etc/resolv.conf as shipped — whichever it's actually
+            // configured to use). Pinging the DNS server itself would only
+            // prove L3 reachability, not resolution. getent's exit status
+            // proves resolution succeeded but can't say which server
+            // answered, so the detail names the configured *preference*
+            // rather than claiming it as the proven source.
             let (ok, d) = run("getent", &["hosts", "example.com"]);
-            let _ = &resolve_target; // recorded for the detail string below
             LayerResult {
                 ok,
                 detail: if ok {
-                    format!("resolved via configured DNS ({} …)", resolve_target)
+                    match cfg.network.dns_servers.first() {
+                        Some(dns) => format!(
+                            "resolved example.com via the system resolver (configured DNS preference: {dns})"
+                        ),
+                        None => "resolved example.com via the system resolver (no global DNS override configured)".into(),
+                    }
                 } else {
                     format!("resolve failed: {d}")
                 },

@@ -1334,6 +1334,48 @@ async fn network_scan_and_connectivity_test_via_http() {
     assert!(v.get("gateway").is_some());
     assert!(v.get("public").is_some());
     assert!(v.get("dns").is_some());
+    // Checkpoint 5.22: with no global DNS configured, the detail must not
+    // fabricate a specific server as "the" resolver used — it names the
+    // absence honestly instead of a hardcoded fallback IP.
+    let dns_detail = v["dns"]["detail"].as_str().unwrap();
+    assert!(
+        dns_detail.contains("no global DNS override configured"),
+        "unconfigured DNS must not claim a fabricated server: {dns_detail}"
+    );
+
+    // Configuring a global DNS server changes the detail to name it as a
+    // *preference*, not a proven fact about which server actually answered.
+    let body = serde_json::json!({
+        "interfaces": [], "wifi": [], "dns_servers": ["9.9.9.9"], "confirm_window_secs": 90,
+    })
+    .to_string();
+    let (st, _, _) = send(
+        &app,
+        "PUT",
+        "/api/v1/network",
+        Some(&cookie),
+        Some(&csrf),
+        Some(&body),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+
+    let (st, _, body) = send(
+        &app,
+        "POST",
+        "/api/v1/network/connectivity-test",
+        Some(&cookie),
+        Some(&csrf),
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let dns_detail = v["dns"]["detail"].as_str().unwrap();
+    assert!(
+        dns_detail.contains("9.9.9.9") && dns_detail.contains("preference"),
+        "configured DNS must be named as a preference, not a proven source: {dns_detail}"
+    );
 }
 
 #[tokio::test]
