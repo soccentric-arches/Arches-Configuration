@@ -9,6 +9,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use axum::extract::Request;
 use axum::extract::State;
@@ -28,10 +29,26 @@ use crate::state::AppState;
 const SK_USER: &str = "username";
 const SK_ROLE: &str = "role";
 
+/// Cap on distinct usernames tracked at once. Without this, an attacker
+/// submitting many distinct (nonexistent) usernames would grow the map
+/// forever — an unbounded-memory DoS. When the cap is hit, the
+/// least-recently-active entry is evicted to make room.
+const MAX_TRACKED_USERNAMES: usize = 1_000;
+/// Failures within `LOCKOUT_DURATION` before a username is hard-locked
+/// (login rejected outright, independent of the incremental delay below).
+const LOCKOUT_THRESHOLD: u32 = 10;
+const LOCKOUT_DURATION: Duration = Duration::from_secs(60);
+
+#[derive(Debug, Clone, Copy)]
+struct Attempt {
+    count: u32,
+    last_attempt: Instant,
+}
+
 /// Login delay state: per-username failed-attempt counter + last failure time.
 #[derive(Debug, Default)]
 pub struct LoginThrottle {
-    attempts: Mutex<HashMap<String, u32>>,
+    attempts: Mutex<HashMap<String, Attempt>>,
 }
 
 impl LoginThrottle {
@@ -43,16 +60,45 @@ impl LoginThrottle {
     /// user. Exponential: 2^n * 200ms capped at 5s (spec §4.8 incremental delay).
     async fn delay_ms(&self, username: &str) -> u64 {
         let map = self.attempts.lock().await;
-        let n = *map.get(username).unwrap_or(&0);
+        let n = map.get(username).map(|a| a.count).unwrap_or(0);
         let base = 200u64;
         let cap = 5_000u64;
         base.saturating_mul(1u64 << n.min(10)).min(cap)
     }
 
+    /// True once `LOCKOUT_THRESHOLD` failures have accumulated within the
+    /// current `LOCKOUT_DURATION` window — the lockout self-expires once that
+    /// long has passed since the last failure, no background sweep needed.
+    async fn is_locked_out(&self, username: &str) -> bool {
+        let map = self.attempts.lock().await;
+        map.get(username).is_some_and(|a| {
+            a.count >= LOCKOUT_THRESHOLD && a.last_attempt.elapsed() < LOCKOUT_DURATION
+        })
+    }
+
     async fn record_failure(&self, username: &str) {
         let mut map = self.attempts.lock().await;
-        let e = map.entry(username.to_string()).or_insert(0);
-        *e = e.saturating_add(1);
+        if !map.contains_key(username) && map.len() >= MAX_TRACKED_USERNAMES {
+            if let Some(oldest) = map
+                .iter()
+                .min_by_key(|(_, a)| a.last_attempt)
+                .map(|(k, _)| k.clone())
+            {
+                map.remove(&oldest);
+            }
+        }
+        let now = Instant::now();
+        let e = map.entry(username.to_string()).or_insert(Attempt {
+            count: 0,
+            last_attempt: now,
+        });
+        // A fresh lockout cycle starts once the previous one has expired,
+        // rather than accumulating failures across unrelated time windows.
+        if now.duration_since(e.last_attempt) >= LOCKOUT_DURATION {
+            e.count = 0;
+        }
+        e.count = e.count.saturating_add(1);
+        e.last_attempt = now;
     }
 
     async fn record_success(&self, username: &str) {
@@ -86,6 +132,12 @@ pub async fn login(
         return Err(ApiError::NotReady(
             "first-boot admin not yet created".into(),
         ));
+    }
+
+    // Hard lockout: reject outright once too many failures have piled up in
+    // the current window, rather than only slowing the attacker down.
+    if throttle.is_locked_out(&req.username).await {
+        return Err(ApiError::Unauthorized);
     }
 
     let delay = throttle.delay_ms(&req.username).await;
@@ -284,4 +336,58 @@ pub(crate) async fn csrf_token_from_session(session: &Session) -> String {
     let mut h = sha2::Sha256::default();
     h.update(id.to_string().as_bytes());
     hex::encode(h.finalize())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn lockout_does_not_trigger_below_threshold() {
+        let t = LoginThrottle::new();
+        for _ in 0..(LOCKOUT_THRESHOLD - 1) {
+            t.record_failure("alice").await;
+        }
+        assert!(!t.is_locked_out("alice").await);
+    }
+
+    #[tokio::test]
+    async fn lockout_triggers_at_threshold() {
+        let t = LoginThrottle::new();
+        for _ in 0..LOCKOUT_THRESHOLD {
+            t.record_failure("alice").await;
+        }
+        assert!(t.is_locked_out("alice").await);
+        // A different username is unaffected — lockout is per-username.
+        assert!(!t.is_locked_out("bob").await);
+    }
+
+    #[tokio::test]
+    async fn record_success_clears_lockout() {
+        let t = LoginThrottle::new();
+        for _ in 0..LOCKOUT_THRESHOLD {
+            t.record_failure("alice").await;
+        }
+        assert!(t.is_locked_out("alice").await);
+        t.record_success("alice").await;
+        assert!(!t.is_locked_out("alice").await);
+    }
+
+    #[tokio::test]
+    async fn bounded_map_evicts_oldest_when_over_capacity() {
+        let t = LoginThrottle::new();
+        for i in 0..(MAX_TRACKED_USERNAMES + 50) {
+            t.record_failure(&format!("user-{i}")).await;
+        }
+        let size = t.attempts.lock().await.len();
+        assert!(
+            size <= MAX_TRACKED_USERNAMES,
+            "map grew unbounded: {size} entries tracked"
+        );
+        // The earliest usernames should have been evicted to make room for
+        // the most recent ones.
+        let map = t.attempts.lock().await;
+        assert!(!map.contains_key("user-0"));
+        assert!(map.contains_key(&format!("user-{}", MAX_TRACKED_USERNAMES + 49)));
+    }
 }
