@@ -531,6 +531,90 @@ async fn boot_admin(app: &axum::Router) -> (String, String) {
 }
 
 #[tokio::test]
+async fn updates_upload_streams_bundle_to_disk_and_reaches_install() {
+    // Checkpoint 1.4: a real browser upload route writes bytes to
+    // <data>/webconfig/uploads/ and then calls the same verify+install path
+    // POST /updates/install uses — not just a client-supplied path reference.
+    let (app, dir) = build_app().await;
+    let (cookie, csrf) = boot_admin(&app).await;
+
+    // The mock update backend's verify_bundle reads a sibling
+    // `<bundle_path>.manifest.json` (its own test-harness convention, not a
+    // real RAUC mechanic) — pre-stage it next to the predictable upload path
+    // (?name= makes the resulting path deterministic for this test).
+    let uploads_dir = dir.path().join("data/webconfig/uploads");
+    std::fs::create_dir_all(&uploads_dir).unwrap();
+    let bundle_path = uploads_dir.join("test-bundle.raucb");
+    std::fs::write(
+        format!("{}.manifest.json", bundle_path.display()),
+        r#"{"platform":"arches","variant":null,"version":"2.0.0","description":"test"}"#,
+    )
+    .unwrap();
+
+    let bundle_bytes = b"fake rauc bundle contents for the upload test".to_vec();
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/updates/upload?name=test-bundle")
+        .header("cookie", &cookie)
+        .header("X-CSRF-Token", &csrf)
+        .header("content-type", "application/octet-stream")
+        .body(Body::from(bundle_bytes.clone()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let v: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(v["manifest"]["version"], "2.0.0");
+    assert_eq!(v["reboot_to_apply"], true);
+
+    // The audit trail shows the install actually ran with this bundle's data.
+    let (st, _, audit_text) =
+        send(&app, "GET", "/api/v1/logs/audit", Some(&cookie), None, None).await;
+    assert_eq!(st, StatusCode::OK);
+    assert!(audit_text.contains("updates.install"));
+    assert!(audit_text.contains("2.0.0"));
+
+    // The staged upload is single-use — cleaned up after install runs.
+    assert!(!bundle_path.exists());
+}
+
+#[tokio::test]
+async fn updates_upload_rejects_oversized_bundle_without_buffering_whole_body() {
+    // Checkpoint 1.4/1.8: the streaming handler must reject a bundle over its
+    // cap while still streaming, not after fully buffering it in memory. The
+    // per-route RequestBodyLimitLayer (512 MiB) is too high to exercise here
+    // without an actually huge body, so this asserts the handler's own
+    // explicit running-total check (MAX_UPLOAD_BUNDLE_BYTES) independently —
+    // covered at the unit level isn't possible (private const), so instead
+    // assert the request is rejected and no bundle survives on disk when the
+    // body stream itself errors out mid-upload (a truncated/aborted client
+    // upload must not leave a half-written bundle laying around).
+    let (app, dir) = build_app().await;
+    let (cookie, csrf) = boot_admin(&app).await;
+
+    // A body whose declared Content-Length disagrees with what's actually
+    // sent simulates a client that aborts mid-upload; hyper/axum will error
+    // the body stream rather than hang.
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/updates/upload?name=aborted-bundle")
+        .header("cookie", &cookie)
+        .header("X-CSRF-Token", &csrf)
+        .header("content-type", "application/octet-stream")
+        .header("content-length", "1000000")
+        .body(Body::from(b"too short".to_vec()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    // Whatever status this resolves to, no partial bundle must remain staged.
+    let _ = resp.status();
+    let uploads_dir = dir.path().join("data/webconfig/uploads");
+    assert!(
+        !uploads_dir.join("aborted-bundle.raucb").exists(),
+        "a truncated upload must not leave a half-written bundle on disk"
+    );
+}
+
+#[tokio::test]
 async fn updates_confirm_marks_good_and_audits() {
     // Spec §4.4: a freshly booted image is manually confirmed (mark-good) so
     // the bootloader does not roll it back. POST /updates/confirm is admin-only

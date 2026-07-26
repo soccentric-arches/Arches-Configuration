@@ -153,10 +153,16 @@ No item in this document is considered done if this gate is failing.
     to fetch `/logs/audit` and assert the `auth.first-boot` entry's `ts` ends in `Z` and does
     not start with `t=`. `make build && make test && make lint` green.
 
-- [ ] **1.8 Request body size limits are enforced**
+- [x] **1.8 Request body size limits are enforced**
   Where: `crates/webconfigd/src/routes.rs`.
   Acceptance: `tower_http::limit::RequestBodyLimitLayer` (or equivalent) applied at minimum to `/security/tls`, `/security/certs`, `/updates/install`, `/updates/restore`, `/updates/backup`, sized against the 15 MB RAM budget in spec §2.
-  Verify: a test sending an oversized body to at least one of these routes and asserting rejection (413 or equivalent) rather than an OOM/hang.
+  Verify: `cargo test oversized_request_body_is_rejected_before_buffering` (commit 2e73b8d) —
+    2 MiB body to `/security/tls` (64 KiB cap) asserts 413. All five named routes now have a
+    `RequestBodyLimitLayer` sized to their real legitimate payload (64 KiB TLS/cert PEM, 4 KiB
+    backup-passphrase/install-path JSON, 8 KiB restore). Note: `/updates/install`'s cap is
+    JSON-path-sized only because it doesn't accept raw bundle bytes yet — see 1.4, which needs
+    genuine streaming-to-disk (not a bigger buffered cap) once it does. `make build && make
+    test && make lint` green (69/69 tests).
 
 - [x] **1.9 Malformed compiled-in board manifest fails loudly**
   Where: `crates/webconfigd/src/bootstrap.rs::load_or_seed_manifest`.

@@ -91,7 +91,8 @@ Base URL: `https://<device>:8443/api/v1`. All responses are JSON.
 | Method | Path | Role | Notes |
 |---|---|---|---|
 | GET | `/updates/slots` | any | `[{slot, version, running, confirmed, state}]`. |
-| POST | `/updates/install` | **[admin]** | `{bundle_path}` → signature verify + compat check + write inactive slot → `{manifest, stages, reboot_to_apply}`. |
+| POST | `/updates/install` | **[admin]** | `{bundle_path}` (a bundle already staged on-device, e.g. via scp) → signature verify + compat check + write inactive slot → `{manifest, stages, reboot_to_apply}`. |
+| POST | `/updates/upload?name=` | **[admin]** | Browser upload: raw bundle bytes as the request body (`application/octet-stream`), streamed to `<data>/webconfig/uploads/` (never buffered whole in memory), then verified + installed via the same path as `/updates/install`. `name` is optional (sanitized; defaults to a random id). Same response shape as `/updates/install`. |
 | POST | `/updates/reboot-to-apply` | **[admin]** | boot into the newly written slot. |
 | GET | `/updates/ota` | any | Read OTA server configuration. |
 | PUT | `/updates/ota` | **[admin]** | Save OTA server configuration. |

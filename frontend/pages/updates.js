@@ -22,6 +22,7 @@ export async function render(api, store) {
 
   // ---------- Install ----------
   const path = Field({ label: 'Bundle path (on device)', placeholder: '/data/updates/bundle.raucb' });
+  const bundleFile = el('input', { type: 'file', accept: '.raucb,application/octet-stream', class: 'input' });
   const installCard = Card({
     title: 'Install bundle',
     subtitle: 'Compatibility (platform) + signature are verified before writing the inactive slot.',
@@ -34,14 +35,25 @@ export async function render(api, store) {
           store.showReconnect();
         },
       }, 'Reboot to apply')),
-      ActionRow('Install bundle', 'Verify and stage the signed bundle in the inactive update slot.', Button({
+      ActionRow('Upload bundle', 'Upload a signed bundle from this browser — verified and staged in one step.', Button({
+        onClick: async () => {
+          const file = bundleFile.files && bundleFile.files[0];
+          if (!file) { store.toast('Choose a bundle file', 'error'); return; }
+          try {
+            const r = await api.upload('/api/v1/updates/upload', file);
+            store.toast(`Staged: ${r.manifest && r.manifest.platform} ${r.manifest && r.manifest.version}. Reboot to apply.`, 'success');
+          } catch (e) { store.toast(e.message, 'error'); }
+        },
+      }, 'Upload + install')),
+      ActionRow('Install bundle', 'Verify and stage a bundle already staged on-device (e.g. via scp) by its path.', Button({
+        variant: 'outline',
         onClick: async () => {
           if (!path.get()) { store.toast('Enter a bundle path', 'error'); return; }
           const r = await api.post('/api/v1/updates/install', { bundle_path: path.get() });
           store.toast(`Staged: ${r.manifest && r.manifest.platform} ${r.manifest && r.manifest.version}. Reboot to apply.`, 'success');
         },
       }, 'Install bundle'))),
-  }, path.wrap);
+  }, el('label', { class: 'field' }, el('span', { class: 'field-label' }, 'Bundle file (browser upload)'), bundleFile), path.wrap);
 
   // ---------- Confirm + Diagnostics (spec §4.4) ----------
   // A freshly booted image must be confirmed (health-check or manual) or the

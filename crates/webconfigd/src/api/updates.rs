@@ -20,9 +20,12 @@ pub async fn slots(
     Ok(Json(app.update_backend.slots().map_err(map_upd)?))
 }
 
-/// `POST /api/v1/updates/install` — browser upload of a signed bundle →
-/// signature verification → compatibility check → write inactive slot →
-/// staged progress → "reboot to apply" (spec §4.4).
+/// `POST /api/v1/updates/install` — install a bundle already staged at a
+/// server-side path (e.g. scp'd onto the device directly) → signature
+/// verification → compatibility check → write inactive slot → staged
+/// progress → "reboot to apply" (spec §4.4). For a browser upload, see
+/// `POST /updates/upload` below, which streams bytes to disk and then calls
+/// the same install logic this route uses.
 pub async fn install(
     State(app): State<AppState>,
     role: AuthRole,
@@ -31,13 +34,30 @@ pub async fn install(
 ) -> ApiResult<Json<serde_json::Value>> {
     role.require_admin("updates.install")?;
     let user = username(&session).await;
+    install_from_path(&app, &user, &req.bundle_path).await
+}
+
+#[derive(serde::Deserialize)]
+pub struct InstallRequest {
+    /// Server-side path the upload handler staged the bundle at, or a path an
+    /// operator staged out-of-band (e.g. scp).
+    pub bundle_path: String,
+}
+
+/// Verify + install the bundle at `bundle_path` and audit the outcome —
+/// shared by both the path-based `install` route and the upload route below.
+async fn install_from_path(
+    app: &AppState,
+    user: &str,
+    bundle_path: &str,
+) -> ApiResult<Json<serde_json::Value>> {
     let manifest = app
         .update_backend
-        .verify_bundle(&req.bundle_path)
+        .verify_bundle(bundle_path)
         .map_err(map_upd)?;
     let mut stages = Vec::new();
     app.update_backend
-        .install(&req.bundle_path, &mut |p: InstallProgress| {
+        .install(bundle_path, &mut |p: InstallProgress| {
             stages.push(serde_json::json!({
                 "stage": p.stage,
                 "percent": p.percent,
@@ -46,8 +66,8 @@ pub async fn install(
         })
         .map_err(map_upd)?;
     audit(
-        &app,
-        &user,
+        app,
+        user,
         "updates.install",
         Some(format!("{} v{}", manifest.platform, manifest.version)),
     );
@@ -58,11 +78,96 @@ pub async fn install(
     })))
 }
 
+/// Bundles can legitimately be a few hundred MB; the daemon's RAM budget
+/// (spec §2) means the handler below never buffers more than a chunk at a
+/// time regardless of this cap — this is a hard ceiling against a runaway
+/// upload, not a memory-buffering limit (Checkpoint 1.4/1.8).
+const MAX_UPLOAD_BUNDLE_BYTES: u64 = 512 * 1024 * 1024;
+
 #[derive(serde::Deserialize)]
-pub struct InstallRequest {
-    /// Server-side path the upload handler staged the bundle at. (A multipart
-    /// upload handler would write to /data/webconfig/uploads/ then call here.)
-    pub bundle_path: String,
+pub struct UploadQuery {
+    /// Optional caller-supplied name for the staged bundle file (sanitized to
+    /// a safe charset). Defaults to a random UUID. Naming it explicitly is
+    /// mainly useful for tests/tooling that need to predict the resulting
+    /// path; the frontend doesn't need to set it.
+    #[serde(default)]
+    pub name: Option<String>,
+}
+
+/// `POST /api/v1/updates/upload?name=` — browser upload of a signed bundle
+/// (spec §4.4: "Browser upload of a signed bundle"). No multipart dependency:
+/// the request body *is* the bundle bytes (`application/octet-stream`),
+/// streamed directly to `<data>/webconfig/uploads/<name-or-uuid>.raucb`
+/// chunk-by-chunk (never buffered whole in memory, unlike a naive `Bytes`
+/// extractor — spec §2 RAM budget) via `tower_http::limit::RequestBodyLimitLayer`
+/// bounding the total plus an explicit running-total check while streaming.
+/// Once fully written, calls the same verify+install logic `POST
+/// /updates/install` uses.
+pub async fn upload(
+    State(app): State<AppState>,
+    role: AuthRole,
+    session: Session,
+    axum::extract::Query(q): axum::extract::Query<UploadQuery>,
+    request: axum::extract::Request,
+) -> ApiResult<Json<serde_json::Value>> {
+    role.require_admin("updates.upload")?;
+    let user = username(&session).await;
+
+    let uploads_dir = app.engine.sysroot.webconfig_dir().join("uploads");
+    std::fs::create_dir_all(&uploads_dir)?;
+    let stem = match q.name {
+        Some(name) => {
+            let safe: String = name
+                .chars()
+                .filter(|c| c.is_ascii_alphanumeric() || *c == '.' || *c == '-' || *c == '_')
+                .collect();
+            if safe.is_empty() {
+                return Err(ApiError::BadRequest(
+                    "name must be non-empty and safe".into(),
+                ));
+            }
+            safe
+        }
+        None => uuid::Uuid::new_v4().to_string(),
+    };
+    let bundle_path = uploads_dir.join(format!("{stem}.raucb"));
+
+    // Any failure while streaming (a truncated/aborted client upload, an
+    // oversized body, a disk write error) must not leave a half-written
+    // bundle behind, so route every early return through this cleanup.
+    if let Err(e) = stream_bundle_to_disk(&bundle_path, request.into_body()).await {
+        let _ = std::fs::remove_file(&bundle_path);
+        return Err(e);
+    }
+
+    let result = install_from_path(&app, &user, &bundle_path.to_string_lossy()).await;
+    // The staged upload is single-use — remove it whether install succeeded
+    // or failed, so /data/webconfig/uploads/ never accumulates old bundles.
+    let _ = std::fs::remove_file(&bundle_path);
+    result
+}
+
+/// Stream `body` to `path` chunk-by-chunk, enforcing [`MAX_UPLOAD_BUNDLE_BYTES`]
+/// as a running total (never buffering the whole body in memory).
+async fn stream_bundle_to_disk(path: &std::path::Path, body: axum::body::Body) -> ApiResult<()> {
+    use futures_util::StreamExt;
+    use tokio::io::AsyncWriteExt;
+
+    let mut file = tokio::fs::File::create(path).await?;
+    let mut written: u64 = 0;
+    let mut stream = body.into_data_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| ApiError::BadRequest(format!("upload stream error: {e}")))?;
+        written += chunk.len() as u64;
+        if written > MAX_UPLOAD_BUNDLE_BYTES {
+            return Err(ApiError::BadRequest(format!(
+                "bundle exceeds {MAX_UPLOAD_BUNDLE_BYTES} byte limit"
+            )));
+        }
+        file.write_all(&chunk).await?;
+    }
+    file.flush().await?;
+    Ok(())
 }
 
 /// `POST /api/v1/updates/reboot-to-apply` (spec §4.4).

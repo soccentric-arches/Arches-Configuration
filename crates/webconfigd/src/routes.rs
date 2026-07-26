@@ -20,6 +20,10 @@ const CERT_UPLOAD_LIMIT: usize = 64 * 1024; // one PEM cert
 const BACKUP_SECRET_LIMIT: usize = 4 * 1024; // {"passphrase": "..."}
 const RESTORE_LIMIT: usize = 8 * 1024 * 1024; // a full config backup (JSON or encrypted envelope)
 const INSTALL_LIMIT: usize = 4 * 1024; // {"bundle_path": "..."} — a path string only, for now
+                                       // A real OS bundle upload (Checkpoint 1.4) — streamed to disk chunk-by-chunk
+                                       // in the handler, so this cap is a hard ceiling against a runaway upload,
+                                       // not a memory-buffering limit (matches updates::MAX_UPLOAD_BUNDLE_BYTES).
+const UPLOAD_BUNDLE_LIMIT: usize = 512 * 1024 * 1024;
 
 use crate::api::{
     alerts, io, logs, meta, monitoring, network, security, services, system, updates,
@@ -110,6 +114,10 @@ pub fn build_router(state: AppState, static_dir: std::path::PathBuf) -> Router {
         .route(
             "/updates/install",
             post(updates::install).layer(RequestBodyLimitLayer::new(INSTALL_LIMIT)),
+        )
+        .route(
+            "/updates/upload",
+            post(updates::upload).layer(RequestBodyLimitLayer::new(UPLOAD_BUNDLE_LIMIT)),
         )
         .route("/updates/confirm", post(updates::confirm))
         .route("/updates/reboot-to-apply", post(updates::reboot_to_apply))
