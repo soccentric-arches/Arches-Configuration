@@ -1,7 +1,9 @@
 //! Board manifest (spec §3 platform layer).
 //!
-//! The board manifest is a BSP-provided, read-only file at
-//! `/etc/webconfig/board.yaml` or `/usr/share/webconfig/board.yaml` declaring available I/O
+//! The canonical manifest is a BSP-provided, read-only JSON file at
+//! `/usr/share/webconfig/board-manifest.json`, optionally overridden by an
+//! on-device technician edit at `/etc/webconfig/board.yaml` (see
+//! `docs/board-manifest.md`), declaring available I/O
 //! (CAN/serial/GPIO/I2C/MCU/FPGA/PRU) with Linux device names and human names.
 //! Dashboard tiles and panels are declared as **data, not code**, so
 //! board-specific quirks live in this layer rather than in code (spec §3).
@@ -124,11 +126,6 @@ impl BoardManifest {
         }
         let raw = std::fs::read_to_string(path)?;
         Ok(serde_yaml::from_str(&raw)?)
-    }
-
-    /// Load `board.yaml` from a directory containing the file.
-    pub fn load_yaml(dir: &Path) -> Result<Self, ManifestError> {
-        Self::load_yaml_path(&dir.join("board.yaml"))
     }
 
     /// Load from `<share>/board-manifest.json`. Returns `NotFound` if absent.

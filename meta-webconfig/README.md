@@ -24,12 +24,17 @@ IMAGE_INSTALL:append = " webconfigd webconfig-static webconfig-schemas webconfig
 
 ## Machine manifest
 
-Board-specific behavior lives **only** in the board manifest. Map the Arches
-BSP `MACHINE` to its manifest in
+Board-specific behavior lives **only** in the board manifest.
+`webconfig-manifest.bb` defaults `WEBCONFIG_BOARD_FILE` to the real
+`arches.json` (this repo is Arches-only), referenced directly from the
+repo-root `board-manifests/` directory inside the same source tarball
+`webconfigd.bb`/`webconfig-static.bb` fetch — never copied into this layer, so
+there's exactly one source of truth. Override per `MACHINE` only if a future
+board revision needs a distinct manifest file, in
 `recipes-core/webconfig/webconfig-manifest.bbappend`:
 
 ```bitbake
-WEBCONFIG_MANIFEST_FILE:jetson-orin-nano = "arches.json"
+WEBCONFIG_BOARD_FILE:jetson-orin-nano = "arches.json"
 ```
 
 ## Adding a customer setting (zero UI code — spec §3)

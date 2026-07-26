@@ -1,34 +1,42 @@
-# webconfig-manifest — YAML board definition (spec §3 platform layer).
+# webconfig-manifest — the Arches board manifest (spec §3 platform layer).
 #
-# Installs /usr/share/webconfig/board.yaml. The six platforms differ ONLY in
-# this layer (spec §3). Per-machine customization is done via a bbappend that
-# overrides WEBCONFIG_BOARD_FILE:
+# Installs the canonical JSON board manifest at
+# /usr/share/webconfig/board-manifest.json (Checkpoint 0.6: JSON is the one
+# canonical on-disk format/path — matches docs/board-manifest.md and the
+# daemon's loader order in crates/webconfigd/src/bootstrap.rs). This repo is
+# Arches-only, so there is exactly one manifest file in the common case.
 #
-#   # meta-soccentric-webconfig/recipes-core/webconfig/webconfig-manifest.bbappend
-#   WEBCONFIG_BOARD_FILE = "arches.yaml"
-#   FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
-#
-# The daemon reads this file at boot to drive I/O rendering, the service
-# allowlist, dashboard tiles, and trust flags. Missing it falls back to the
-# embedded example for WEBCONFIG_PLATFORM (dev/CI only — spec §3).
+# Single source of truth (same pattern as webconfig-static.bb): board-manifests/
+# lives at the repo root and is packaged inside the same source tarball the
+# daemon recipe fetches — never copied/duplicated into this layer's files/,
+# so there is no risk of a stale duplicate drifting from the data the engine
+# and its tests actually load.
 
-SUMMARY = "SoCcentric WebConfig board manifest"
+SUMMARY = "SoCcentric WebConfig — Arches board manifest"
 LICENSE = "CLOSED"
 
-# Default manifest; override per-machine via bbappend.
-WEBCONFIG_BOARD_FILE ?= "generic.yaml"
+# Same source tarball as webconfigd.bb / webconfig-static.bb (the whole repo,
+# including board-manifests/).
+SRC_URI = "file://webconfigd-${PV}.tar.gz;unpack=1"
 
-# The board-manifests/ directory in this layer ships one file per platform.
-FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
+S = "${WORKDIR}/webconfigd-${PV}"
 
-SRC_URI = "file://${WEBCONFIG_BOARD_FILE}"
-
-S = "${WORKDIR}"
+# The real manifest file (Checkpoint 0.5: this used to default to
+# "generic.yaml", the wrong platform's data in the wrong format, silently —
+# every image built from this layer got the generic fallback). Override
+# per-MACHINE only if a future board revision needs a distinct manifest file
+# (see webconfig-manifest.bbappend for the real Jetson MACHINE binding).
+WEBCONFIG_BOARD_FILE ?= "arches.json"
 
 do_install() {
-    install -d ${D}/usr/share/webconfig
-    install -m 0644 ${S}/${WEBCONFIG_BOARD_FILE} \
-        ${D}/usr/share/webconfig/board.yaml
+    install -d ${D}${datadir}/webconfig
+    install -m 0644 ${S}/board-manifests/${WEBCONFIG_BOARD_FILE} \
+        ${D}${datadir}/webconfig/board-manifest.json
+
+    # Fail loud (not a silent substitution) if the resolved manifest file is
+    # missing from the source tarball (Checkpoint 0.5).
+    test -f ${D}${datadir}/webconfig/board-manifest.json || \
+        bbfatal "webconfig-manifest: board-manifests/${WEBCONFIG_BOARD_FILE} missing from source tarball"
 }
 
-FILES:${PN} = "/usr/share/webconfig/board.yaml"
+FILES:${PN} = "${datadir}/webconfig/board-manifest.json"

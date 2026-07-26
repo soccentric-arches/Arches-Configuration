@@ -6,8 +6,17 @@ The **board manifest** is a BSP-provided, read-only JSON file at
 the daemon, frontend, and engine are Arches-only, and board-specific behavior
 lives solely in this file (spec §3).
 
-The daemon loads it at boot. Missing it falls back to the embedded
-`board-manifests/arches.json` (dev/CI only).
+The daemon loads it at boot, in this order:
+1. `/etc/webconfig/board.yaml` — an optional, intentional field-override
+   escape hatch (YAML, for easy hand-editing): a technician can override a
+   device's manifest without repackaging firmware.
+2. `/usr/share/webconfig/board-manifest.json` — the canonical BSP-installed
+   manifest described below.
+3. The embedded `board-manifests/arches.json` (dev/CI only, compiled into the
+   binary), if neither of the above exists or fails to parse.
+
+There is intentionally only one canonical BSP-installed format (JSON) and
+path — an earlier YAML variant at `<share>/board.yaml` has been removed.
 
 ## Top-level shape
 
@@ -83,12 +92,20 @@ services.
 
 ## Manifest selection
 
-The Yocto layer ships the Arches manifest in
-`meta-webconfig/recipes-core/webconfig/files/` and installs it via
-`webconfig-manifest.bbappend`:
+The Yocto layer's `webconfig-manifest.bb` recipe references
+`board-manifests/arches.json` directly from the repo root (packaged inside the
+same source tarball `webconfigd.bb`/`webconfig-static.bb` fetch — never copied
+into the layer, so there is exactly one source of truth) and defaults to it:
 
 ```bitbake
-WEBCONFIG_MANIFEST_FILE = "arches.json"
+WEBCONFIG_BOARD_FILE ?= "arches.json"
+```
+
+`webconfig-manifest.bbappend` overrides this per `MACHINE` only if a future
+board revision needs a distinct manifest file:
+
+```bitbake
+WEBCONFIG_BOARD_FILE:jetson-orin-nano = "arches.json"
 ```
 
 ## Reference manifest

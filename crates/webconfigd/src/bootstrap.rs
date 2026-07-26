@@ -68,12 +68,18 @@ pub(crate) async fn build(sysroot: Sysroot) -> Application {
     }
 }
 
+/// Manifest load order (0.6: JSON at `<share>/board-manifest.json` is the one
+/// canonical BSP-installed format/path — matches `docs/board-manifest.md` and
+/// the real `board-manifests/arches.json` data). The local YAML override at
+/// `/etc/webconfig/board.yaml` is kept as an intentional, documented escape
+/// hatch: a field technician can hand-edit a device's manifest without
+/// repackaging firmware. There is no longer a `<share>/board.yaml` YAML
+/// fallback — that path only existed because the Yocto recipe used to
+/// (incorrectly) install YAML into the share dir; the recipe now installs
+/// the canonical JSON, so that middle format is dead and has been removed.
 fn load_or_seed_manifest(sysroot: &Sysroot, share: &Path) -> BoardManifest {
     let local_yaml = sysroot.join("/etc/webconfig/board.yaml");
     if let Ok(manifest) = BoardManifest::load_yaml_path(&local_yaml) {
-        return manifest;
-    }
-    if let Ok(manifest) = BoardManifest::load_yaml(share) {
         return manifest;
     }
     if let Ok(manifest) = BoardManifest::load(share) {

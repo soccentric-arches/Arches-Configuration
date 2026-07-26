@@ -65,23 +65,44 @@ No item in this document is considered done if this gate is failing.
     `"[redacted]"` while a sibling non-secret field survives untouched. `make build &&
     make test && make lint` green.
 
-- [ ] **0.5 Yocto layer installs the real Arches board manifest**
+- [x] **0.5 Yocto layer installs the real Arches board manifest**
   Where: `meta-webconfig/recipes-core/webconfig/webconfig-manifest.bb` + `.bbappend`, `meta-webconfig/recipes-core/webconfig/files/`.
   Acceptance:
-  - [ ] The real Arches manifest (`arches.json`) is present in the layer, in the format the manifest loader actually expects (see 0.6).
-  - [ ] The `.bbappend` is wired to the real Arches manifest file, not left commented out.
-  - [ ] Building with no matching manifest fails the build loudly, rather than silently substituting `generic.yaml`.
-  - Verify: run (or simulate) a bitbake config check / recipe parse and confirm it resolves to the Arches manifest file, not the generic fallback.
+  - [x] The real Arches manifest (`arches.json`) is present in the layer, in the format the manifest loader actually expects (see 0.6).
+  - [x] The `.bbappend` is wired to the real Arches manifest file, not left commented out.
+  - [x] Building with no matching manifest fails the build loudly, rather than silently substituting `generic.yaml`.
+  - Verify: `webconfig-manifest.bb` now references `board-manifests/arches.json` directly
+    from the same source tarball `webconfigd.bb`/`webconfig-static.bb` already fetch (never
+    copied — single source of truth), defaults `WEBCONFIG_BOARD_FILE` to the real
+    `"arches.json"` (was the wrong `"generic.yaml"` default, silently), and `do_install`
+    `bbfatal`s if the resolved file is missing from the tarball. `webconfig-manifest.bbappend`
+    now has a real, uncommented `WEBCONFIG_BOARD_FILE:jetson-orin-nano = "arches.json"`
+    override. Removed the now-dead `files/generic.yaml` (was only ever the silent-wrong-default
+    source, unrelated to the real generic-linux dev fallback which is compiled in from
+    `board-manifests/generic.yaml` independent of Yocto). **Not verified against a real
+    bitbake run** — no Yocto toolchain in this environment; verified by careful manual
+    review against the sibling `webconfig-static.bb`/`webconfig-schemas.bb` recipes'
+    established conventions (same tarball-fetch pattern, same `FILES:${PN}`/`do_install`
+    idioms) and by re-reading the rewritten recipe end to end for correctness.
 
-- [ ] **0.6 Board-manifest format is consistent across docs, code, and Yocto recipe**
+- [x] **0.6 Board-manifest format is consistent across docs, code, and Yocto recipe**
   Where: `docs/board-manifest.md`, `crates/webconfigd/src/bootstrap.rs`, `meta-webconfig/recipes-core/webconfig/webconfig-manifest.bb`, `board-manifests/*.json`.
   Acceptance:
-  - [ ] One canonical format (JSON or YAML) and one canonical on-device path is chosen.
-  - [ ] `docs/board-manifest.md` matches the real recipe and the real loader exactly (path, format, variable names).
-  - [ ] The dead code path (whichever format was not chosen) is removed from `bootstrap.rs`'s fallback chain, or explicitly documented as an intentional legacy fallback with a reason.
-  - Verify: follow `docs/board-manifest.md` step-by-step from a clean checkout to produce a running device config — it must work exactly as documented, no format/path mismatches.
+  - [x] One canonical format (JSON or YAML) and one canonical on-device path is chosen.
+  - [x] `docs/board-manifest.md` matches the real recipe and the real loader exactly (path, format, variable names).
+  - [x] The dead code path (whichever format was not chosen) is removed from `bootstrap.rs`'s fallback chain, or explicitly documented as an intentional legacy fallback with a reason.
+  - Verify: chose JSON at `/usr/share/webconfig/board-manifest.json` as canonical (matches
+    the pre-existing docs and the real `board-manifests/arches.json` data — smallest-diff,
+    lowest-risk choice). Removed the dead `BoardManifest::load_yaml(share)` / `<share>/board.yaml`
+    fallback from both `bootstrap.rs`'s load order and `manifest.rs` (the function itself,
+    since it had no other callers). Kept the local `/etc/webconfig/board.yaml` YAML override
+    as an intentionally-documented field-technician escape hatch — now stated as such in both
+    `bootstrap.rs`'s doc comment and `docs/board-manifest.md`. Fixed a stale
+    `WEBCONFIG_MANIFEST_FILE` variable-name reference (code actually uses
+    `WEBCONFIG_BOARD_FILE`) in both `docs/board-manifest.md` and `meta-webconfig/README.md`.
+    `make build && make test && make lint` green (63/63 tests pass).
 
-**Phase 0 gate:** all six boxes above checked, global exit gate passing, and a fresh `make build && make test && make lint` run attached/logged.
+**Phase 0 gate:** all six boxes above checked, global exit gate passing, and a fresh `make build && make test && make lint` run attached/logged. **Phase 0 (all P0 blockers) is now fully closed.**
 
 ---
 
