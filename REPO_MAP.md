@@ -11,9 +11,9 @@ Branded **"SoCcentric WebConfig"** — architecturally distinct from every other
 - **Vanilla-JS frontend**, no build step, no Node at build time, <500KB total; schema-driven rendering — adding a setting is a schema file, zero UI code.
 - **Flagship feature — networking rollback safety net:** network changes are provisional; the operator must reconnect and confirm within a window or the change auto-rolls-back.
 - Real backends (RAUC/zbus) talk to hardware on-device and to mocks on a fake-sysroot test harness for CI (no hardware needed to test).
-- Cross-compiles to `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `armv7-unknown-linux-gnueabihf`; fully offline (`CARGO_NET_OFFLINE=1`) via vendored crates; ships as a Yocto layer (`meta-soccentric-webconfig`).
+- Cross-compiles to `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `armv7-unknown-linux-gnueabihf`; fully offline (`CARGO_NET_OFFLINE=1`) via vendored crates; ships as a Yocto layer (`meta-webconfig`).
 
-**Layout:** `crates/webconfig-engine` (config store, appliers, schema, manifest, alert/monitoring), `crates/webconfigd` (axum HTTP daemon: TLS, auth, CSRF, 9 section APIs, SSE), `frontend/` (vanilla JS), `schemas/` (`*.schema.json`), `board-manifests/` (one per platform — the only platform-specific data), `meta-soccentric-webconfig/` (Yocto layer).
+**Layout:** `crates/webconfig-engine` (config store, appliers, schema, manifest, alert/monitoring), `crates/webconfigd` (axum HTTP daemon: TLS, auth, CSRF, 9 section APIs, SSE), `frontend/` (vanilla JS), `schemas/` (`*.schema.json`), `board-manifests/` (one per platform — the only platform-specific data), `meta-webconfig/` (Yocto layer).
 
 **Build:** `make build`/`release`/`test`/`lint`/`vendor`/`cross`/`run`; validation gate is `make build && make test && make lint`.
 

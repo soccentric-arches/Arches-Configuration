@@ -122,7 +122,7 @@ Implement each page below. Items marked **[v2]** are deferred: design the config
 
 ## 5. Yocto integration
 
-Generate a `meta-soccentric-webconfig` layer containing:
+Generate a `meta-webconfig` layer containing:
 - Daemon recipe (`inherit cargo`, vendored crate tarball with checksums), static-assets recipe, systemd unit (non-root user, hardening directives: `ProtectSystem`, `NoNewPrivileges`, capability bounding), polkit rules for the privileged D-Bus operations.
 - A `webconfig-schemas` install directory convention other recipes use to register app settings, dashboard tiles, and alert packs.
 - Board-manifest generation hook and the service allowlist file for Arches.

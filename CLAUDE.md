@@ -183,10 +183,13 @@ a single board-manifest file (`board-manifests/arches.json`). See
   node at build time (spec §2).
 - Don't hardcode I/O or board behavior in code — it lives in the board
   manifest (`board-manifests/arches.json`) as data (spec §4.9, §3).
-- Don't assume the Yocto layer directory is named `meta-soccentric-webconfig` —
-  the docs/README/CLAUDE.md prose calls it that, but the actual directory on
-  disk is `meta-webconfig`. Use the real path when scripting; reconcile the
-  naming drift in docs before it causes a broken reference.
+- Don't reintroduce `meta-soccentric-webconfig` as a path in docs — the Yocto
+  layer directory is `meta-webconfig` on disk; the docs/README/REPO_MAP.md/
+  spec references to the old name were reconciled to match (Checkpoint.md
+  Phase 5 item 13). The `soccentric-webconfig` string still appears
+  legitimately as the Yocto *collection name* in `meta-webconfig/conf/layer.conf`'s
+  `LAYERSERIES_COMPAT_`/`LAYERDEPENDS_`/`LAYERSERIES_COREVERSION_` overrides —
+  that's a different concept from the directory name and is correct as-is.
 - Don't assume CI and `Cargo.toml` agree on the Rust version — `.github/workflows/ci.yml`
   pins `1.75.0` while `Cargo.toml`/`rust-toolchain.toml` declare
   `rust-version = "1.85"`. Verify which is authoritative before bumping either

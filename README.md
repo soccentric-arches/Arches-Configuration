@@ -35,7 +35,7 @@ crates/
 frontend/                   # vanilla JS: index.html, styles.css, schema-form.js, pages.js, app.js
 schemas/                    # *.schema.json — schema-driven rendering + validation
 board-manifests/            # arches.json (board-specific data) + generic.yaml fallback
-meta-soccentric-webconfig/  # Yocto layer: daemon, static assets, schemas, manifest, hardened unit
+meta-webconfig/             # Yocto layer: daemon, static assets, schemas, manifest, hardened unit
 docs/                       # spec, API reference, schema format, board-manifest spec
 Makefile                    # build | release | test | lint | fmt | vendor | cross | run | clean
 ```
@@ -71,8 +71,8 @@ IMAGE_INSTALL:append = " webconfigd webconfig-static webconfig-schemas webconfig
 ```
 
 Map your BSP `MACHINE` to its board manifest in
-`meta-soccentric-webconfig/recipes-core/webconfig/webconfig-manifest.bbappend`.
-See [`meta-soccentric-webconfig/README.md`](meta-soccentric-webconfig/README.md).
+`meta-webconfig/recipes-core/webconfig/webconfig-manifest.bbappend`.
+See [`meta-webconfig/README.md`](meta-webconfig/README.md).
 
 ## Documentation
 

@@ -1,4 +1,4 @@
-# meta-soccentric-webconfig
+# meta-webconfig
 
 Yocto layer that adds the SoCcentric **WebConfig** on-device configuration UI to
 an Arches image: the `webconfigd` Rust daemon, its vanilla-JS frontend, schema
