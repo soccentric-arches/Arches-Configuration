@@ -1523,6 +1523,133 @@ async fn reboot_shutdown_root_password_last_admin_guard_and_groups_via_http() {
 }
 
 #[tokio::test]
+async fn monitoring_logs_and_io_happy_paths_via_http() {
+    // Checkpoint 4.9: at least one HTTP-level happy-path test per
+    // monitoring/logs/io route that previously had zero coverage (their own
+    // files only had pure-parser unit tests, e.g. lsusb/lspci/i2cdetect
+    // output parsing).
+    let mut caps = serde_json::Map::new();
+    caps.insert("direction".into(), serde_json::Value::String("out".into()));
+    let manifest = BoardManifest {
+        platform: "arches".into(),
+        peripherals: vec![
+            webconfig_engine::manifest::Peripheral {
+                id: "can0".into(),
+                device: "can0".into(),
+                human_name: "CAN 0".into(),
+                kind: IoKind::Can,
+                ..Default::default()
+            },
+            webconfig_engine::manifest::Peripheral {
+                id: "led0".into(),
+                device: "gpiochip1 line 7".into(),
+                human_name: "Status LED".into(),
+                kind: IoKind::Gpio,
+                caps,
+            },
+            webconfig_engine::manifest::Peripheral {
+                id: "0".into(),
+                device: "/dev/i2c-0".into(),
+                human_name: "I2C bus 0".into(),
+                kind: IoKind::I2c,
+                ..Default::default()
+            },
+        ],
+        service_allowlist: vec!["sshd.service".into()],
+        ..Default::default()
+    };
+    let (app, _dir) = build_app_full(Schema::default_permissive(), None, Some(manifest)).await;
+    let (cookie, csrf) = boot_admin(&app).await;
+
+    // --- monitoring ---
+    for path in [
+        "/api/v1/monitoring/vitals",
+        "/api/v1/monitoring/emmc/mmcblk0",
+        "/api/v1/monitoring/tiles",
+        "/api/v1/monitoring/telemetry",
+    ] {
+        let (st, _, body) = send(&app, "GET", path, Some(&cookie), None, None).await;
+        assert_eq!(st, StatusCode::OK, "GET {path}: {body}");
+    }
+    let (st, _, body) = send(
+        &app,
+        "PUT",
+        "/api/v1/monitoring/telemetry",
+        Some(&cookie),
+        Some(&csrf),
+        Some(&serde_json::json!({ "enabled": false, "server_url": "", "username": "", "password": "", "publish_interval_secs": 60, "include_diagnostics": false }).to_string()),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "{body}");
+
+    // --- logs ---
+    for path in [
+        "/api/v1/logs",
+        "/api/v1/logs/sources",
+        "/api/v1/logs/config",
+        "/api/v1/logs/download",
+    ] {
+        let (st, _, body) = send(&app, "GET", path, Some(&cookie), None, None).await;
+        assert_eq!(st, StatusCode::OK, "GET {path}: {body}");
+    }
+    let (st, _, body) = send(
+        &app,
+        "PUT",
+        "/api/v1/logs/config",
+        Some(&cookie),
+        Some(&csrf),
+        Some(&serde_json::json!({ "storage": "volatile", "max_size_bytes": 10_000_000u64, "retention_days": 7, "remote_syslog": null }).to_string()),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "{body}");
+
+    // --- io ---
+    for path in [
+        "/api/v1/io",
+        "/api/v1/io/usb",
+        "/api/v1/io/pci",
+        "/api/v1/io/i2c",
+        "/api/v1/io/spi",
+        "/api/v1/io/platform-panel",
+    ] {
+        let (st, _, body) = send(&app, "GET", path, Some(&cookie), None, None).await;
+        assert_eq!(st, StatusCode::OK, "GET {path}: {body}");
+    }
+    let (st, _, body) = send(
+        &app,
+        "POST",
+        "/api/v1/io/i2c/scan?bus=0",
+        Some(&cookie),
+        Some(&csrf),
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "{body}");
+
+    let (st, _, body) = send(
+        &app,
+        "POST",
+        "/api/v1/io/can/apply",
+        Some(&cookie),
+        Some(&csrf),
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "{body}");
+
+    let (st, _, body) = send(
+        &app,
+        "POST",
+        "/api/v1/io/gpio/led0/toggle",
+        Some(&cookie),
+        Some(&csrf),
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "{body}");
+}
+
+#[tokio::test]
 async fn security_put_apply_and_exposure_via_http() {
     // Checkpoint 4.5: PUT /security (idle timeout / plain-HTTP opt-in /
     // WireGuard config save), POST /security/apply (WireGuard applier), and
