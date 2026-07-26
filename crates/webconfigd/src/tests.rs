@@ -1217,6 +1217,136 @@ async fn network_scan_and_connectivity_test_via_http() {
 }
 
 #[tokio::test]
+async fn updates_install_ota_backup_restore_via_http() {
+    // Checkpoint 4.3: install (path-based), ota get/put/check, backup
+    // (plaintext GET already covered elsewhere; encrypted POST here), and
+    // restore (both plaintext and encrypted) exercised via real HTTP.
+    let (app, dir) = build_app().await;
+    let (cookie, csrf) = boot_admin(&app).await;
+
+    // --- install: a pre-staged bundle + sibling manifest (mock backend
+    // convention) ---
+    let bundle_path = dir.path().join("staged.raucb");
+    std::fs::write(&bundle_path, b"fake bundle").unwrap();
+    std::fs::write(
+        format!("{}.manifest.json", bundle_path.display()),
+        r#"{"platform":"arches","variant":null,"version":"9.9.9","description":"install test"}"#,
+    )
+    .unwrap();
+    let (st, _, body) = send(
+        &app,
+        "POST",
+        "/api/v1/updates/install",
+        Some(&cookie),
+        Some(&csrf),
+        Some(&serde_json::json!({ "bundle_path": bundle_path.to_string_lossy() }).to_string()),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "{body}");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(v["manifest"]["version"], "9.9.9");
+
+    // --- ota: get default, put a server url, get reflects it, check with no
+    // real server on the fake sysroot reports a clear non-error skip ---
+    let (st, _, body) = send(
+        &app,
+        "GET",
+        "/api/v1/updates/ota",
+        Some(&cookie),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "{body}");
+
+    let (st, _, body) = send(
+        &app,
+        "PUT",
+        "/api/v1/updates/ota",
+        Some(&cookie),
+        Some(&csrf),
+        Some(&serde_json::json!({ "enabled": true, "server_url": "https://ota.example/check", "auto_apply": false }).to_string()),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "{body}");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(v["server_url"], "https://ota.example/check");
+
+    let (st, _, body) = send(
+        &app,
+        "GET",
+        "/api/v1/updates/ota/check",
+        Some(&cookie),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "{body}");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(v["checked"], true);
+    assert_eq!(v["update_available"], serde_json::Value::Null);
+
+    // --- backup: encrypted POST, then restore that same envelope ---
+    let (st, _, body) = send(
+        &app,
+        "POST",
+        "/api/v1/updates/backup",
+        Some(&cookie),
+        Some(&csrf),
+        Some(&serde_json::json!({ "passphrase": "correct-horse-battery" }).to_string()),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "{body}");
+    let backup: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(backup["secrets_included"], true);
+    assert!(backup["encrypted"].is_object());
+
+    let (st, _, body) = send(
+        &app,
+        "POST",
+        "/api/v1/updates/restore",
+        Some(&cookie),
+        Some(&csrf),
+        Some(
+            &serde_json::json!({
+                "encrypted": backup["encrypted"],
+                "passphrase": "correct-horse-battery",
+            })
+            .to_string(),
+        ),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "encrypted restore: {body}");
+
+    // --- restore: plaintext (unencrypted) config file round-trip ---
+    let (st, _, plain_body) = send(
+        &app,
+        "GET",
+        "/api/v1/updates/backup?include_secrets=false",
+        Some(&cookie),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let plain: serde_json::Value = serde_json::from_str(&plain_body).unwrap();
+    let config_file = serde_json::json!({
+        "schema_version": plain["schema_version"],
+        "config": plain["config"],
+    });
+    let (st, _, body) = send(
+        &app,
+        "POST",
+        "/api/v1/updates/restore",
+        Some(&cookie),
+        Some(&csrf),
+        Some(&config_file.to_string()),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "plaintext restore: {body}");
+}
+
+#[tokio::test]
 async fn factory_reset_reports_partial_failure_and_skips_reboot_on_broken_db() {
     // Checkpoint 1.6: a locked/corrupt config.db must not be presented as a
     // clean success — the failure is logged and surfaced in the response
