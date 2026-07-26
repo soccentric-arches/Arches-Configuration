@@ -298,26 +298,48 @@ impl UpdateBackend for RaucUpdateBackend {
     }
 }
 
+/// Strip one layer of matching surrounding single quotes — RAUC's `rauc
+/// info` text output quotes string values (e.g. `Compatible:  'arches'`).
+fn unquote(s: &str) -> String {
+    let s = s.trim();
+    s.strip_prefix('\'')
+        .and_then(|s| s.strip_suffix('\''))
+        .unwrap_or(s)
+        .to_string()
+}
+
 /// Parse the bundle manifest from `rauc info` text output. Best-effort; RAUC's
 /// text format is stable enough for the fields we need (spec §7: state the
-/// assumption at the point it's made).
+/// assumption at the point it's made). Real RAUC bundles built with a
+/// `variant-name` key in their `[update]` manifest section (the mechanism
+/// this codebase uses to distinguish device SKUs, e.g. Arches `orin-nano` vs
+/// `agx`) surface it as a `Variant:` line here — previously hardcoded to
+/// `None`, which meant the fully-implemented, fully-tested variant-mismatch
+/// guard in [`check_compatibility_against`] could never fire against a real
+/// bundle (Checkpoint 1.2).
 fn parse_manifest_from_rauc_info(info: &str) -> BundleManifest {
     let mut platform = String::new();
     let mut version = String::new();
+    let mut variant: Option<String> = None;
     let mut description: Option<String> = None;
     for line in info.lines() {
         let line = line.trim();
         if let Some(v) = line.strip_prefix("Compatible:") {
-            platform = v.trim().split(':').next().unwrap_or("").trim().to_string();
+            platform = unquote(v);
         } else if let Some(v) = line.strip_prefix("Version:") {
-            version = v.trim().to_string();
+            version = unquote(v);
+        } else if let Some(v) = line.strip_prefix("Variant:") {
+            let v = unquote(v);
+            if !v.is_empty() {
+                variant = Some(v);
+            }
         } else if let Some(v) = line.strip_prefix("Description:") {
-            description = Some(v.trim().to_string());
+            description = Some(unquote(v));
         }
     }
     BundleManifest {
         platform,
-        variant: None,
+        variant,
         version,
         description,
     }
@@ -415,6 +437,51 @@ mod tests {
             description: None,
         };
         check_compatibility_against(&m, "arches", Some("orin-nano")).unwrap();
+    }
+
+    #[test]
+    fn parses_variant_from_real_rauc_info_shaped_text() {
+        // Checkpoint 1.2: real `rauc info` text output, quoted values as RAUC
+        // actually emits them, including a Variant: line from a bundle's
+        // `[update] variant-name` manifest key.
+        let info = "Compatible:  'arches'\n\
+                     Version:     '2.0.0'\n\
+                     Variant:     'agx'\n\
+                     Build:       '2026-01-01T00:00:00Z'\n\
+                     Description: 'Arches AGX Xavier update'\n";
+        let m = parse_manifest_from_rauc_info(info);
+        assert_eq!(m.platform, "arches");
+        assert_eq!(m.version, "2.0.0");
+        assert_eq!(m.variant.as_deref(), Some("agx"));
+        assert_eq!(m.description.as_deref(), Some("Arches AGX Xavier update"));
+    }
+
+    #[test]
+    fn parses_manifest_with_no_variant_line_as_none() {
+        // A variant-less bundle (legacy, or a device that doesn't distinguish
+        // SKUs) must not fabricate a variant.
+        let info = "Compatible:  'arches'\nVersion:     '1.0.0'\n";
+        let m = parse_manifest_from_rauc_info(info);
+        assert_eq!(m.platform, "arches");
+        assert_eq!(m.variant, None);
+    }
+
+    #[test]
+    fn real_rauc_info_variant_mismatch_is_rejected_end_to_end() {
+        // Checkpoint 1.2's own acceptance example: an Arches `agx` bundle
+        // must not install onto an Arches `orin-nano` target — proven here
+        // against text shaped like real `rauc info` output, not just a
+        // BundleManifest constructed directly by the test.
+        let agx_bundle_info = "Compatible:  'arches'\nVersion:     '3.1.0'\nVariant:     'agx'\n";
+        let manifest = parse_manifest_from_rauc_info(agx_bundle_info);
+        let err = check_compatibility_against(&manifest, "arches", Some("orin-nano")).unwrap_err();
+        assert!(matches!(err, UpdateError::IncompatibleVariant { .. }));
+
+        // The matching variant, from the same real-shaped parser, is accepted.
+        let orin_nano_bundle_info =
+            "Compatible:  'arches'\nVersion:     '3.1.0'\nVariant:     'orin-nano'\n";
+        let manifest = parse_manifest_from_rauc_info(orin_nano_bundle_info);
+        check_compatibility_against(&manifest, "arches", Some("orin-nano")).unwrap();
     }
 
     #[test]

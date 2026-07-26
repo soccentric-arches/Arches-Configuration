@@ -181,10 +181,14 @@ No item in this document is considered done if this gate is failing.
     (commit 6ba03f1) cover malformed JSON, malformed YAML, and the valid-manifest case.
     `make build && make test && make lint` green (67/67 tests).
 
-- [ ] **1.10 Provisional network-apply failure state is visible to the operator**
+- [x] **1.10 Provisional network-apply failure state is visible to the operator**
   Where: `crates/webconfigd/src/api/network.rs::apply`.
   Acceptance: if `networkd` goes `Provisional` and a later applier (firewall/wifi/ap) fails, the error response includes an indication that a pending rollback timer is active.
-  Verify: test that forces a downstream applier to fail after `networkd` succeeds provisionally, and asserts the error response includes provisional-state info.
+  Verify: `cargo test network_apply_surfaces_provisional_state_when_a_later_applier_fails`
+    (commit f6951ad) — PUTs a severing static-IP interface, sabotages the firewall applier's
+    write target (directory in place of its config file), asserts the apply response is 409
+    and mentions both "provisional" and `confirm_window_secs`. `make build && make test &&
+    make lint` green (72/72 tests).
 
 **Phase 1 gate:** all ten boxes checked, global exit gate passing.
 
