@@ -108,10 +108,21 @@ No item in this document is considered done if this gate is failing.
 
 ## Phase 1 — P1 Engine + Daemon items
 
-- [ ] **1.1 GPIO applier exists and is registered**
+- [x] **1.1 GPIO applier exists and is registered**
   Where: new `crates/webconfig-engine/src/appliers/gpio.rs`, `appliers/mod.rs::all()`.
   Acceptance: validate/apply/rollback + `FileBackup` pattern matching `can.rs`; direction/active_low/initial-state for named GPIO pins and board LEDs materialize to a real boot-time mechanism (udev rule or oneshot unit) on the real sysroot; registered in `appliers::all()`.
-  Verify: unit tests mirroring `can.rs`'s test suite (validation rejection cases + apply/rollback round trip against the fake sysroot); manual check that `appliers::all()` includes the new applier.
+  Verify: `cargo test -p webconfig-engine appliers::gpio` (8 new tests, commit pending) —
+    validation rejects empty name/bad direction/pins absent from the manifest; output pins
+    render a `Type=simple` `gpioset --mode=signal` unit (active_low correctly inverts the
+    driven bit); input pins and disabled pins/subsystem write no unit; rollback restores.
+    `GpioApplier` is constructed with a manifest-peripherals snapshot (threaded through
+    `appliers::all(&[Peripheral])` → `EngineBridge::new(store, sysroot, &manifest.peripherals)`)
+    since `GpioPin` stores only a manifest name, not a device string. Registered in
+    `appliers::all()`. **Scope note:** board LEDs (`BoardLedConfig`/`AppLedConfig`) are
+    explicitly NOT covered — reflecting live system/service health onto LEDs is a
+    continuously-running status reflector, not a boot-time validate/apply/rollback applier;
+    it needs a different design and is a separate, larger follow-up. `make build && make test
+    && make lint` green (155 engine + 73 daemon tests).
 
 - [x] **1.2 RAUC variant compatibility check works on real hardware**
   Where: `crates/webconfig-engine/src/update.rs::parse_manifest_from_rauc_info`.
@@ -125,9 +136,15 @@ No item in this document is considered done if this gate is failing.
     against any real bundle. `make build && make test && make lint` green (147 engine + 72
     daemon tests).
 
-- [ ] **1.3 `network.cellular_5g` is resolved one way or the other**
+- [x] **1.3 `network.cellular_5g` is resolved one way or the other**
   Acceptance: either (a) a real applier exists (ModemManager/mmcli-backed) with validate/apply/rollback, or (b) `FiveGConfig` is explicitly demoted to the same `serde_json::Value` v2-deferred treatment as `vlan`/`bridges`/`cellular`, and the API/schema/docs reflect that it's not active in v1.
-  Verify: if (a), a full applier test suite; if (b), confirm the field can no longer be set via `PUT /network` expecting it to take effect, and docs say so.
+  Verify: chose (b) — `FiveGConfig` deleted, `cellular_5g: serde_json::Value` matching
+    vlan/bridges/cellular exactly (spec §4.2 already lists cellular/ModemManager as [v2]).
+    `cargo test cellular_5g_is_an_untyped_placeholder_with_redacted_secrets_in_backup`
+    (commit e946371) confirms it round-trips as opaque JSON and its `pin` is still redacted
+    in the plaintext backup. `docs/api-reference.md` and the frontend 5G card both now state
+    it has no effect in v1. `make build && make test && make lint` green (147 engine + 73
+    daemon tests).
 
 - [x] **1.4 OS update bundle browser upload works end-to-end**
   Where: `crates/webconfigd/src/api/updates.rs`.

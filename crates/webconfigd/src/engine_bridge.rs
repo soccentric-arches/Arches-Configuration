@@ -67,11 +67,18 @@ pub struct EngineBridge {
 }
 
 impl EngineBridge {
-    pub fn new(store: ConfigStore, sysroot: Sysroot) -> Self {
+    /// `manifest_peripherals` is passed straight through to
+    /// `appliers::all()` — only `GpioApplier` currently needs it, to resolve
+    /// a GPIO pin's manifest name to its device string.
+    pub fn new(
+        store: ConfigStore,
+        sysroot: Sysroot,
+        manifest_peripherals: &[webconfig_engine::manifest::Peripheral],
+    ) -> Self {
         Self {
             store: Arc::new(store),
             sysroot: Arc::new(sysroot),
-            appliers: Arc::new(appliers::all()),
+            appliers: Arc::new(appliers::all(manifest_peripherals)),
             confirm: Arc::new(ConfirmManager::new()),
         }
     }

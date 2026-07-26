@@ -43,7 +43,7 @@ pub(crate) async fn build(sysroot: Sysroot) -> Application {
         (*schema).clone(),
         manifest.config_defaults.clone().unwrap_or_default(),
     );
-    let engine = EngineBridge::new(store, sysroot.clone());
+    let engine = EngineBridge::new(store, sysroot.clone(), &manifest.peripherals);
     let database = webconfig_dir.join("config.db");
     let audit = Arc::new(AuditLog::new(database.clone(), 256 * 1024));
     let alert_engine = Arc::new(tokio::sync::Mutex::new(AlertEngine::new()));
