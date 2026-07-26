@@ -137,10 +137,12 @@ No item in this document is considered done if this gate is failing.
   Acceptance: SQL errors during reset are logged (`tracing::error!`), and the reboot step is either skipped or the response clearly indicates a partial/failed reset rather than presenting it as a clean success.
   Verify: test with a deliberately locked/corrupt `config.db` and confirm the response and logs reflect the failure, and the device does not silently reboot claiming success.
 
-- [ ] **1.7 First-boot admin audit entry uses the shared ISO-8601 timestamp helper**
+- [x] **1.7 First-boot admin audit entry uses the shared ISO-8601 timestamp helper**
   Where: `crates/webconfigd/src/auth.rs`.
   Acceptance: the local stale `now_iso()` is deleted; `first_boot`'s audit call uses `crate::api::now_iso()`.
-  Verify: a test asserting the first-boot audit entry's `ts` field matches RFC3339 format, not `t=<epoch>`.
+  Verify: `cargo test first_boot_creates_admin_and_authenticates` (commit 15ab9c3) — extended
+    to fetch `/logs/audit` and assert the `auth.first-boot` entry's `ts` ends in `Z` and does
+    not start with `t=`. `make build && make test && make lint` green.
 
 - [ ] **1.8 Request body size limits are enforced**
   Where: `crates/webconfigd/src/routes.rs`.
