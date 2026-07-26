@@ -1216,6 +1216,65 @@ async fn network_scan_and_connectivity_test_via_http() {
     assert!(v.get("dns").is_some());
 }
 
+#[tokio::test]
+async fn security_put_apply_and_exposure_via_http() {
+    // Checkpoint 4.5: PUT /security (idle timeout / plain-HTTP opt-in /
+    // WireGuard config save), POST /security/apply (WireGuard applier), and
+    // GET /security/exposure exercised via real HTTP. GET /security/trust
+    // already has dedicated coverage (Checkpoint 0.3's test).
+    let (app, _dir) = build_app().await;
+    let (cookie, csrf) = boot_admin(&app).await;
+
+    let (st, _, body) = send(
+        &app,
+        "PUT",
+        "/api/v1/security",
+        Some(&cookie),
+        Some(&csrf),
+        Some(
+            &serde_json::json!({
+                "session_idle_timeout_secs": 1200,
+                "allow_plain_http": true,
+                "wireguard": { "enabled": false, "port": 51820, "peers": [] },
+                "certificates": [],
+            })
+            .to_string(),
+        ),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "{body}");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(v["session_idle_timeout_secs"], 1200);
+    assert_eq!(v["allow_plain_http"], true);
+
+    let (st, _, body) = send(
+        &app,
+        "POST",
+        "/api/v1/security/apply",
+        Some(&cookie),
+        Some(&csrf),
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "{body}");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(v["applied"][0], "wireguard");
+
+    let (st, _, body) = send(
+        &app,
+        "GET",
+        "/api/v1/security/exposure",
+        Some(&cookie),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "{body}");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(v["plain_http"], true);
+    assert!(v.get("per_interface").is_some());
+}
+
 #[tokio::test(start_paused = true)]
 async fn events_sse_requires_auth_and_emits_vitals_over_http() {
     // Checkpoint 4.4: /events at the HTTP layer — the auth gate (checked
