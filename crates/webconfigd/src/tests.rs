@@ -122,6 +122,9 @@ async fn build_app_full(
         },
         users_path: webconfig_dir.join("users.json"),
         login_throttle: Arc::new(crate::auth::LoginThrottle::new()),
+        sse_connections: Arc::new(tokio::sync::Semaphore::new(
+            crate::bootstrap::MAX_SSE_CONNECTIONS,
+        )),
     };
 
     // Static dir: a tempdir is fine; API routes don't depend on it.
@@ -1756,6 +1759,53 @@ async fn events_sse_requires_auth_and_emits_vitals_over_http() {
         text.contains("event: vitals") || text.contains("vitals"),
         "first SSE frame must be a vitals event: {text}"
     );
+}
+
+#[tokio::test]
+async fn events_sse_concurrency_cap_rejects_beyond_max() {
+    // Checkpoint 5.12: the `/events` semaphore permit is acquired synchronously
+    // in the handler before the streaming response is returned, so opening
+    // MAX_SSE_CONNECTIONS oneshot responses (without reading their bodies)
+    // holds all permits without needing to actually drive the streams.
+    let (app, _dir) = build_app().await;
+    let (cookie, _csrf) = boot_admin(&app).await;
+
+    let mut held = Vec::new();
+    for _ in 0..crate::bootstrap::MAX_SSE_CONNECTIONS {
+        let req = Request::builder()
+            .method("GET")
+            .uri("/api/v1/events")
+            .header("cookie", &cookie)
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        held.push(resp);
+    }
+
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/events")
+        .header("cookie", &cookie)
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::SERVICE_UNAVAILABLE,
+        "connection beyond the cap must be rejected, not silently accepted"
+    );
+
+    // Dropping one held connection releases its permit for a new caller.
+    held.remove(0);
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/events")
+        .header("cookie", &cookie)
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
 }
 
 #[tokio::test]

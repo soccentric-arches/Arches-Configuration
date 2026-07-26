@@ -27,6 +27,10 @@ pub struct AppState {
     pub systemd: Arc<dyn SystemdClient>,
     pub users_path: std::path::PathBuf,
     pub login_throttle: Arc<LoginThrottle>,
+    /// Caps concurrent `/events` SSE connections (each polls `journalctl` on
+    /// its own tick) so the current-thread runtime and RAM budget can't be
+    /// exhausted by many simultaneous streams.
+    pub sse_connections: Arc<tokio::sync::Semaphore>,
 }
 
 impl AppState {

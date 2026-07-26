@@ -18,9 +18,10 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use futures_util::stream::{self, Stream, StreamExt};
 use std::convert::Infallible;
 use std::time::Duration;
+use tokio::sync::OwnedSemaphorePermit;
 
 use crate::auth::AuthRole;
-use crate::error::ApiResult;
+use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 
 /// How often the journal follow advances (spec §4.6: "every few seconds").
@@ -39,39 +40,55 @@ pub async fn events(
     State(app): State<AppState>,
     _role: AuthRole,
 ) -> ApiResult<Sse<impl Stream<Item = Result<Event, Infallible>>>> {
+    // Cap concurrent streams: each connection polls `journalctl` on its own
+    // tick, which would otherwise let unbounded simultaneous connections
+    // exhaust the current-thread runtime and RAM budget. The permit is held
+    // in the unfold state below so it's released exactly when the client
+    // disconnects and the stream is dropped — no separate bookkeeping.
+    let permit = app
+        .sse_connections
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| {
+            ApiError::NotReady("too many active event streams; try again shortly".into())
+        })?;
+
     let sys = app.engine.sysroot.clone();
-    let stream = stream::unfold(None as Cursor, move |cursor| {
-        let sys = sys.clone();
-        async move {
-            tokio::time::sleep(Duration::from_secs(JOURNAL_TICK_SECS)).await;
+    let stream = stream::unfold(
+        (None as Cursor, permit),
+        move |(cursor, permit): (Cursor, OwnedSemaphorePermit)| {
+            let sys = sys.clone();
+            async move {
+                tokio::time::sleep(Duration::from_secs(JOURNAL_TICK_SECS)).await;
 
-            let mut events: Vec<Event> = Vec::new();
+                let mut events: Vec<Event> = Vec::new();
 
-            // Vitals push (spec §4.5).
-            let vitals_payload = if sys.is_real_root() {
-                serde_json::to_string(&webconfig_engine::monitoring::read_vitals(&sys))
-                    .unwrap_or_default()
-            } else {
-                serde_json::json!({ "tick": 0 }).to_string()
-            };
-            events.push(Event::default().event("vitals").data(vitals_payload));
+                // Vitals push (spec §4.5).
+                let vitals_payload = if sys.is_real_root() {
+                    serde_json::to_string(&webconfig_engine::monitoring::read_vitals(&sys))
+                        .unwrap_or_default()
+                } else {
+                    serde_json::json!({ "tick": 0 }).to_string()
+                };
+                events.push(Event::default().event("vitals").data(vitals_payload));
 
-            // Journal follow (spec §4.6). Real root only; advances the cursor.
-            let mut next_cursor = cursor;
-            if sys.is_real_root() {
-                let (lines, new_cursor) = journal_follow(&sys, next_cursor);
-                if !lines.is_empty() {
-                    let payload = serde_json::to_string(&lines).unwrap_or_else(|_| "[]".into());
-                    events.push(Event::default().event("journal").data(payload));
+                // Journal follow (spec §4.6). Real root only; advances the cursor.
+                let mut next_cursor = cursor;
+                if sys.is_real_root() {
+                    let (lines, new_cursor) = journal_follow(&sys, next_cursor);
+                    if !lines.is_empty() {
+                        let payload = serde_json::to_string(&lines).unwrap_or_else(|_| "[]".into());
+                        events.push(Event::default().event("journal").data(payload));
+                    }
+                    next_cursor = new_cursor;
                 }
-                next_cursor = new_cursor;
-            }
 
-            // Flatten the per-tick events into the SSE stream.
-            let item_stream = stream::iter(events.into_iter().map(Ok::<_, Infallible>));
-            Some((item_stream, next_cursor))
-        }
-    })
+                // Flatten the per-tick events into the SSE stream.
+                let item_stream = stream::iter(events.into_iter().map(Ok::<_, Infallible>));
+                Some((item_stream, (next_cursor, permit)))
+            }
+        },
+    )
     .flatten();
 
     Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15))))
