@@ -752,6 +752,58 @@ async fn app_schema_secret_field_never_appears_in_backup_or_diagnostics() {
 }
 
 #[tokio::test]
+async fn cellular_5g_is_an_untyped_placeholder_with_redacted_secrets_in_backup() {
+    // Checkpoint 1.3: cellular_5g has no applier (spec §4.2 defers cellular/
+    // ModemManager to v2) — it's stored as opaque JSON like vlan/bridges/
+    // cellular, round-trips through PUT/GET untouched, and its pin/password
+    // keys are still redacted defensively in the plaintext backup even though
+    // the field is inert.
+    let (app, _dir) = build_app().await;
+    let (cookie, csrf) = boot_admin(&app).await;
+
+    const PLANTED_SIM_PIN: &str = "planted-sim-pin-1234";
+    let body = serde_json::json!({
+        "interfaces": [], "wifi": [], "dns_servers": [], "confirm_window_secs": 90,
+        "cellular_5g": { "enabled": true, "modem": "/dev/cdc-wdm0", "pin": PLANTED_SIM_PIN }
+    })
+    .to_string();
+    let (st, _, put_body) = send(
+        &app,
+        "PUT",
+        "/api/v1/network",
+        Some(&cookie),
+        Some(&csrf),
+        Some(&body),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    // Round-trips untouched through the plain GET/PUT path.
+    let v: serde_json::Value = serde_json::from_str(&put_body).unwrap();
+    assert_eq!(v["cellular_5g"]["modem"], "/dev/cdc-wdm0");
+    assert_eq!(v["cellular_5g"]["pin"], PLANTED_SIM_PIN);
+
+    let (st, _, backup_body) = send(
+        &app,
+        "GET",
+        "/api/v1/updates/backup",
+        Some(&cookie),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    assert!(
+        !backup_body.contains(PLANTED_SIM_PIN),
+        "plaintext backup leaked the 5G SIM PIN: {backup_body}"
+    );
+    let backup: serde_json::Value = serde_json::from_str(&backup_body).unwrap();
+    assert_eq!(
+        backup["config"]["network"]["cellular_5g"]["pin"],
+        "[redacted]"
+    );
+}
+
+#[tokio::test]
 async fn alerts_expose_default_packs_and_persist_push_targets() {
     // Spec §4.7: GET /alerts surfaces the per-platform default rule packs
     // (read-only) and the user-configured rules + push targets; PUT /alerts

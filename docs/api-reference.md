@@ -62,7 +62,7 @@ Base URL: `https://<device>:8443/api/v1`. All responses are JSON.
 | Method | Path | Role | Notes |
 |---|---|---|---|
 | GET | `/network` | any | `{config: NetworkConfig, live: [{name, mac, operstate}]}`. Interface config may include `mac_address` (`AA:BB:CC:DD:EE:FF`) to assign a persistent MAC through systemd-networkd. |
-| PUT | `/network` | **[admin]** | `NetworkConfig` → saved section (does not apply). Wired links are in `interfaces`; Wi-Fi networks are in `wifi`; the optional 5G profile is in `cellular_5g` with `enabled`, modem, APN, SIM, credential, roaming, and auto-connect fields. Firewall `default_open_ports` and interface `open_ports` accept `{port, protocol}` entries for custom TCP/UDP ports. |
+| PUT | `/network` | **[admin]** | `NetworkConfig` → saved section (does not apply). Wired links are in `interfaces`; Wi-Fi networks are in `wifi`. `cellular_5g` (like `vlan`/`bridges`/`cellular`) is an untyped **[v2]** placeholder — spec §4.2 explicitly defers cellular/ModemManager; it is stored but no applier acts on it in v1. Firewall `default_open_ports` and interface `open_ports` accept `{port, protocol}` entries for custom TCP/UDP ports. |
 | POST | `/network/apply` | **[admin]** | apply networkd + firewall → `{provisional: bool, confirm_window_secs}`. Provisional ⇒ confirm or auto-rollback. |
 | POST | `/network/confirm` | **[admin]** | confirm the provisional change → `{confirmed}`. |
 | POST | `/network/rollback` | **[admin]** | roll back the provisional change. |

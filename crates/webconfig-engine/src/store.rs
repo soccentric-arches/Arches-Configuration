@@ -385,10 +385,15 @@ pub mod network {
         pub bridges: Vec<serde_json::Value>,
         #[serde(default)]
         pub cellular: Vec<serde_json::Value>,
-        /// Optional 5G modem profile. Kept separate from the legacy cellular
-        /// schema slot so older persisted configurations remain readable.
+        /// [v2] 5G modem profile (spec §4.2 explicitly lists
+        /// "cellular/ModemManager" as a deferred v2 design-only slot). No
+        /// ModemManager/mmcli applier exists — demoted to the same untyped
+        /// placeholder treatment as vlan/bridges/cellular above (Checkpoint
+        /// 1.3) rather than the fully-typed `FiveGConfig` this used to be,
+        /// which read as an active v1 feature it never was: `PUT /network`
+        /// accepted and stored it, but no applier ever acted on it.
         #[serde(default)]
-        pub cellular_5g: FiveGConfig,
+        pub cellular_5g: serde_json::Value,
     }
 
     fn default_confirm_window() -> u64 {
@@ -454,30 +459,6 @@ pub mod network {
         pub priority: i32,
         #[serde(default)]
         pub hidden: bool,
-    }
-
-    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-    pub struct FiveGConfig {
-        #[serde(default)]
-        pub enabled: bool,
-        #[serde(default)]
-        pub modem: Option<String>,
-        #[serde(default)]
-        pub apn: Option<String>,
-        #[serde(default)]
-        pub pin: Option<String>,
-        #[serde(default)]
-        pub username: Option<String>,
-        #[serde(default)]
-        pub password: Option<String>,
-        #[serde(default)]
-        pub roaming: bool,
-        #[serde(default = "default_cellular_auto_connect")]
-        pub auto_connect: bool,
-    }
-
-    fn default_cellular_auto_connect() -> bool {
-        true
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]

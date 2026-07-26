@@ -120,7 +120,7 @@ export async function renderNetworkPage(api, store, mode = 'all') {
 
   const fiveGCard = Card({
     title: '5G mobile broadband',
-    subtitle: 'Enable a 5G modem before configuring its SIM and carrier connection.',
+    subtitle: 'Not implemented in this release — settings are saved but have no effect until a ModemManager-backed applier ships (deferred to v2 per spec §4.2).',
   },
     fiveGEnabled.wrap,
     el('div', { class: 'form-grid' }, fiveGModem.wrap, fiveGApn.wrap, fiveGPin.wrap, fiveGUsername.wrap, fiveGPassword.wrap),

@@ -585,12 +585,17 @@ fn redact_secrets(cfg: &mut webconfig_engine::Config, schema: &webconfig_engine:
     if !cfg.network.ap_mode.passphrase.is_empty() {
         cfg.network.ap_mode.passphrase = REDACTED.into();
     }
-    // 5G modem credentials.
-    if cfg.network.cellular_5g.pin.is_some() {
-        cfg.network.cellular_5g.pin = Some(REDACTED.into());
-    }
-    if cfg.network.cellular_5g.password.is_some() {
-        cfg.network.cellular_5g.password = Some(REDACTED.into());
+    // 5G modem credentials — cellular_5g is an untyped [v2] placeholder
+    // (Checkpoint 1.3), but still redact pin/password keys defensively if an
+    // operator has stored them there.
+    if let Some(obj) = cfg.network.cellular_5g.as_object_mut() {
+        for key in ["pin", "password"] {
+            if let Some(v) = obj.get_mut(key) {
+                if !v.is_null() {
+                    *v = serde_json::Value::String(REDACTED.into());
+                }
+            }
+        }
     }
     // MQTT broker password.
     if let Some(m) = &mut cfg.services.mqtt.password {

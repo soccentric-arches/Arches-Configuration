@@ -113,10 +113,17 @@ No item in this document is considered done if this gate is failing.
   Acceptance: validate/apply/rollback + `FileBackup` pattern matching `can.rs`; direction/active_low/initial-state for named GPIO pins and board LEDs materialize to a real boot-time mechanism (udev rule or oneshot unit) on the real sysroot; registered in `appliers::all()`.
   Verify: unit tests mirroring `can.rs`'s test suite (validation rejection cases + apply/rollback round trip against the fake sysroot); manual check that `appliers::all()` includes the new applier.
 
-- [ ] **1.2 RAUC variant compatibility check works on real hardware**
+- [x] **1.2 RAUC variant compatibility check works on real hardware**
   Where: `crates/webconfig-engine/src/update.rs::parse_manifest_from_rauc_info`.
   Acceptance: the real backend parses an actual variant field from `rauc info` (or equivalent RAUC bundle metadata), no longer hardcodes `variant: None`.
-  Verify: a test using real `rauc info`-shaped text (not just the mock backend) that proves an Arches `agx` bundle is rejected against an Arches `orin-nano` target.
+  Verify: `cargo test real_rauc_info_variant_mismatch_is_rejected_end_to_end
+    parses_variant_from_real_rauc_info_shaped_text parses_manifest_with_no_variant_line_as_none`
+    (commit deed244) — realistic quoted `rauc info` text (`Compatible:  'arches'`, etc.)
+    parses a `Variant:` line into `BundleManifest.variant`, and an `agx`-vs-`orin-nano`
+    mismatch is rejected end-to-end through the real parser + `check_compatibility_against`.
+    Also fixed a latent quote-stripping bug that would have made even platform matching fail
+    against any real bundle. `make build && make test && make lint` green (147 engine + 72
+    daemon tests).
 
 - [ ] **1.3 `network.cellular_5g` is resolved one way or the other**
   Acceptance: either (a) a real applier exists (ModemManager/mmcli-backed) with validate/apply/rollback, or (b) `FiveGConfig` is explicitly demoted to the same `serde_json::Value` v2-deferred treatment as `vlan`/`bridges`/`cellular`, and the API/schema/docs reflect that it's not active in v1.
