@@ -56,6 +56,11 @@ Base URL: `https://<device>:8443/api/v1`. All responses are JSON.
 | DELETE | `/system/users/:name` | **[admin]** | last-admin guarded. |
 | PUT | `/system/users/:name/role` | **[admin]** | `{role}`. |
 | PUT | `/system/users/:name/password` | **[admin]** | `{password}` (min 8). |
+| GET | `/system/groups` | any | `[{name, members: [username]}]`. |
+| POST | `/system/groups` | **[admin]** | `{name}` → `{name, members: []}`. |
+| DELETE | `/system/groups/:name` | **[admin]** | remove a group. |
+| PUT | `/system/groups/:group/members/:user` | **[admin]** | add `user` to `group`. |
+| DELETE | `/system/groups/:group/members/:user` | **[admin]** | remove `user` from `group`. |
 
 ## Networking (§4.2 — flagship commit/confirm)
 
