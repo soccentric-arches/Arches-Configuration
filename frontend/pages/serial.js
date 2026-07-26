@@ -26,10 +26,10 @@ export async function render(api, store) {
     });
     const save = async () => { await saveIo(api, data, { serial_enabled: subsystemEnabled.get(), serial: rows.map(row => ({ device: row.peripheral.device, enabled: row.enabled.get(), baud: Number(row.baud.get()) || 115200, mode: row.mode.get(), owner: row.owner.get() })) }); store.toast('Serial settings saved', 'success'); };
     const apply = async () => { await api.post('/api/v1/io/serial/apply', {}); store.toast('Serial applied', 'success'); };
-    const i2cTable = Table({ columns: ['Bus', 'Address', 'Status'] }, (i2cData.devices || []).map(device => [
+    const i2cTable = Table({ columns: ['Bus', 'Address', 'Status'], caption: 'I2C devices' }, (i2cData.devices || []).map(device => [
         el('code', {}, `i2c-${device.bus}`), el('code', {}, device.address), device.status,
     ])).element;
-    const spiTable = Table({ columns: ['Node', 'Bus', 'Chip Select', 'Device', 'Driver', 'Modalias'] }, (spiData.devices || []).map(device => [
+    const spiTable = Table({ columns: ['Node', 'Bus', 'Chip Select', 'Device', 'Driver', 'Modalias'], caption: 'SPI devices' }, (spiData.devices || []).map(device => [
         el('code', {}, device.name), el('code', {}, device.bus), el('code', {}, device.chip_select),
         el('code', {}, device.device_path), device.driver, el('code', {}, device.modalias),
     ])).element;

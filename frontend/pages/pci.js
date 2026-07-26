@@ -8,7 +8,7 @@ import { Table } from '../components/table.js';
 export async function render(api) {
     const data = await api.get('/api/v1/io/pci');
     const devices = Array.isArray(data.devices) ? data.devices : [];
-    const table = Table({ columns: ['Address', 'Class', 'Vendor ID', 'Product ID', 'Revision', 'Details'] }, devices.map(device => [
+    const table = Table({ columns: ['Address', 'Class', 'Vendor ID', 'Product ID', 'Revision', 'Details'], caption: 'Connected PCI devices' }, devices.map(device => [
         el('code', {}, device.address),
         device.class || '-',
         el('code', {}, device.vendor_id),

@@ -79,7 +79,7 @@ export async function render(api, store) {
             },
         }, 'Add user'))),
     }, userRows.length
-        ? Table({ columns: ['User', 'Role', 'Groups', ''] }, userRows).element
+        ? Table({ columns: ['User', 'Role', 'Groups', ''], caption: 'Users' }, userRows).element
         : EmptyState({ title: 'No users configured' }));
 
     const rootPassword = Field({ label: 'New root password (min 8)', type: 'password' });

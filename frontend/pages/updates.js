@@ -18,7 +18,7 @@ export async function render(api, store) {
     s.confirmed ? 'yes' : 'no',
     el('span', { class: 'row' }, StatusDot(s.state === 'good' ? 'ok' : s.state === 'bad' ? 'bad' : 'unknown'), s.state),
   ]);
-  const slotsTable = Table({ columns: ['Slot', 'Version', 'Running', 'Confirmed', 'State'] }, slotRows).element;
+  const slotsTable = Table({ columns: ['Slot', 'Version', 'Running', 'Confirmed', 'State'], caption: 'A/B slots' }, slotRows).element;
 
   // ---------- Install ----------
   const path = Field({ label: 'Bundle path (on device)', placeholder: '/data/updates/bundle.raucb' });

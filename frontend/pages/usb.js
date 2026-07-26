@@ -8,7 +8,7 @@ import { Table } from '../components/table.js';
 export async function render(api) {
     const data = await api.get('/api/v1/io/usb');
     const devices = Array.isArray(data.devices) ? data.devices : [];
-    const table = Table({ columns: ['Bus', 'Device', 'Vendor ID', 'Product ID', 'Description'] }, devices.map(device => [
+    const table = Table({ columns: ['Bus', 'Device', 'Vendor ID', 'Product ID', 'Description'], caption: 'Connected USB devices' }, devices.map(device => [
         el('code', {}, device.bus),
         el('code', {}, device.device),
         el('code', {}, device.vendor_id),

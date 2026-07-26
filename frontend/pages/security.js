@@ -124,7 +124,7 @@ export async function render(api, store) {
         catch (e) { store.toast(e.message, 'error'); }
       },
     }, 'Upload'))),
-  }, certRows.length ? Table({ columns: ['ID', 'Kind', 'Subject', 'Expires', ''] }, certRows).element : EmptyState({ title: 'No certificates on file' }));
+  }, certRows.length ? Table({ columns: ['ID', 'Kind', 'Subject', 'Expires', ''], caption: 'Certificates' }, certRows).element : EmptyState({ title: 'No certificates on file' }));
 
   // ---------- Exposure (read-only) ----------
   const exposureCard = Card({ title: 'Exposure', subtitle: 'Effective UI reachability and open services by interface.' },

@@ -24,7 +24,7 @@ export async function render(api, store) {
     title: 'Built-in default rules',
     subtitle: 'Per-platform rule packs shipped with the image (spec §4.7). They are always active unless you override or disable one by id below.',
   }, defaults.length
-    ? Table({ columns: ['ID', 'Metric', 'Op', 'Threshold', 'Hold (s)', 'Actions'] },
+    ? Table({ columns: ['ID', 'Metric', 'Op', 'Threshold', 'Hold (s)', 'Actions'], caption: 'Built-in default rules' },
         defaults.map(r => [r.id, r.metric, r.comparison, String(r.threshold), String(r.duration_secs || 0), (r.actions || []).join(', ')])).element
     : EmptyState({ title: 'No default rule packs for this platform' }));
 
@@ -41,7 +41,7 @@ export async function render(api, store) {
       ];
     });
     const content = rows.length
-      ? Table({ columns: ['ID', 'Metric', 'Op', 'Threshold', 'Hold (s)', 'Actions', 'Enabled', ''] }, rows).element
+      ? Table({ columns: ['ID', 'Metric', 'Op', 'Threshold', 'Hold (s)', 'Actions', 'Enabled', ''], caption: 'Alert rules' }, rows).element
       : EmptyState({ title: 'No alert rules yet' });
     tableHost.replaceChildren(content);
   }

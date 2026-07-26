@@ -15,7 +15,7 @@ export async function render(api) {
     const alertFaults = (alerts.history || []).filter(event => event.state && event.state !== 'clear').slice(-20).reverse().map(event => [event.rule_id, `Alert value ${event.value}`, event.state]);
     const faults = [...thermalFaults, ...alertFaults];
     const content = faults.length
-        ? Table({ columns: ['Source', 'Condition', 'State'] }, faults.map(([source, condition, state]) => [source, condition, el('span', { class: 'row' }, StatusDot(state === 'active' ? 'bad' : 'unknown'), state)])).element
+        ? Table({ columns: ['Source', 'Condition', 'State'], caption: 'Active faults' }, faults.map(([source, condition, state]) => [source, condition, el('span', { class: 'row' }, StatusDot(state === 'active' ? 'bad' : 'unknown'), state)])).element
         : EmptyState({ title: 'No active faults reported' });
 
     return el('div', {},

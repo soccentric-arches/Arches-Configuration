@@ -32,6 +32,7 @@ export async function render(api, store) {
   ]);
   const sourceList = Table({
     columns: ['Source', 'Identifier', 'Description', 'Status'],
+    caption: 'Available log sources',
   }, sourceRows).element;
   const sourcesCard = Card({
     title: 'Available log sources',

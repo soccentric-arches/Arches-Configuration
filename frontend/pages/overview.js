@@ -68,7 +68,7 @@ function renderStorage(vitals) {
     if (!rows.length) {
         return el('div', { class: 'muted' }, 'No storage status reported.');
     }
-    return Table({ columns: ['Drive', 'Mount', 'Filesystem', 'Used', 'Available'] }, rows).element;
+    return Table({ columns: ['Drive', 'Mount', 'Filesystem', 'Used', 'Available'], caption: 'Storage status' }, rows).element;
 }
 
 function renderInterfaces(network) {
@@ -88,7 +88,7 @@ function renderInterfaces(network) {
             el('code', {}, iface.mac || '—'),
         ];
     });
-    return Table({ columns: ['Interface', 'State', 'IP addresses', 'MAC address'] }, rows).element;
+    return Table({ columns: ['Interface', 'State', 'IP addresses', 'MAC address'], caption: 'Network interfaces' }, rows).element;
 }
 
 function renderPhysicalDevices(usb, pci) {
@@ -104,7 +104,7 @@ function renderPhysicalDevices(usb, pci) {
         ]));
     }
     if (!devices.length) return el('div', { class: 'muted' }, 'No physical USB or PCI hardware reported.');
-    return Table({ columns: ['Bus', 'Address', 'Vendor / product', 'Hardware'] }, devices).element;
+    return Table({ columns: ['Bus', 'Address', 'Vendor / product', 'Hardware'], caption: 'Physical hardware' }, devices).element;
 }
 
 export async function render(api, store) {

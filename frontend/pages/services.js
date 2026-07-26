@@ -22,7 +22,7 @@ export async function render(api, store) {
   // ---------- Services table (with an expandable per-unit journal row) ----------
   let servicesTable;
   if ((list || []).length) {
-    const { element, tbody } = Table({ columns: ['Unit', 'Active', 'Enabled', ''] }, []);
+    const { element, tbody } = Table({ columns: ['Unit', 'Active', 'Enabled', ''], caption: 'Services' }, []);
     for (const row of list) {
       const unit = row.unit;
       const st = row.status || {};
