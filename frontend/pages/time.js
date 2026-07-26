@@ -8,37 +8,19 @@ import { Field } from '../components/field.js';
 import { Button } from '../components/button.js';
 import { ActionList, ActionRow } from '../components/action-row.js';
 
-const US_TIMEZONES = [
-    ['America/Adak', 'Adak, Alaska'],
-    ['America/Anchorage', 'Anchorage, Alaska'],
-    ['America/Boise', 'Boise, Idaho'],
-    ['America/Chicago', 'Central Time'],
-    ['America/Denver', 'Mountain Time'],
-    ['America/Detroit', 'Detroit, Michigan'],
-    ['America/Indiana/Indianapolis', 'Indianapolis, Indiana'],
-    ['America/Indiana/Knox', 'Knox, Indiana'],
-    ['America/Indiana/Marengo', 'Marengo, Indiana'],
-    ['America/Indiana/Petersburg', 'Petersburg, Indiana'],
-    ['America/Indiana/Tell_City', 'Tell City, Indiana'],
-    ['America/Indiana/Vevay', 'Vevay, Indiana'],
-    ['America/Indiana/Vincennes', 'Vincennes, Indiana'],
-    ['America/Indiana/Winamac', 'Winamac, Indiana'],
-    ['America/Juneau', 'Juneau, Alaska'],
-    ['America/Kentucky/Louisville', 'Louisville, Kentucky'],
-    ['America/Kentucky/Monticello', 'Monticello, Kentucky'],
-    ['America/Los_Angeles', 'Pacific Time'],
-    ['America/Menominee', 'Menominee, Michigan'],
-    ['America/Metlakatla', 'Metlakatla, Alaska'],
-    ['America/New_York', 'Eastern Time'],
-    ['America/Nome', 'Nome, Alaska'],
-    ['America/North_Dakota/Beulah', 'Beulah, North Dakota'],
-    ['America/North_Dakota/Center', 'Center, North Dakota'],
-    ['America/North_Dakota/New_Salem', 'New Salem, North Dakota'],
-    ['America/Phoenix', 'Phoenix, Arizona'],
-    ['America/Sitka', 'Sitka, Alaska'],
-    ['America/Yakutat', 'Yakutat, Alaska'],
-    ['Pacific/Honolulu', 'Honolulu, Hawaii'],
-];
+// Full IANA tzdata catalog, sourced at runtime from the browser's own tz
+// database via Intl.supportedValuesOf (ECMA-402, all evergreen browsers) —
+// no bundler, no build step, no hardcoded/stale/US-only list to maintain.
+function allTimezones() {
+    try {
+        return Intl.supportedValuesOf('timeZone');
+    } catch (_) {
+        // Only reachable on a browser old enough to lack Intl.supportedValuesOf
+        // (added ~2022) — a minimal fallback keeps the page usable rather than
+        // throwing.
+        return ['UTC', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles'];
+    }
+}
 
 export async function render(api, store) {
     const cfg = await api.get('/api/v1/system');
@@ -56,7 +38,7 @@ export async function render(api, store) {
     } catch (_) { /* manifest optional — banner is best-effort */ }
     const t = cfg.time || {};
     const currentTimezone = t.timezone;
-    const timezoneOptions = US_TIMEZONES.map(([value, label]) => ({ value, label }));
+    const timezoneOptions = allTimezones().map(zone => ({ value: zone, label: zone.replace(/_/g, ' ') }));
     if (currentTimezone && !timezoneOptions.some(option => option.value === currentTimezone)) {
         timezoneOptions.unshift({ value: currentTimezone, label: `${currentTimezone} (current)` });
     }
@@ -66,7 +48,7 @@ export async function render(api, store) {
         type: 'select',
         value: currentTimezone,
         options: timezoneOptions,
-        help: 'Choose a US timezone for displayed times and scheduled operations.',
+        help: 'IANA timezone for displayed times and scheduled operations.',
     });
     const manualDt = Field({
         label: 'Manual datetime (air-gapped)',
