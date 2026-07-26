@@ -71,6 +71,26 @@ impl WireGuardApplier {
                     message: format!("peer {} allowed_ips empty", p.public_key),
                 });
             }
+            if !valid_allowed_ips(&p.allowed_ips) {
+                return Err(ApplyError::Validation {
+                    stage: crate::applier::ApplyStage::Validate,
+                    message: format!(
+                        "peer {} allowed_ips {:?} is not a comma-separated CIDR list",
+                        p.public_key, p.allowed_ips
+                    ),
+                });
+            }
+            if let Some(ep) = &p.endpoint {
+                if !valid_endpoint(ep) {
+                    return Err(ApplyError::Validation {
+                        stage: crate::applier::ApplyStage::Validate,
+                        message: format!(
+                            "peer {} endpoint {:?} is not a valid host:port",
+                            p.public_key, ep
+                        ),
+                    });
+                }
+            }
         }
         Ok(())
     }
@@ -98,6 +118,50 @@ impl WireGuardApplier {
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
         Ok(key)
     }
+}
+
+/// `AllowedIPs` is a comma-separated CIDR list per wg-quick convention (e.g.
+/// `10.0.0.2/32, 10.0.1.0/24`) — validate every entry parses as an address
+/// with a prefix within that family's bit width.
+fn valid_allowed_ips(value: &str) -> bool {
+    value.split(',').map(str::trim).all(|entry| {
+        let Some((addr_s, prefix_s)) = entry.split_once('/') else {
+            return false;
+        };
+        let Ok(prefix) = prefix_s.parse::<u8>() else {
+            return false;
+        };
+        match addr_s.parse::<std::net::IpAddr>() {
+            Ok(std::net::IpAddr::V4(_)) => prefix <= 32,
+            Ok(std::net::IpAddr::V6(_)) => prefix <= 128,
+            Err(_) => false,
+        }
+    })
+}
+
+/// `Endpoint = host:port` per wg-quick convention. A bracketed host
+/// (`[fd00::1]:51820`) must be a real IPv6 literal; otherwise the host is
+/// confined to a safe charset (hostname or bare IPv4) so it can never inject
+/// shell/config syntax into the generated wg0.conf — same convention as the
+/// journald applier's remote-syslog host guard.
+fn valid_endpoint(value: &str) -> bool {
+    let Some((host, port_s)) = value.rsplit_once(':') else {
+        return false;
+    };
+    let Ok(port) = port_s.parse::<u16>() else {
+        return false;
+    };
+    if port == 0 {
+        return false;
+    }
+    if let Some(inner) = host.strip_prefix('[').and_then(|h| h.strip_suffix(']')) {
+        return inner.parse::<std::net::Ipv6Addr>().is_ok();
+    }
+    if host.is_empty() {
+        return false;
+    }
+    host.bytes()
+        .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-')
 }
 
 impl Default for WireGuardApplier {
@@ -190,6 +254,62 @@ mod tests {
         let mut c = Config::default();
         c.security.wireguard.peers.push(peer("", "10.0.0.2/32"));
         assert!(a.validate(&sys, &c).is_err());
+    }
+
+    #[test]
+    fn accepts_multi_entry_allowed_ips_and_ipv6() {
+        assert!(valid_allowed_ips("10.0.0.2/32"));
+        assert!(valid_allowed_ips("10.0.0.0/24, 10.0.1.5/32"));
+        assert!(valid_allowed_ips("fd00::/64"));
+    }
+
+    #[test]
+    fn rejects_malformed_allowed_ips() {
+        let a = WireGuardApplier::new();
+        let sys = Sysroot::at("/tmp/never");
+        for bad in [
+            "10.0.0.2",
+            "not-an-ip/32",
+            "10.0.0.2/33",
+            "10.0.0.2/32,",
+            "",
+        ] {
+            let mut c = Config::default();
+            c.security.wireguard.peers.push(peer("PUB1", bad));
+            assert!(
+                a.validate(&sys, &c).is_err(),
+                "expected {bad:?} to be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn accepts_valid_endpoint_shapes() {
+        assert!(valid_endpoint("vpn.example.com:51820"));
+        assert!(valid_endpoint("203.0.113.5:51820"));
+        assert!(valid_endpoint("[fd00::1]:51820"));
+    }
+
+    #[test]
+    fn rejects_malformed_endpoint() {
+        let a = WireGuardApplier::new();
+        let sys = Sysroot::at("/tmp/never");
+        for bad in [
+            "vpn.example.com",   // missing port
+            "vpn.example.com:0", // port 0
+            "vpn.example.com:not-a-port",
+            "[not-ipv6]:51820",
+            "vpn.example.com; rm -rf /:51820", // shell metacharacters
+        ] {
+            let mut c = Config::default();
+            let mut p = peer("PUB1", "10.0.0.2/32");
+            p.endpoint = Some(bad.into());
+            c.security.wireguard.peers.push(p);
+            assert!(
+                a.validate(&sys, &c).is_err(),
+                "expected {bad:?} to be rejected"
+            );
+        }
     }
 
     #[test]
