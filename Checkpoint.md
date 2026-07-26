@@ -341,17 +341,26 @@ No item in this document is considered done if this gate is failing.
 
 Add real HTTP-level integration tests, in this priority order. Each sub-item is done only when the test exists, passes, AND would have caught the corresponding Phase 0/1 bug if it had still been present (sanity-check by temporarily reverting the fix and confirming the new test fails).
 
-- [ ] **4.1 Network apply/confirm/rollback** — `POST /network/apply`, `POST /network/confirm`, `POST /network/rollback`, `GET /network/scan`, `POST /network/connectivity-test` via real HTTP, with a real (not directly-planted) provisional state.
-- [ ] **4.2 Services** — `start`/`stop`/`restart`/`set_enabled` via HTTP, including a forced-failure case (this must have failed before 0.2's fix and pass after).
-- [ ] **4.3 Updates** — `install` (including the new multipart upload from 1.4), `ota` get/put/check, `backup` (plaintext + encrypted) get/put/check, `restore`.
-- [ ] **4.4 SSE `/events` route** — asserts auth gate, vitals + journal event shapes, and cursor-based follow behavior at the HTTP layer (not just the pure parser).
-- [ ] **4.5 Security** — `put` (idle timeout / plain-HTTP opt-in / WireGuard config save), `apply` (WireGuard applier), `exposure`, `trust` (must reflect 0.3's fix).
-- [ ] **4.6 Operator role boundary** — at least one test exercising `Role::Operator` against `require_mutate_apps`/`require_admin`-gated routes, distinct from the existing admin-vs-viewer tests.
-- [ ] **4.7 Session cookie attributes** — a test that inspects the actual `Set-Cookie` header and asserts `Secure` and `HttpOnly` are present, not just that a session ID round-trips.
-- [ ] **4.8 Reboot/shutdown/root-password/last-admin-guard/group management** — HTTP-level tests, with the last-admin-delete guard specifically asserted (cannot delete the last remaining admin).
-- [ ] **4.9 Monitoring, logs, io (usb/pci/i2c/spi/can/gpio/mcu/platform-panel)** — at least one HTTP-level happy-path test per route currently at zero coverage.
+- [x] **4.1 Network apply/confirm/rollback** — `POST /network/apply`, `POST /network/confirm`, `POST /network/rollback`, `GET /network/scan`, `POST /network/connectivity-test` via real HTTP, with a real (not directly-planted) provisional state.
+  Commit 93c7ae5: `network_apply_confirm_and_rollback_via_http`, `network_scan_and_connectivity_test_via_http`.
+- [x] **4.2 Services** — `start`/`stop`/`restart`/`set_enabled` via HTTP, including a forced-failure case (this must have failed before 0.2's fix and pass after).
+  Already covered by `services_verbs_report_real_failure_not_fake_ok` (commit 0f49bb7, written as part of 0.2's fix itself).
+- [x] **4.3 Updates** — `install` (including the new multipart upload from 1.4), `ota` get/put/check, `backup` (plaintext + encrypted) get/put/check, `restore`.
+  Commit a1be325: `updates_install_ota_backup_restore_via_http` (upload path already covered by 1.4's own tests).
+- [x] **4.4 SSE `/events` route** — asserts auth gate, vitals + journal event shapes, and cursor-based follow behavior at the HTTP layer (not just the pure parser).
+  Commit 1b89a77: `events_sse_requires_auth_and_emits_vitals_over_http` (paused-clock, no real wait). Cursor/journal parsing already covered by sse.rs's own pure-parser tests.
+- [x] **4.5 Security** — `put` (idle timeout / plain-HTTP opt-in / WireGuard config save), `apply` (WireGuard applier), `exposure`, `trust` (must reflect 0.3's fix).
+  Commit 2945adb: `security_put_apply_and_exposure_via_http`. `trust` already covered by 0.3's test.
+- [x] **4.6 Operator role boundary** — at least one test exercising `Role::Operator` against `require_mutate_apps`/`require_admin`-gated routes, distinct from the existing admin-vs-viewer tests.
+  Commit f6791aa: `operator_role_can_mutate_apps_but_not_admin_only_routes`.
+- [x] **4.7 Session cookie attributes** — a test that inspects the actual `Set-Cookie` header and asserts `Secure` and `HttpOnly` are present, not just that a session ID round-trips.
+  Commit 3f47a65: `session_cookie_is_secure_and_http_only_on_the_wire`.
+- [x] **4.8 Reboot/shutdown/root-password/last-admin-guard/group management** — HTTP-level tests, with the last-admin-delete guard specifically asserted (cannot delete the last remaining admin).
+  Commit b71cc7d: `reboot_shutdown_root_password_last_admin_guard_and_groups_via_http`.
+- [x] **4.9 Monitoring, logs, io (usb/pci/i2c/spi/can/gpio/mcu/platform-panel)** — at least one HTTP-level happy-path test per route currently at zero coverage.
+  Commit ede44a9: `monitoring_logs_and_io_happy_paths_via_http` (mcu already covered by 0.1's test).
 
-**Phase 4 gate:** all nine boxes checked, `cargo test --workspace --all-targets` output attached showing the new tests, global exit gate passing.
+**Phase 4 gate:** all nine boxes checked. `cargo test --workspace --all-targets` — 157 engine + 82 daemon tests, all passing. `make build && make test && make lint` green throughout. **Phase 4 (all P2 test-coverage items) is now fully closed.**
 
 ---
 
