@@ -30,9 +30,21 @@ path — an earlier YAML variant at `<share>/board.yaml` has been removed.
   "secure_boot": true,         // trust panel
   "service_allowlist": [ "sshd.service", "..." ],  // curated services (§4.3)
   "peripherals": [ { /* Peripheral */ } ],
-  "dashboard_tiles": [ { /* DashboardTile */ } ]
+  "dashboard_tiles": [ { /* DashboardTile */ } ],
+  "default_alert_rules": [ { /* AlertRule */ } ],  // per-platform default rule packs (§4.7)
+  "config_defaults": { /* a full Config tree, optional */ }
 }
 ```
+
+`config_defaults` seeds the live SQLite configuration **only on first boot**
+(`ConfigStore::with_defaults`, `crates/webconfigd/src/bootstrap.rs`) — every
+subsequent edit is stored in SQLite and does not re-read this field. It is
+optional; when absent, `Config::default()` is used. `board-manifests/
+generic.yaml` uses it to seed a sane starting point (e.g. NTP enabled) for
+the generic-Linux dev/CI fallback; `board-manifests/arches.json` does not
+currently declare one (Phase 5 data-quality note: confirm whether Arches
+should also ship first-boot defaults, or whether relying on
+`Config::default()` is intentional).
 
 ## Peripheral
 
