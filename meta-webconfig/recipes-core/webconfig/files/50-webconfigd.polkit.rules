@@ -23,15 +23,25 @@ polkit.addRule(function(action, subject) {
     if (managed) {
         var unit = action.lookup("unit");
         var verb = action.lookup("verb"); // start | stop | restart | enable | disable
-        // The allowlist mirrors the board manifest's service_allowlist. Update
-        // both together when a platform image changes its curated services.
+        // The allowlist mirrors board-manifests/arches.json's
+        // service_allowlist EXACTLY — update both together when the platform
+        // image changes its curated services (Checkpoint 3.3). rauc.service
+        // and mosquitto.service were previously listed here but are neither
+        // in the manifest's service_allowlist nor managed as systemd units
+        // anywhere in the daemon (RAUC is invoked as a CLI tool, not
+        // start/stop/restart'd as a unit; MQTT connectivity is a plain TCP
+        // check, no local broker) — removed as stale.
         var allowed = [
-            "webconfigd.service",
-            "systemd-networkd.service",
             "sshd.service",
-            "serial-getty@ttyS0.service",
-            "rauc.service",
-            "mosquitto.service"
+            "systemd-networkd.service",
+            "systemd-resolved.service",
+            "wpa_supplicant.service",
+            "webconfigd.service",
+            "nvargus-daemon.service",
+            "nvfancontrol.service",
+            "nv_l4t_bootloader.service",
+            "nvpmodel.service",
+            "jetson_clocks.service"
         ];
         if (allowed.indexOf(unit) >= 0) {
             return polkit.Result.YES;

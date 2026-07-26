@@ -164,6 +164,40 @@ mod tests {
     }
 
     #[test]
+    fn polkit_allowlist_matches_manifest_service_allowlist() {
+        // Checkpoint 3.3: the polkit rule's allowed-unit list must exactly
+        // match board-manifests/arches.json's service_allowlist, including
+        // Arches-critical units (nvpmodel, nv_l4t_bootloader, jetson_clocks,
+        // nvfancontrol, nvargus-daemon) — this test fails loudly the moment
+        // the two drift apart again, instead of relying on a one-time manual
+        // diff.
+        let manifest: BoardManifest =
+            serde_json::from_str(include_str!("../../../board-manifests/arches.json")).unwrap();
+        let polkit = include_str!(
+            "../../../meta-webconfig/recipes-core/webconfig/files/50-webconfigd.polkit.rules"
+        );
+        let start = polkit
+            .find("var allowed = [")
+            .expect("polkit allowlist array present")
+            + "var allowed = [".len();
+        let end = start
+            + polkit[start..]
+                .find(']')
+                .expect("polkit allowlist array closed");
+        let polkit_allowed: std::collections::BTreeSet<String> = polkit[start..end]
+            .split(',')
+            .map(|s| s.trim().trim_matches('"').to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        let manifest_allowed: std::collections::BTreeSet<String> =
+            manifest.service_allowlist.iter().cloned().collect();
+        assert_eq!(
+            polkit_allowed, manifest_allowed,
+            "polkit allowlist and board-manifests/arches.json's service_allowlist have drifted apart"
+        );
+    }
+
+    #[test]
     fn generic_yaml_manifest_parses_with_defaults() {
         let manifest: BoardManifest =
             serde_yaml::from_str(include_str!("../../../board-manifests/generic.yaml")).unwrap();
