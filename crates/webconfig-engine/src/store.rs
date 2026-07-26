@@ -33,6 +33,8 @@ pub enum StoreError {
     Io(#[from] std::io::Error),
     #[error("schema version mismatch: file={file} engine={engine}")]
     Version { file: u32, engine: u32 },
+    #[error("no migration registered for schema version {0}")]
+    Migration(u32),
     #[error("schema error: {0}")]
     Schema(#[from] crate::schema::SchemaError),
 }
@@ -157,8 +159,33 @@ impl ConfigStore {
                 engine: CONFIG_SCHEMA_VERSION,
             });
         }
-        // Older file than engine: restore tolerates version skew by keeping
-        // unknown fields (serde default) — no migration needed for v1.
+        Self::migrate(file)
+    }
+
+    /// Migrate a config tree loaded at `file.schema_version` forward to
+    /// `CONFIG_SCHEMA_VERSION`, one version step at a time. Add a new match
+    /// arm here (and bump `CONFIG_SCHEMA_VERSION` in `lib.rs`) whenever a
+    /// schema change needs real data transformation beyond serde's
+    /// `#[serde(default)]` tolerance — e.g. renaming or restructuring a field
+    /// rather than just adding one. Currently a no-op: v1 is the only schema
+    /// version ever persisted, and every field addition so far has been
+    /// purely additive (new fields default via serde, nothing to transform).
+    /// The lint allows below are scaffold-only: with a single catch-all arm
+    /// the loop is trivially one pass, but clippy would otherwise block
+    /// landing this extension point until a real migration arm exists.
+    #[allow(
+        clippy::never_loop,
+        clippy::match_single_binding,
+        unreachable_code,
+        unused_mut
+    )]
+    fn migrate(mut file: ConfigFile) -> Result<ConfigFile, StoreError> {
+        while file.schema_version < CONFIG_SCHEMA_VERSION {
+            file = match file.schema_version {
+                // 1 => migrate_v1_to_v2(file),
+                other => return Err(StoreError::Migration(other)),
+            };
+        }
         Ok(file)
     }
 
@@ -949,6 +976,29 @@ mod tests {
             reloaded.config.system.hostname.as_deref(),
             Some("arches-01")
         );
+    }
+
+    #[test]
+    fn migrate_is_a_no_op_at_current_schema_version() {
+        let file = ConfigFile {
+            schema_version: CONFIG_SCHEMA_VERSION,
+            config: Config::default(),
+        };
+        let migrated = ConfigStore::migrate(file).unwrap();
+        assert_eq!(migrated.schema_version, CONFIG_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn migrate_errors_on_an_older_version_with_no_registered_step() {
+        // No migration is registered below CONFIG_SCHEMA_VERSION (== 1) yet —
+        // a file claiming an older version has no path forward and must
+        // error, not silently pass through as if nothing changed.
+        let file = ConfigFile {
+            schema_version: 0,
+            config: Config::default(),
+        };
+        let err = ConfigStore::migrate(file).unwrap_err();
+        assert!(matches!(err, StoreError::Migration(0)));
     }
 
     #[test]
