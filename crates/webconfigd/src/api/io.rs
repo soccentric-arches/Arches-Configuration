@@ -18,11 +18,27 @@ pub async fn get(
     State(app): State<AppState>,
     _role: AuthRole,
 ) -> ApiResult<Json<serde_json::Value>> {
+    let io = app.engine.load()?.io;
+    let version = io_version(&io);
     Ok(Json(serde_json::json!({
         "manifest": app.manifest.peripherals,
-        "config": app.engine.load()?.io,
+        "config": io,
         "tiles": app.manifest.dashboard_tiles,
+        // Fingerprint of the current IoConfig, for the PUT concurrency guard
+        // below (Phase 5 polish: no version/ETag guard previously existed,
+        // so two admins editing different peripherals concurrently could
+        // silently clobber each other's read-modify-write).
+        "io_version": version,
     })))
+}
+
+/// Short content fingerprint of an `IoConfig`, used as a simple ETag-like
+/// concurrency token — no new persisted field/schema change needed.
+fn io_version(io: &IoConfig) -> String {
+    use sha2::{Digest, Sha256};
+    let json = serde_json::to_vec(io).unwrap_or_default();
+    let hash = Sha256::digest(json);
+    hex::encode(&hash[..8])
 }
 
 /// `GET /api/v1/io/usb` - enumerate live USB devices with `lsusb`.
@@ -432,9 +448,23 @@ pub async fn put(
     State(app): State<AppState>,
     role: AuthRole,
     session: Session,
+    headers: axum::http::HeaderMap,
     Json(req): Json<IoConfig>,
 ) -> ApiResult<Json<IoConfig>> {
     role.require_admin("io.put")?;
+    // Optimistic-concurrency guard (Phase 5 polish): a client that sent the
+    // io_version it loaded via GET /io as If-Match is rejected with 409 if
+    // the config changed underneath it — silent-clobber prevention, not a
+    // hard requirement (older/other clients that omit If-Match still work
+    // exactly as before).
+    if let Some(if_match) = headers.get("if-match").and_then(|v| v.to_str().ok()) {
+        let current_version = io_version(&app.engine.load()?.io);
+        if if_match != current_version {
+            return Err(ApiError::Conflict(
+                "io config changed since you loaded it — reload and retry".into(),
+            ));
+        }
+    }
     // Serial ownership conflict prevention (spec §4.9): no two ports may claim
     // the same non-unassigned owner when the owner is a singleton like console,
     // and no two ports may target the same device (ownership is per-device).

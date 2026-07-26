@@ -2243,6 +2243,90 @@ async fn mcu_firmware_verifies_real_signature_and_rejects_tampering() {
 }
 
 #[tokio::test]
+async fn io_put_rejects_stale_if_match_but_allows_omitted_header() {
+    // Checkpoint Phase 5 item 7: PUT /io has an optimistic-concurrency guard
+    // (If-Match against a GET-supplied io_version fingerprint) preventing two
+    // concurrent editors from silently clobbering each other — but it's
+    // opt-in via the header, so a client that omits it still works exactly
+    // as before.
+    let (app, _dir) = build_app().await;
+    let (cookie, csrf) = boot_admin(&app).await;
+
+    let (_, _, get_body) = send(&app, "GET", "/api/v1/io", Some(&cookie), None, None).await;
+    let v: serde_json::Value = serde_json::from_str(&get_body).unwrap();
+    let stale_version = v["io_version"].as_str().unwrap().to_string();
+
+    let body_a = serde_json::json!({
+        "serial": [], "serial_enabled": true, "can": [], "can_enabled": true,
+        "gpio": [], "gpio_enabled": true, "cameras": [], "cameras_enabled": true,
+        "mcu": null, "board_leds": {},
+    })
+    .to_string();
+    let body_b = serde_json::json!({
+        "serial": [], "serial_enabled": false, "can": [], "can_enabled": true,
+        "gpio": [], "gpio_enabled": true, "cameras": [], "cameras_enabled": true,
+        "mcu": null, "board_leds": {},
+    })
+    .to_string();
+
+    // A concurrent editor's write lands first (no If-Match — same behavior as
+    // before this fix), changing the fingerprint out from under the version
+    // captured above.
+    let (st, _, _) = send(
+        &app,
+        "PUT",
+        "/api/v1/io",
+        Some(&cookie),
+        Some(&csrf),
+        Some(&body_a),
+    )
+    .await;
+    assert_eq!(
+        st,
+        StatusCode::OK,
+        "baseline write (no If-Match) must succeed"
+    );
+
+    // This editor's write, using the now-stale version it originally loaded,
+    // must be rejected rather than silently overwriting the other edit.
+    let req = Request::builder()
+        .method("PUT")
+        .uri("/api/v1/io")
+        .header("cookie", &cookie)
+        .header("X-CSRF-Token", &csrf)
+        .header("content-type", "application/json")
+        .header("if-match", &stale_version)
+        .body(Body::from(body_b.clone()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::CONFLICT,
+        "a stale If-Match must be rejected"
+    );
+
+    // A PUT with the CURRENT version as If-Match succeeds.
+    let (_, _, get_body) = send(&app, "GET", "/api/v1/io", Some(&cookie), None, None).await;
+    let v: serde_json::Value = serde_json::from_str(&get_body).unwrap();
+    let current_version = v["io_version"].as_str().unwrap().to_string();
+    let req = Request::builder()
+        .method("PUT")
+        .uri("/api/v1/io")
+        .header("cookie", &cookie)
+        .header("X-CSRF-Token", &csrf)
+        .header("content-type", "application/json")
+        .header("if-match", &current_version)
+        .body(Body::from(body_b))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "a fresh If-Match must succeed"
+    );
+}
+
+#[tokio::test]
 async fn serial_apply_writes_baud_unit_and_rejects_conflicts() {
     // Spec §4.9: serial ownership + baud is applied (not just persisted), and
     // duplicate-device conflicts are prevented at PUT time.

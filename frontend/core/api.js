@@ -11,8 +11,8 @@ let unauthorizedHandler = null;
 export function setCsrf(t) { csrfToken = t; }
 export function onUnauthorized(fn) { unauthorizedHandler = fn; }
 
-async function request(method, url, body, isForm) {
-  const headers = {};
+async function request(method, url, body, isForm, extraHeaders) {
+  const headers = { ...extraHeaders };
   if (body != null && !isForm) headers['Content-Type'] = 'application/json';
   if (csrfToken && method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
     headers['X-CSRF-Token'] = csrfToken;
@@ -41,7 +41,7 @@ async function request(method, url, body, isForm) {
 export const api = {
   get: (url) => request('GET', url, null),
   post: (url, body) => request('POST', url, body),
-  put: (url, body) => request('PUT', url, body),
+  put: (url, body, extraHeaders) => request('PUT', url, body, false, extraHeaders),
   del: (url) => request('DELETE', url, null),
   // Raw byte upload (no multipart wrapping — the server reads the body as
   // bytes directly). `file` is a File/Blob; metadata travels in the URL query

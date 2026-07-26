@@ -159,8 +159,8 @@ Base URL: `https://<device>:8443/api/v1`. All responses are JSON.
 
 | Method | Path | Role | Notes |
 |---|---|---|---|
-| GET | `/io` | any | `{manifest, config, tiles}`. `config.board_leds` contains system, OS, hardware, and optional application LED assignments. |
-| PUT | `/io` | **[admin]** | `IoConfig` (rejects serial not in manifest; owner-conflict guard). `serial_enabled`, `can_enabled`, `gpio_enabled`, and `cameras_enabled` gate their subsystem detail settings. Each serial, CAN, GPIO, and camera entry also has an `enabled` field. `board_leds` controls the automatic status policy. |
+| GET | `/io` | any | `{manifest, config, tiles, io_version}`. `config.board_leds` contains system, OS, hardware, and optional application LED assignments. `io_version` is a short content fingerprint of `config` for the optimistic-concurrency guard below. |
+| PUT | `/io` | **[admin]** | `IoConfig` (rejects serial not in manifest; owner-conflict guard). `serial_enabled`, `can_enabled`, `gpio_enabled`, and `cameras_enabled` gate their subsystem detail settings. Each serial, CAN, GPIO, and camera entry also has an `enabled` field. `board_leds` controls the automatic status policy. Optional `If-Match: <io_version>` header — if present and stale (config changed since the client's GET), returns 409 instead of silently clobbering the concurrent edit; omitting it preserves the old last-write-wins behavior. |
 | POST | `/io/can/apply` | **[admin]** | apply CAN. |
 | POST | `/io/gpio/:name/toggle` | **[op+]** | manifest-named pins only. |
 | POST | `/io/i2c/scan?bus=` | **[admin]** | `{bus, addresses}`. |
