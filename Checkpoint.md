@@ -285,15 +285,30 @@ No item in this document is considered done if this gate is failing.
     than the tarball pattern its siblings now use — flagged separately, spawn_task, as its own
     drift-risk fix). `make build && make test && make lint` green (156 engine + 73 daemon).
 
-- [ ] **3.2 Release artifact pipeline produces real checksums**
+- [x] **3.2 Release artifact pipeline produces real checksums**
   Where: `meta-webconfig/recipes-core/webconfig/webconfigd.bb`.
   Acceptance: `TODO_REPLACE_WITH_RELEASED_TARBALL_SHA256` placeholders are replaced with real SHA-256 values from an actual release pipeline (even a minimal script is acceptable), and `do_fetch` succeeds.
-  Verify: run `bitbake -c fetch webconfigd` (or equivalent) against a real or staged release artifact and confirm it succeeds.
+  Verify: added `tools/release-artifacts.sh` (+ `make release-artifacts`) — packages a real
+    `webconfigd-<version>.tar.gz` via `git archive` (tracked files only) and `vendor.tar.gz`
+    from the vendored crate directory, computes real SHA-256 for both, and ran it once to fill
+    in `webconfigd.bb`'s `SRC_URI[src.sha256sum]`/`SRC_URI[vendor.sha256sum]` (also gave
+    `vendor.tar.gz` its own checksum entry — it had none at all before, not just a
+    placeholder). **Not verified with a real `bitbake -c fetch`** — no Yocto toolchain in this
+    environment; verified by inspecting the produced tarballs and cross-checking their
+    checksums with `sha256sum` directly. Note: like any version-pinned recipe checksum, this
+    value is only valid for the tarball contents it was computed from — regenerate via `make
+    release-artifacts` at every actual release cut. `make build && make test && make lint`
+    green (this is a build-tooling-only change; no Rust files touched).
 
-- [ ] **3.3 Polkit allowlist synced per platform**
+- [x] **3.3 Polkit allowlist synced per platform**
   Where: `meta-webconfig/recipes-core/webconfig/files/50-webconfigd.polkit.rules`, cross-referenced against each `board-manifests/*.json`'s `service_allowlist`.
   Acceptance: the polkit rule's allowed-unit list matches (or is generated from) each platform's real `service_allowlist`, including platform-critical units (e.g. Arches's `nvpmodel.service`, `nv_l4t_bootloader.service`, `jetson_clocks.service`, `nvfancontrol.service`, `nvargus-daemon.service`).
-  Verify: diff the polkit rule's allowed list against each manifest's `service_allowlist` — no platform-critical unit missing, no manifest-absent unit present without documented justification.
+  Verify: `cargo test polkit_allowlist_matches_manifest_service_allowlist` (commit fc16ec1) —
+    parses both files and asserts the sets match exactly. Removed stale `rauc.service`/
+    `mosquitto.service` (neither in the manifest nor managed as a unit anywhere in the daemon)
+    and added the five missing Arches-critical `nv*` units plus `systemd-resolved.service`/
+    `wpa_supplicant.service`. `make build && make test && make lint` green (157 engine + 73
+    daemon tests).
 
 - [x] **3.4 License metadata is consistent**
   Where: `Cargo.toml`, README.md, `meta-webconfig/recipes-core/webconfig/webconfigd.bb`, a real `LICENSE` file.

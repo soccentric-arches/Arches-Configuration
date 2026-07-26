@@ -18,15 +18,21 @@ LICENSE = "CLOSED"
 LIC_FILES_CHKSUM = "file://LICENSE;md5=3382002c026d2dcb5817068a8f184313"
 
 SRC_URI = " \
-    file://webconfigd-${PV}.tar.gz;unpack=1 \
-    file://vendor.tar.gz;unpack=1;subdir=webconfigd-${PV} \
+    file://webconfigd-${PV}.tar.gz;unpack=1;name=src \
+    file://vendor.tar.gz;unpack=1;subdir=webconfigd-${PV};name=vendor \
     file://webconfigd.service \
     file://webconfigd.env \
     file://50-webconfigd.polkit.rules \
 "
-# SHA-256 of the source + vendored tarballs are recorded here for the SPDX/SBOM
-# and supply-chain audit (global §1: reproducible builds, pinned versions).
-SRC_URI[sha256sum] = "TODO_REPLACE_WITH_RELEASED_TARBALL_SHA256"
+# SHA-256 of the source + vendored tarballs, for the SPDX/SBOM and
+# supply-chain audit (global §1: reproducible builds, pinned versions).
+# Real checksums (Checkpoint 3.2), produced by `make release-artifacts`
+# (tools/release-artifacts.sh) against this commit. Regenerate both at every
+# release cut — like any recipe fetching a version-pinned tarball, this
+# checksum is only valid for the exact tarball contents it was computed from,
+# not a permanently-fixed value.
+SRC_URI[src.sha256sum] = "92fb5966b71ef40989ead01fdd7f0d81993c056c72e9f68e377df5a0e98041d2"
+SRC_URI[vendor.sha256sum] = "32045b440cc598ca862c198fd2aac8d15b3018dd20ab2d59cd3a077f375a56dc"
 
 S = "${WORKDIR}/webconfigd-${PV}"
 

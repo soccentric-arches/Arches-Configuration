@@ -49,7 +49,7 @@ TARGETS := x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu armv7-unknown-linu
 # drift from the pin.
 RUST_CHANNEL := $(shell grep -m1 '^channel' rust-toolchain.toml | sed -E 's/.*"([^"]*)".*/\1/')
 
-.PHONY: help build release test lint fmt vendor cross run run-mock stop clean check toolchain
+.PHONY: help build release test lint fmt vendor release-artifacts cross run run-mock stop clean check toolchain
 
 # Bare `make` prints help rather than building, so a stray invocation never
 # kicks off a network install or a build by surprise.
@@ -80,6 +80,12 @@ fmt: ## Format the workspace in place
 # dependency change; commit the result.
 vendor: ## Regenerate the vendored offline crate tarball
 	$(CARGO) vendor --versioned-dirs vendor
+
+# Package the release artifacts webconfigd.bb fetches (source + vendor
+# tarballs) and print their real SHA-256 checksums (Checkpoint 3.2). Requires
+# `make vendor` to have been run at least once.
+release-artifacts: ## Package release tarballs + compute real checksums for webconfigd.bb
+	@./tools/release-artifacts.sh
 
 # Cross-compile parity check for CI (spec §6).
 cross: ## Build all three cross-targets (x86_64/aarch64/armv7), CI parity
