@@ -444,12 +444,48 @@ fn read_u64_file(p: &Path) -> u64 {
 pub fn read_emmc_wear(sysroot: &Sysroot, dev: &str) -> Option<u8> {
     let path = sysroot.join(format!("/sys/block/{dev}/device/life_time_estimate"));
     if let Ok(s) = fs::read_to_string(&path) {
-        return s.trim().parse::<u8>().ok();
+        if let Ok(v) = s.trim().parse::<u8>() {
+            return Some(v);
+        }
+        // Present but unparseable — fall through to the other sources rather
+        // than giving up (previously returned None here unconditionally).
     }
     let fake = sysroot.root().join("fake-extcsd").join(dev);
-    fs::read_to_string(&fake)
-        .ok()
-        .and_then(|s| s.trim().parse::<u8>().ok())
+    if let Ok(s) = fs::read_to_string(&fake) {
+        if let Ok(v) = s.trim().parse::<u8>() {
+            return Some(v);
+        }
+    }
+    // Real hardware whose kernel doesn't expose the sysfs node: shell out to
+    // `mmc extcsd read` directly (spec's documented fallback path) and parse
+    // the JEDEC life-time-estimation fields ourselves.
+    if sysroot.is_real_root() {
+        if let Ok(out) = crate::applier::run_cmd("mmc", &["extcsd", "read", &format!("/dev/{dev}")])
+        {
+            return parse_extcsd_life_time(&out);
+        }
+    }
+    None
+}
+
+/// Parse `mmc extcsd read`'s "Device life time estimation type A/B" lines
+/// (JEDEC EXT_CSD_DEVICE_LIFE_TIME_EST_TYP_A/B, a 0x00-0x0B hex scale). Takes
+/// the worse (higher) of the two types when both are present, matching how
+/// the sysfs `life_time_estimate` node itself is documented to behave.
+fn parse_extcsd_life_time(output: &str) -> Option<u8> {
+    let mut worst: Option<u8> = None;
+    for line in output.lines() {
+        if !line.contains("LIFE_TIME_EST_TYP") {
+            continue;
+        }
+        let Some(hex) = line.rsplit("0x").next() else {
+            continue;
+        };
+        if let Ok(v) = u8::from_str_radix(hex.trim(), 16) {
+            worst = Some(worst.map_or(v, |w| w.max(v)));
+        }
+    }
+    worst
 }
 
 #[cfg(test)]
@@ -526,6 +562,27 @@ mod tests {
         std::fs::write(sys.root().join("fake-extcsd/mmcblk0"), "8\n").unwrap();
         assert_eq!(read_emmc_wear(&sys, "mmcblk0"), Some(8));
         assert_eq!(read_emmc_wear(&sys, "mmcblk9"), None);
+    }
+
+    #[test]
+    fn parses_real_mmc_extcsd_life_time_output() {
+        // Checkpoint Phase 5 item 3: kernels without the sysfs
+        // life_time_estimate node fall back to parsing `mmc extcsd read`
+        // directly. Real mmc-utils output shape (abbreviated).
+        let output = "\
+Extended CSD rev 1.7 (MMC 5.0)\n\
+Device life time estimation type A [EXT_CSD_DEVICE_LIFE_TIME_EST_TYP_A]: 0x02\n\
+Device life time estimation type B [EXT_CSD_DEVICE_LIFE_TIME_EST_TYP_B]: 0x04\n\
+Pre EOL information [EXT_CSD_PRE_EOL_INFO]: 0x01\n";
+        assert_eq!(parse_extcsd_life_time(output), Some(4));
+    }
+
+    #[test]
+    fn extcsd_output_with_no_life_time_fields_yields_none() {
+        assert_eq!(
+            parse_extcsd_life_time("Extended CSD rev 1.7 (MMC 5.0)\n"),
+            None
+        );
     }
 
     #[test]
