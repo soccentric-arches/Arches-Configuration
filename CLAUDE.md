@@ -183,3 +183,17 @@ See `docs/webconfig-spec.md` for the full spec.
   node at build time (spec §2).
 - Don't hardcode I/O or per-platform behavior in code — it lives in the board
   manifest (`board-manifests/<platform>.json`) as data (spec §4.9, §3).
+- Don't assume the Yocto layer directory is named `meta-soccentric-webconfig` —
+  the docs/README/CLAUDE.md prose calls it that, but the actual directory on
+  disk is `meta-webconfig`. Use the real path when scripting; reconcile the
+  naming drift in docs before it causes a broken reference.
+- Don't assume CI and `Cargo.toml` agree on the Rust version — `.github/workflows/ci.yml`
+  pins `1.75.0` while `Cargo.toml`/`rust-toolchain.toml` declare
+  `rust-version = "1.85"`. Verify which is authoritative before bumping either
+  in isolation; a local build against `rust-toolchain.toml` may pass while CI's
+  pinned 1.75.0 fails, or vice versa.
+- Don't assume this is the only `-Configuration` pattern in the fleet — this
+  repo (`REPO_MAP.md`) flags that other projects' `-Configuration` leaves run a
+  different Python/FastAPI/Vue dashboard instead of this Rust/vanilla-JS
+  WebConfig. The two approaches coexist unreconciled across the fleet; don't
+  port fleet-wide conventions from one to the other without checking.
