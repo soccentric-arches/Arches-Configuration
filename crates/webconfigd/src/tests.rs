@@ -949,6 +949,67 @@ async fn factory_reset_wipes_certs_and_alert_history() {
 }
 
 #[tokio::test]
+async fn network_apply_surfaces_provisional_state_when_a_later_applier_fails() {
+    // Checkpoint 1.10: if networkd already went Provisional (a severing
+    // static-IP change) and a downstream applier (firewall/wifi/ap) then
+    // fails, the error response must say so — not read as a bare, unrelated
+    // failure while a rollback timer is quietly ticking in the background.
+    let (app, dir) = build_app().await;
+    let (cookie, csrf) = boot_admin(&app).await;
+
+    // A static (non-DHCP), enabled interface is a "severing" change per
+    // networkd's own heuristic — its apply() returns Provisional.
+    let body = serde_json::json!({
+        "interfaces": [{
+            "name": "eth0", "enabled": true, "dhcp": false,
+            "address": "192.168.1.50", "prefix": 24
+        }],
+        "wifi": [], "dns_servers": [], "confirm_window_secs": 90,
+        // A NetworkConfig JSON that omits ap_mode entirely deserializes it via
+        // ApMode's derived (all-empty) Default, not its per-field serde
+        // defaults, which fails ap validation even though AP is disabled —
+        // supply a valid disabled profile explicitly (separate finding, not
+        // what this test is about).
+        "ap_mode": { "enabled": false, "trigger": "no-config", "ssid": "unused", "passphrase": "unused123" }
+    })
+    .to_string();
+    let (st, _, _) = send(
+        &app,
+        "PUT",
+        "/api/v1/network",
+        Some(&cookie),
+        Some(&csrf),
+        Some(&body),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+
+    // Sabotage the firewall applier's write target so its apply() fails
+    // after networkd has already succeeded provisionally.
+    let nft_path = dir.path().join("etc/nftables.d/webconfig.nft");
+    std::fs::create_dir_all(&nft_path).unwrap(); // a directory where a file must go
+
+    let (st, _, body) = send(
+        &app,
+        "POST",
+        "/api/v1/network/apply",
+        Some(&cookie),
+        Some(&csrf),
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::CONFLICT, "response: {body}");
+    assert!(
+        body.to_lowercase().contains("provisional"),
+        "error response must mention the pending provisional state: {body}"
+    );
+    assert!(
+        body.contains("confirm_window_secs"),
+        "error response must carry the confirm window: {body}"
+    );
+}
+
+#[tokio::test]
 async fn factory_reset_reports_partial_failure_and_skips_reboot_on_broken_db() {
     // Checkpoint 1.6: a locked/corrupt config.db must not be presented as a
     // clean success — the failure is logged and surfaced in the response

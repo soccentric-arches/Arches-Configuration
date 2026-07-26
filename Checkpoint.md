@@ -122,10 +122,18 @@ No item in this document is considered done if this gate is failing.
   Acceptance: either (a) a real applier exists (ModemManager/mmcli-backed) with validate/apply/rollback, or (b) `FiveGConfig` is explicitly demoted to the same `serde_json::Value` v2-deferred treatment as `vlan`/`bridges`/`cellular`, and the API/schema/docs reflect that it's not active in v1.
   Verify: if (a), a full applier test suite; if (b), confirm the field can no longer be set via `PUT /network` expecting it to take effect, and docs say so.
 
-- [ ] **1.4 OS update bundle browser upload works end-to-end**
+- [x] **1.4 OS update bundle browser upload works end-to-end**
   Where: `crates/webconfigd/src/api/updates.rs`.
   Acceptance: a real multipart upload route writes to `/data/webconfig/uploads/` (or equivalent) and the existing install-from-path logic is invoked afterward.
-  Verify: an integration test that uploads a bundle via HTTP multipart and confirms it reaches the install path.
+  Verify: `cargo test updates_upload_streams_bundle_to_disk_and_reaches_install
+    updates_upload_rejects_oversized_bundle_without_buffering_whole_body` (commit 26527b6) —
+    `POST /updates/upload` (raw-bytes body, not multipart — avoids a new axum feature/dependency,
+    same pattern as the MCU firmware route) streams to `<data>/webconfig/uploads/`
+    chunk-by-chunk via `tokio::fs`, never buffering the whole bundle in memory, then calls the
+    shared `install_from_path()` the existing path-based route also uses. Verified the audit
+    log shows `updates.install` ran with the uploaded bundle's real manifest data, and that a
+    truncated/aborted upload leaves no partial file on disk. Also wired a file-upload action
+    into `frontend/pages/updates.js`. `make build && make test && make lint` green (71/71).
 
 - [x] **1.5 RAUC-unavailable fallback is never silent on a real device**
   Where: `crates/webconfigd/src/update_backend.rs::make_backend`.

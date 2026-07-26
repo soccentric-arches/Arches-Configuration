@@ -108,9 +108,6 @@ pub async fn apply(
     app.engine.validate("wifi").await?;
     app.engine.validate("ap").await?;
     let outcome = apply_and_audit(&app, &user, "networkd").await?;
-    let _ = apply_and_audit(&app, &user, "firewall").await?;
-    let _ = apply_and_audit(&app, &user, "wifi").await?;
-    let _ = apply_and_audit(&app, &user, "ap").await?;
     let provisional = matches!(outcome, webconfig_engine::ApplyOutcome::Provisional { .. });
     let window = if let webconfig_engine::ApplyOutcome::Provisional {
         confirm_window_secs,
@@ -120,6 +117,25 @@ pub async fn apply(
     } else {
         0
     };
+
+    // If networkd already went Provisional, a rollback timer is now ticking
+    // in the background regardless of what happens next — a downstream
+    // applier failing here must not read to the operator as a clean no-op;
+    // the error response has to carry that pending-rollback state too
+    // (Checkpoint 1.10).
+    for subsystem in ["firewall", "wifi", "ap"] {
+        if let Err(e) = apply_and_audit(&app, &user, subsystem).await {
+            if provisional {
+                return Err(ApiError::Conflict(format!(
+                    "{subsystem} apply failed ({e}); networkd was already applied \
+                     provisionally (confirm_window_secs={window}) — a rollback timer is \
+                     pending unless you confirm now or fix and re-apply before it expires"
+                )));
+            }
+            return Err(e);
+        }
+    }
+
     Ok(Json(serde_json::json!({
         "provisional": provisional,
         "confirm_window_secs": window,
