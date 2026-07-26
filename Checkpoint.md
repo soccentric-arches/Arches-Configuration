@@ -39,12 +39,16 @@ No item in this document is considered done if this gate is failing.
   - [ ] No field silently reports `"unknown"`/`null` while looking like a completed read.
   - Verify: on a platform with (and without) the platform-status source available, confirm the API response is distinguishable and the UI reflects the distinction.
 
-- [ ] **0.4 `secret`-typed app-schema fields are redacted in backup/diagnostics**
+- [x] **0.4 `secret`-typed app-schema fields are redacted in backup/diagnostics**
   Where: `crates/webconfigd/src/api/updates.rs` (`redact_secrets`).
   Acceptance:
-  - [ ] `redact_secrets` walks `cfg.app_settings` using each app's loaded schema and blanks any field typed `secret`, not just a hardcoded top-level `Config` field list.
-  - [ ] A regression test defines an app schema with a `secret`-typed field, sets a value, and asserts the value never appears in `GET /updates/backup` (plaintext) or `GET /updates/diagnostics` output.
-  - Verify: run the new regression test; also manually grep the backup/diagnostics JSON output in the test for the planted secret string — it must not appear.
+  - [x] `redact_secrets` walks `cfg.app_settings` using each app's loaded schema and blanks any field typed `secret`, not just a hardcoded top-level `Config` field list.
+  - [x] A regression test defines an app schema with a `secret`-typed field, sets a value, and asserts the value never appears in `GET /updates/backup` (plaintext) or `GET /updates/diagnostics` output.
+  - Verify: `cargo test app_schema_secret_field_never_appears_in_backup_or_diagnostics`
+    (commit cf5718b) — plants a secret via an app schema, asserts the raw response body
+    of both routes never contains the planted string, and that the field renders as
+    `"[redacted]"` while a sibling non-secret field survives untouched. `make build &&
+    make test && make lint` green.
 
 - [ ] **0.5 Yocto layer installs the real Arches board manifest**
   Where: `meta-webconfig/recipes-core/webconfig/webconfig-manifest.bb` + `.bbappend`, `meta-webconfig/recipes-core/webconfig/files/`.

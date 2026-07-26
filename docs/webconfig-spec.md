@@ -107,7 +107,7 @@ Implement each page below. Items marked **[v2]** are deferred: design the config
 - Device-wide certificate store: CA + client certs for MQTT/VPN, uploaded here, referenced elsewhere; expiry dates shown; "expires < 30 days" feeds the alert engine.
 - **WireGuard only:** on/off, on-device keypair generation (private key never leaves the device; display public key only), peer list, allowed IPs. No OpenVPN/IPsec.
 - Exposure summary panel: one glanceable statement of currently reachable services per interface (derived from firewall + service state).
-- Trust status (read-only): secure boot state, update signing key ID, TPM presence, verity/encryption status — read from the BSP platform-status file. Never configure secure boot from the UI.
+- Trust status (read-only): secure boot state, update signing key ID, TPM presence, verity/encryption status — read from the BSP platform-status file. Never configure secure boot from the UI. Secure boot/TPM come from the board manifest (build-time capability); signing key ID/verity/encryption status are runtime state read from `<share_dir>/platform-status.json` (`{"update_signing_key_id": "...", "verity_status": "...", "encryption_status": "..."}`, all fields optional) — a missing or malformed file is reported to the API/UI as `platform_status_available: false`, distinct from a real read.
 - **Audit log:** append-only ring file of all config-UI actions (user, action, timestamp), viewable under Logs, included in the diagnostics bundle.
 
 ### 4.9 I/O & Peripherals

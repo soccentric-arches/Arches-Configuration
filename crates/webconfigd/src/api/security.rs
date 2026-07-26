@@ -201,6 +201,37 @@ pub async fn exposure(
     })))
 }
 
+/// The BSP platform-status file (spec §4.8: "verity/encryption status — read
+/// from the BSP platform-status file"). Written by BSP/OTA tooling at
+/// `<share_dir>/platform-status.json` (the same read-only BSP-provided data
+/// directory as manifests/schemas); absent on any platform whose BSP hasn't
+/// implemented it yet, and always absent on the fake sysroot.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct PlatformStatus {
+    #[serde(default)]
+    update_signing_key_id: Option<String>,
+    #[serde(default)]
+    verity_status: Option<String>,
+    #[serde(default)]
+    encryption_status: Option<String>,
+}
+
+/// Read the platform-status file. `None` means "not available on this
+/// platform" — distinct from a value that failed to read after the file was
+/// found (which is logged and also treated as unavailable, since a corrupt
+/// trust-status source cannot be trusted either).
+fn read_platform_status(sysroot: &webconfig_engine::Sysroot) -> Option<PlatformStatus> {
+    let path = sysroot.share_dir().join("platform-status.json");
+    let raw = std::fs::read_to_string(&path).ok()?;
+    match serde_json::from_str(&raw) {
+        Ok(status) => Some(status),
+        Err(e) => {
+            tracing::warn!(error = %e, path = %path.display(), "platform-status.json present but failed to parse; trust status reported as unavailable");
+            None
+        }
+    }
+}
+
 /// `GET /api/v1/security/trust` — read-only trust status from the BSP
 /// platform-status file / manifest (spec §4.8). Never configurable from the UI.
 pub async fn trust(
@@ -208,14 +239,18 @@ pub async fn trust(
     _role: AuthRole,
 ) -> ApiResult<Json<serde_json::Value>> {
     let m = &app.manifest;
+    let status = read_platform_status(&app.engine.sysroot);
     Ok(Json(serde_json::json!({
         "secure_boot": m.secure_boot,
         "tpm_present": m.has_tpm,
-        // Signing key id + verity/encryption status would be read from the
-        // platform-status file; surfaced as unknown when absent (spec §4.8).
-        "update_signing_key_id": null,
-        "verity_status": "unknown",
-        "encryption_status": "unknown",
+        // Distinct from a bare "unknown" value: this tells the UI whether the
+        // three fields below are a real read or simply not available on this
+        // platform yet, so a missing BSP source is never mistaken for a
+        // completed read that happened to come back null.
+        "platform_status_available": status.is_some(),
+        "update_signing_key_id": status.as_ref().and_then(|s| s.update_signing_key_id.clone()),
+        "verity_status": status.as_ref().and_then(|s| s.verity_status.clone()),
+        "encryption_status": status.as_ref().and_then(|s| s.encryption_status.clone()),
     })))
 }
 

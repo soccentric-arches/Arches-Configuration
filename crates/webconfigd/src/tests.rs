@@ -702,6 +702,57 @@ async fn alerts_expose_default_packs_and_persist_push_targets() {
 }
 
 #[tokio::test]
+async fn trust_status_distinguishes_unavailable_from_real_read() {
+    // Spec §4.8 (P0 0.3): update_signing_key_id/verity_status/encryption_status
+    // must not be a bare hardcoded "unknown" — the API must distinguish "no
+    // platform-status file on this board" from "the BSP reported real values".
+    let (app, dir) = build_app().await;
+    let (cookie, _csrf) = boot_admin(&app).await;
+
+    // No platform-status.json present (the default fake-sysroot state).
+    let (st, _, body) = send(
+        &app,
+        "GET",
+        "/api/v1/security/trust",
+        Some(&cookie),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(v["platform_status_available"], false);
+    assert!(v["update_signing_key_id"].is_null());
+    assert!(v["verity_status"].is_null());
+    assert!(v["encryption_status"].is_null());
+
+    // Now the BSP writes a real platform-status file.
+    let share_dir = dir.path().join("usr/share/webconfig");
+    std::fs::create_dir_all(&share_dir).unwrap();
+    std::fs::write(
+        share_dir.join("platform-status.json"),
+        r#"{"update_signing_key_id":"key-42","verity_status":"verified","encryption_status":"encrypted"}"#,
+    )
+    .unwrap();
+
+    let (st, _, body) = send(
+        &app,
+        "GET",
+        "/api/v1/security/trust",
+        Some(&cookie),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(v["platform_status_available"], true);
+    assert_eq!(v["update_signing_key_id"], "key-42");
+    assert_eq!(v["verity_status"], "verified");
+    assert_eq!(v["encryption_status"], "encrypted");
+}
+
+#[tokio::test]
 async fn factory_reset_wipes_certs_and_alert_history() {
     // spec §4.1: factory reset "wipes the data partition". The device TLS
     // identity (cert.pem/key.pem), the uploaded cert store (certs/), and the
