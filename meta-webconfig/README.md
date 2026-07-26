@@ -1,8 +1,8 @@
 # meta-soccentric-webconfig
 
 Yocto layer that adds the SoCcentric **WebConfig** on-device configuration UI to
-an image: the `webconfigd` Rust daemon, its vanilla-JS frontend, schema files,
-and the per-platform board manifest.
+an Arches image: the `webconfigd` Rust daemon, its vanilla-JS frontend, schema
+files, and the Arches board manifest.
 
 Per the SoCcentric global rules, **all OS customization lives in this meta
 layer — upstream Yocto/BSP layers are never patched.**
@@ -14,7 +14,7 @@ layer — upstream Yocto/BSP layers are never patched.**
 | `webconfigd` | `/usr/bin/webconfigd`, systemd unit, polkit rule | The daemon (spec §2). Non-root, hardened. |
 | `webconfig-static` | `/usr/share/webconfig/static/` | Frontend assets (<500 KB, no build step). |
 | `webconfig-schemas` | `/usr/share/webconfig/schemas/*.schema.json` | Schema-driven rendering + validation (spec §3). |
-| `webconfig-manifest` | `/usr/share/webconfig/board-manifest.json` | Per-platform manifest (spec §3 platform layer). |
+| `webconfig-manifest` | `/usr/share/webconfig/board-manifest.json` | Arches board manifest (spec §3 platform layer). |
 
 ## Adding to an image
 
@@ -22,10 +22,10 @@ layer — upstream Yocto/BSP layers are never patched.**
 IMAGE_INSTALL:append = " webconfigd webconfig-static webconfig-schemas webconfig-manifest"
 ```
 
-## Per-machine manifest
+## Machine manifest
 
-The six platforms differ **only** in the board manifest. Map each BSP
-`MACHINE` to its manifest in
+Board-specific behavior lives **only** in the board manifest. Map the Arches
+BSP `MACHINE` to its manifest in
 `recipes-core/webconfig/webconfig-manifest.bbappend`:
 
 ```bitbake

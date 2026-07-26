@@ -80,14 +80,9 @@ fn load_or_seed_manifest(sysroot: &Sysroot, share: &Path) -> BoardManifest {
         return manifest;
     }
 
-    let platform = std::env::var("WEBCONFIG_PLATFORM").unwrap_or_else(|_| "generic-linux".into());
+    let platform = std::env::var("WEBCONFIG_PLATFORM").unwrap_or_else(|_| "arches".into());
     let raw = match platform.as_str() {
         "generic" | "generic-linux" => include_str!("../../../board-manifests/generic.yaml"),
-        "acadia" => include_str!("../../../board-manifests/acadia.json"),
-        "zion" => include_str!("../../../board-manifests/zion.json"),
-        "pinnacle" => include_str!("../../../board-manifests/pinnacle.json"),
-        "joshua" => include_str!("../../../board-manifests/joshua.json"),
-        "sequoia" => include_str!("../../../board-manifests/sequoia.json"),
         _ => include_str!("../../../board-manifests/arches.json"),
     };
 

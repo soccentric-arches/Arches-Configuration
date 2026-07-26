@@ -28,8 +28,8 @@ pub async fn get(State(app): State<AppState>) -> ApiResult<Json<serde_json::Valu
 }
 
 /// Enumerate live interfaces from `/sys/class/net` (spec §4.2: never hardcoded;
-/// Pinnacle/Sequoia have multiple MACs). Shared by the network page and the
-/// diagnostics bundle (spec §4.4 "network state"), so the two never drift.
+/// the Jetson board can expose multiple MACs). Shared by the network page and
+/// the diagnostics bundle (spec §4.4 "network state"), so the two never drift.
 pub fn enumerate_live(sysroot: &webconfig_engine::Sysroot) -> Vec<serde_json::Value> {
     let netdir = sysroot.join("/sys/class/net");
     let mut live = Vec::new();
@@ -163,8 +163,8 @@ pub async fn rollback(
 
 /// `GET /api/v1/network/scan` — Wi-Fi scan (SSID/signal list, spec §4.2).
 /// Scans the first live wireless interface (detected from `/sys/class/net`,
-/// never hardcoded — Pinnacle/Sequoia may name theirs `wlp*`); on the fake
-/// sysroot returns an empty list so the UI still renders.
+/// never hardcoded — some interfaces are named `wlp*`); on the fake sysroot
+/// returns an empty list so the UI still renders.
 pub async fn scan(State(app): State<AppState>, _role: AuthRole) -> ApiResult<Json<Vec<WifiScan>>> {
     let sys = &app.engine.sysroot;
     if sys.is_real_root() {
@@ -337,9 +337,9 @@ mod tests {
 
     #[test]
     fn picks_wireless_iface_by_phy80211_node() {
-        // Pinnacle/Sequoia may name the radio `wlp3s0` and expose `phy80211`
-        // instead of `wireless` — must still be detected, not hardcoded to
-        // `wlan0` (spec §4.2).
+        // Some radios are named `wlp3s0` and expose `phy80211` instead of
+        // `wireless` — must still be detected, not hardcoded to `wlan0`
+        // (spec §4.2).
         let dir = fake_sysroot();
         let sys = Sysroot::at(dir.path());
         std::fs::create_dir_all(sys.join("/sys/class/net/wlp3s0/phy80211")).unwrap();

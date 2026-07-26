@@ -2,18 +2,18 @@
 
 The **board manifest** is a BSP-provided, read-only JSON file at
 `/usr/share/webconfig/board-manifest.json` (installed by the
-`webconfig-manifest` Yocto recipe). It is the **only platform-specific data**:
-the six platforms (Arches, Acadia, Zion, Pinnacle, Joshua, Sequoia) share one
-daemon, one frontend, and one engine, and differ only in this file (spec §3).
+`webconfig-manifest` Yocto recipe). It is the **only board-specific data**:
+the daemon, frontend, and engine are Arches-only, and board-specific behavior
+lives solely in this file (spec §3).
 
-The daemon loads it at boot. Missing it falls back to an embedded example for
-the configured `WEBCONFIG_PLATFORM` (dev/CI only).
+The daemon loads it at boot. Missing it falls back to the embedded
+`board-manifests/arches.json` (dev/CI only).
 
 ## Top-level shape
 
 ```jsonc
 {
-  "platform": "arches",        // arches | acadia | zion | pinnacle | joshua | sequoia
+  "platform": "arches",        // always "arches" — this repo is Arches-only
   "model": "nvidia-jetson",    // free-text silicon id
   "board_name": "NVIDIA Jetson (Arches)",
   "has_rtc": true,             // trust panel
@@ -58,30 +58,28 @@ The I/O page renders peripherals generically from `kind` + `human_name` +
 }
 ```
 
-Per-platform tiles ship as **data** (Arches: GPU/power/fan; all: disk-full,
-watchdog). The frontend renders them generically (spec §4.5).
+Tiles ship as **data** (Arches: GPU/power/fan; disk-full, watchdog). The
+frontend renders them generically (spec §4.5).
 
 ## Service allowlist
 
 `service_allowlist` is the curated set of systemd units the Services page may
 show and control. The daemon **never enumerates all units** — only this list
 (spec §4.3). The polkit rule in the Yocto layer mirrors this list for
-authorization; update both together when a platform image changes its curated
+authorization; update both together when the Arches image changes its curated
 services.
 
-## Per-platform selection
+## Manifest selection
 
-The Yocto layer ships all six manifests in
-`meta-soccentric-webconfig/recipes-core/webconfig/files/` and selects one per
-BSP `MACHINE` in `webconfig-manifest.bbappend`:
+The Yocto layer ships the Arches manifest in
+`meta-webconfig/recipes-core/webconfig/files/` and installs it via
+`webconfig-manifest.bbappend`:
 
 ```bitbake
-WEBCONFIG_MANIFEST_FILE:jetson-orin-nano = "arches.json"
+WEBCONFIG_MANIFEST_FILE = "arches.json"
 ```
 
-## Reference manifests
+## Reference manifest
 
 - [`board-manifests/arches.json`](../board-manifests/arches.json) — Jetson (CAN,
   UART, I2C, SPI, GPIO, STM32 MCU, cameras, thermal, eth/wlan, nvpmodel tiles)
-- `acadia.json`, `zion.json`, `pinnacle.json`, `joshua.json`, `sequoia.json`
-  — same shape, platform-specific peripherals/tiles/allowlist.

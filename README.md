@@ -1,9 +1,10 @@
 # SoCcentric WebConfig
 
-An **on-device, browser-based configuration web UI** for SoCcentric's six
-Yocto/embedded-Linux platforms (Arches, Acadia, Zion, Pinnacle, Joshua, Sequoia)
-— built from **one codebase**. One small Rust daemon serves a vanilla-JS
-frontend over TLS; the six platforms differ only in a board-manifest data file.
+An **on-device, browser-based configuration web UI** for the Arches
+Yocto/embedded-Linux platform (NVIDIA Jetson application processor + STM32
+real-time co-processor). One small Rust daemon serves a vanilla-JS
+frontend over TLS; board-specific data lives in a single board-manifest file
+(`board-manifests/arches.json`).
 
 > The full design specification lives in [`docs/webconfig-spec.md`](docs/webconfig-spec.md).
 
@@ -33,7 +34,7 @@ crates/
   webconfigd/               # axum HTTP daemon (TLS, auth, CSRF, 9 section APIs, SSE)
 frontend/                   # vanilla JS: index.html, styles.css, schema-form.js, pages.js, app.js
 schemas/                    # *.schema.json — schema-driven rendering + validation
-board-manifests/            # one manifest per platform (the only platform-specific data)
+board-manifests/            # arches.json (board-specific data) + generic.yaml fallback
 meta-soccentric-webconfig/  # Yocto layer: daemon, static assets, schemas, manifest, hardened unit
 docs/                       # spec, API reference, schema format, board-manifest spec
 Makefile                    # build | release | test | lint | fmt | vendor | cross | run | clean

@@ -43,13 +43,13 @@ No item in this document is considered done if this gate is failing.
   - [ ] A regression test defines an app schema with a `secret`-typed field, sets a value, and asserts the value never appears in `GET /updates/backup` (plaintext) or `GET /updates/diagnostics` output.
   - Verify: run the new regression test; also manually grep the backup/diagnostics JSON output in the test for the planted secret string — it must not appear.
 
-- [ ] **0.5 Yocto layer can select a real per-platform board manifest**
+- [ ] **0.5 Yocto layer installs the real Arches board manifest**
   Where: `meta-webconfig/recipes-core/webconfig/webconfig-manifest.bb` + `.bbappend`, `meta-webconfig/recipes-core/webconfig/files/`.
   Acceptance:
-  - [ ] All six real platform manifests (arches, acadia, zion, pinnacle, joshua, sequoia) are present in the layer, in the format the manifest loader actually expects (see 0.6).
-  - [ ] Each `.bbappend` per-machine override is wired to its real platform file, not left commented out.
-  - [ ] Building for a specific `MACHINE` with no matching manifest fails the build loudly, rather than silently substituting `generic.yaml`.
-  - Verify: run (or simulate) a bitbake config check / recipe parse for at least two different `MACHINE` values and confirm each resolves to its correct platform manifest file, not the generic fallback.
+  - [ ] The real Arches manifest (`arches.json`) is present in the layer, in the format the manifest loader actually expects (see 0.6).
+  - [ ] The `.bbappend` is wired to the real Arches manifest file, not left commented out.
+  - [ ] Building with no matching manifest fails the build loudly, rather than silently substituting `generic.yaml`.
+  - Verify: run (or simulate) a bitbake config check / recipe parse and confirm it resolves to the Arches manifest file, not the generic fallback.
 
 - [ ] **0.6 Board-manifest format is consistent across docs, code, and Yocto recipe**
   Where: `docs/board-manifest.md`, `crates/webconfigd/src/bootstrap.rs`, `meta-webconfig/recipes-core/webconfig/webconfig-manifest.bb`, `board-manifests/*.json`.
@@ -157,9 +157,9 @@ No item in this document is considered done if this gate is failing.
 ## Phase 3 — P1 Manifest/Yocto items + P2 manifest data-quality items
 
 - [ ] **3.1 MCU companion schemas exist**
-  Where: `schemas/app-mcu-stm32.schema.json`, `schemas/app-mcu-picow.schema.json` (or equivalent), referenced by `board-manifests/arches.json` (`app:mcu-stm32`) and `acadia.json` (`app:mcu-picow`).
-  Acceptance: both schema files exist, validate against `docs/schema-format.md`, and the MCU settings panel actually renders from them.
-  Verify: load the MCU settings page for Arches and Acadia and confirm real fields render (not an empty/error panel).
+  Where: `schemas/app-mcu-stm32.schema.json` (or equivalent), referenced by `board-manifests/arches.json` (`app:mcu-stm32`).
+  Acceptance: the schema file exists, validates against `docs/schema-format.md`, and the MCU settings panel actually renders from it.
+  Verify: load the MCU settings page for Arches and confirm real fields render (not an empty/error panel).
 
 - [ ] **3.2 Release artifact pipeline produces real checksums**
   Where: `meta-webconfig/recipes-core/webconfig/webconfigd.bb`.
@@ -177,13 +177,11 @@ No item in this document is considered done if this gate is failing.
   Verify: `bitbake -c fetch` or a manual `md5sum` check against `LIC_FILES_CHKSUM`.
 
 - [ ] **3.5 Board-manifest data-quality pass complete**
-  Where: `board-manifests/{acadia,zion,pinnacle,joshua,sequoia}.json`.
-  Acceptance (per platform, verified against real hardware, not just internal consistency):
-  - [ ] Joshua's `pru1` entry has the same `cores` cap array as `pru0`, or an explicit reason it differs.
-  - [ ] Every manifest with `thermal-zone.caps.throttle: true` has a corresponding `throttled` metric surfaced in its `dashboard_tiles`.
-  - [ ] CAN-termination GPIO is modeled on every platform where the hardware actually supports it (confirmed with hardware/BSP team, not assumed).
-  - [ ] Pinnacle's `display-lvds0.caps.v2` forward-reference is removed until the v2 Display/HMI feature exists, or explicitly justified.
-  Verify: a manifest-diff review signed off by whoever owns each platform's hardware BSP, not just an internal-consistency check.
+  Where: `board-manifests/arches.json`.
+  Acceptance (verified against real hardware, not just internal consistency):
+  - [ ] `thermal-zone.caps.throttle: true` has a corresponding `throttled` metric surfaced in `dashboard_tiles`.
+  - [ ] CAN-termination GPIO is modeled where the hardware actually supports it (confirmed with hardware/BSP team, not assumed).
+  Verify: a manifest-diff review signed off by whoever owns the Arches hardware BSP, not just an internal-consistency check.
 
 **Phase 3 gate:** all boxes checked, global exit gate passing.
 
@@ -213,7 +211,7 @@ Add real HTTP-level integration tests, in this priority order. Each sub-item is 
 - [ ] Alert engine resolves `service.<unit>` and `mcu.heartbeat` metrics, or the gap is documented in the alert-rule authoring docs so rule packs don't silently reference dead metrics.
 - [ ] `read_emmc_wear` implements (or explicitly falls back with a logged reason from) the `mmc extcsd read` path for kernels without the sysfs `life_time_estimate` node.
 - [ ] Board-manifest loader supports exactly one format (resolved in 0.6); dead code path removed.
-- [ ] Platform-specific monitoring tiles (Arches GPU/fan/power-mode, Zion bitstream, Joshua PRU, Sequoia sensors) confirmed to have a real data source, or explicitly scoped as not-yet-implemented in docs.
+- [ ] Platform-specific monitoring tiles (Arches GPU/fan/power-mode) confirmed to have a real data source, or explicitly scoped as not-yet-implemented in docs.
 - [ ] `config_defaults` in `generic.yaml` documented in `docs/board-manifest.md`, or removed if not actually consumed.
 - [ ] `/api/v1/io` PUT has a concurrency guard (version/ETag or equivalent) preventing silent clobbering across concurrent editors.
 - [ ] Timezone list in `frontend/pages/time.js` sourced from tzdata, not a hardcoded 28-entry US-only list.

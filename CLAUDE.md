@@ -2,10 +2,10 @@
 
 Master SoCcentric CLAUDE.md applies. This file adds local knowledge only.
 
-This repo is the home of the cross-platform **WebConfig** on-device UI: one Rust
-daemon + vanilla-JS frontend + engine, with the six platforms (Arches, Acadia,
-Zion, Pinnacle, Joshua, Sequoia) differing only in a board-manifest data file.
-See `docs/webconfig-spec.md` for the full spec.
+This repo is the home of **WebConfig**, the Arches on-device UI: one Rust
+daemon + vanilla-JS frontend + engine, with board-specific data isolated to
+a single board-manifest file (`board-manifests/arches.json`). See
+`docs/webconfig-spec.md` for the full spec.
 
 - Build: `make build` (debug, host target) — wraps `cargo build`
 - Release: `make release` — exact spec profile (opt-level=z, lto, codegen-units=1,
@@ -181,8 +181,8 @@ See `docs/webconfig-spec.md` for the full spec.
 - Don't add node/build steps to the frontend. Vanilla JS (native ES modules
   are fine — browsers run them with no bundler), <500 KB, no build step, no
   node at build time (spec §2).
-- Don't hardcode I/O or per-platform behavior in code — it lives in the board
-  manifest (`board-manifests/<platform>.json`) as data (spec §4.9, §3).
+- Don't hardcode I/O or board behavior in code — it lives in the board
+  manifest (`board-manifests/arches.json`) as data (spec §4.9, §3).
 - Don't assume the Yocto layer directory is named `meta-soccentric-webconfig` —
   the docs/README/CLAUDE.md prose calls it that, but the actual directory on
   disk is `meta-webconfig`. Use the real path when scripting; reconcile the

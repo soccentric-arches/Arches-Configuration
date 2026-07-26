@@ -6,25 +6,20 @@ You are a senior embedded-systems and Rust engineer. Generate a complete, produc
 
 ## 1. Context
 
-SoCcentric ships six embedded Linux platforms, all running a common Yocto-based OS:
+SoCcentric ships the Arches embedded Linux platform, running a Yocto-based OS:
 
 | Platform | Silicon | Real-time companion | Notable |
 |---|---|---|---|
 | Arches | NVIDIA Jetson | STM32 MCU | GPU/ML, nvpmodel power modes, fan, cameras |
-| Acadia | Raspberry Pi CM4/CM5 | Pico W (RP2040) | Lowest-resource target (1 GB RAM SKU exists) |
-| Zion | Xilinx Zynq-7000 / UltraScale+ | — (FPGA fabric) | FPGA bitstream management, PetaLinux BSP |
-| Pinnacle | NXP i.MX | optional | Multi-Ethernet, displays/HMI, medical/industrial |
-| Joshua | TI Sitara | PRU cores | PRU firmware, industrial protocols |
-| Sequoia | Intel/AMD x86 | none (PREEMPT_RT/hypervisor) | UEFI boot, standard x86 sensors |
 
-WebConfig ships inside the Yocto image on **all six platforms** from **one codebase**. Users are field installers, operators, and customer engineers accessing it from a browser (desktop or phone) over the LAN or via the device's provisioning Wi-Fi AP.
+WebConfig ships inside the Arches Yocto image from **one codebase**. Users are field installers, operators, and customer engineers accessing it from a browser (desktop or phone) over the LAN or via the device's provisioning Wi-Fi AP.
 
 ## 2. Hard constraints (non-negotiable)
 
 - **Footprint budget:** backend < 15 MB resident RAM, < 10 MB added to image, near-zero CPU when idle, exactly **one daemon**.
 - **Backend:** Rust. Single static-ish binary. Crates: **axum** (HTTP), **tokio** (`current_thread` runtime), **rustls** (TLS; no OpenSSL), **rcgen** (self-signed cert generation), **serde/serde_json**, **jsonschema** (settings validation), **argon2** (password hashing), **zbus** (systemd/timedated D-Bus; no libdbus), **tower-http** (static serving + compression), **tower-sessions** or HMAC-signed cookies. **Embedded database:** `rusqlite` (bundled SQLite, no external `libsqlite3`) is the authoritative store for the canonical config tree, the append-only audit log, user/group records, and fired/cleared alert history — all on the writable data partition. Large ring-buffer-style data (e.g. raw alert history) may still use plain append-only files. No networked/external database; SQLite is the only database and it is embedded in the single static binary.
 - **Release profile:** `opt-level = "z"`, `lto = true`, `codegen-units = 1`, `panic = "abort"`, stripped. Target 3–6 MB binary.
-- **Cross-targets:** `aarch64-unknown-linux-gnu`, `armv7-unknown-linux-gnueabihf` (Zynq-7000, older i.MX), `x86_64-unknown-linux-gnu`. All crates must build on all three; avoid crates broken on 32-bit.
+- **Cross-targets:** `aarch64-unknown-linux-gnu` (the Jetson target), `armv7-unknown-linux-gnueabihf`, `x86_64-unknown-linux-gnu` (host/dev builds). All crates must build on all three; avoid crates broken on 32-bit.
 - **Crates vendored** (`cargo vendor`) — builds must never require crates.io at build time.
 - **Frontend:** static files served by the daemon, executing entirely in the user's browser. Vanilla JS **or** a vendored micro-library (Preact or Lit committed to the repo). **No npm/node at build time. No build step.** Total assets < 500 KB uncompressed. Must work on evergreen browsers and recent Safari, and be fully usable at phone width (installers use phones via the AP flow). No server-side HTML rendering — JSON APIs + static files only.
 - **Security boundary is the API**, never the frontend. Every input re-validated server-side.
@@ -36,7 +31,7 @@ One daemon, three layers:
 
 1. **HTTP layer** — TLS, auth/sessions/CSRF, static assets, JSON REST, one SSE endpoint (log follow + dashboard push). Runs as a **non-root** user.
 2. **Config engine** — the canonical config store: a single versioned config tree persisted in SQLite at `/data/webconfig/config.db` (WAL journal for atomic commits + a backup-snapshot row capturing the previous committed state). Legacy `config.json` files are imported once on first open and never written again. The UI **never edits /etc directly**. Instead, **appliers** translate store → system.
-3. **Platform layer** — reads BSP-provided files: a **board manifest** (`/usr/share/webconfig/board-manifest.json`, declares available I/O: CAN/serial/GPIO/I2C/MCU/FPGA/PRU with Linux device names and human names) and a **platform status file**. Per-platform dashboard tiles and panels are declared as data, not code. The six platforms differ *only* in this layer.
+3. **Platform layer** — reads BSP-provided files: a **board manifest** (`/usr/share/webconfig/board-manifest.json`, declares available I/O: CAN/serial/GPIO/I2C/MCU/FPGA/PRU with Linux device names and human names) and a **platform status file**. Dashboard tiles and panels are declared as data, not code, so board-specific behavior lives *only* in this layer.
 
 **Applier trait** (define exactly this shape): synchronous `validate(&Config) -> Result`, `apply(&Config) -> Result`, `rollback() -> Result`. Appliers run in a dedicated blocking task; the async HTTP layer communicates with the engine over a channel. Every applier takes a **sysroot path parameter** (default `/`) so CI can run the entire config engine against a tempdir fake sysroot on x86 with no hardware.
 
@@ -59,7 +54,7 @@ Implement each page below. Items marked **[v2]** are deferred: design the config
 
 ### 4.2 Networking
 - Backend against **systemd-networkd** (wired) + **iwd** or wpa_supplicant (Wi-Fi). Generate `.network` files from the config store.
-- Ethernet per interface (enumerated dynamically, never hardcoded — Pinnacle/Sequoia have multiple MACs): DHCP/static (IP, prefix, gateway), MTU, enable/disable, live MAC + link state.
+- Ethernet per interface (enumerated dynamically, never hardcoded — the board may expose multiple MACs): DHCP/static (IP, prefix, gateway), MTU, enable/disable, live MAC + link state.
 - **Commit/confirm rollback (flagship feature):** any change that could sever the current connection is applied provisionally; if the user does not reconfirm on the new address within a configurable window (default 90 s), the backend automatically rolls back. Implement as a tokio timer task + applier `rollback()`.
 - Pre-apply validation: gateway inside subnet, no duplicate IPs, etc.
 - Wi-Fi client: scan with SSID/signal list, join with PSK, multiple remembered networks with priority, forget, regulatory domain setting (`iw reg set`). **[v2]** 802.1X/EAP.
@@ -76,8 +71,8 @@ Implement each page below. Items marked **[v2]** are deferred: design the config
 - Logging config lives in the Logs section (below), not here.
 
 ### 4.4 Updates & Maintenance
-- Integrate with **RAUC** (assume RAUC; keep the integration behind a small trait so SWUpdate could substitute). A/B slots; U-Boot on ARM platforms, GRUB/systemd-boot on Sequoia.
-- Browser upload of a signed bundle → signature verification → **compatibility check** (bundle declares platform/variant; refuse mismatches — an Arches bundle must never flash onto an Acadia) → write inactive slot → honest staged progress (verify/write/done) → "reboot to apply".
+- Integrate with **RAUC** (assume RAUC; keep the integration behind a small trait so SWUpdate could substitute). A/B slots; U-Boot on the Jetson target.
+- Browser upload of a signed bundle → signature verification → **compatibility check** (bundle declares platform/variant; refuse mismatches — a bundle built for another platform or variant must never flash onto this device) → write inactive slot → honest staged progress (verify/write/done) → "reboot to apply".
 - Slot status display: "Slot A: v2.3 (running, confirmed) / Slot B: v2.2", including rollback state. New images require confirmation (health-check or manual) or the bootloader rolls back after N failed boots.
 - OTA: server URL + "check now" + notify-only in v1. **[v2]** auto-apply, maintenance windows.
 - Backup/restore: download the config store as a file; restore validates schema version and tolerates version skew (drop unknown fields gracefully). **Secrets excluded by default**, or included only inside a passphrase-encrypted backup.
@@ -91,7 +86,7 @@ Implement each page below. Items marked **[v2]** are deferred: design the config
 - eMMC wear from lifetime registers (`mmc extcsd`) where present.
 - Network summary + connectivity test (shared with Networking), per-interface traffic counters from `/sys/class/net/*/statistics`. No live bandwidth graphs.
 - Service health strip (green/yellow/red) linking to Services. Uptime, boot count, last boot reason where the platform/MCU reports it.
-- **Platform tiles via manifest/schema plugin:** Arches (GPU util/mem, power mode, fan RPM), Zion (loaded bitstream, PL status), Joshua (PRU state), Acadia/Arches (companion MCU heartbeat + fw version), Sequoia (standard sensors).
+- **Platform tiles via manifest/schema plugin:** Arches (GPU util/mem, power mode, fan RPM, companion STM32 MCU heartbeat + fw version).
 
 ### 4.6 Logs
 - Journal viewer: filter by unit, priority, time range; **follow mode via SSE**; last-N paging. No regex/search builder.
@@ -102,7 +97,7 @@ Implement each page below. Items marked **[v2]** are deferred: design the config
 - Threshold rules: metric (temp, disk %, memory, service state, MCU heartbeat) + comparison + **duration** ("temp > 85 for 60 s") to prevent flapping.
 - Actions: UI red-state + event log (always); webhook POST; MQTT event topic. **[v2]** email.
 - Alert history: fired/cleared ring-buffer file with timestamps, viewable + exportable.
-- Per-platform default rule packs shipped as schema files (Arches: throttling; all: disk-full, watchdog-reset).
+- Default rule packs shipped as schema files (Arches: throttling; plus the always-on disk-full, watchdog-reset packs).
 - Engine = rule evaluation on the same data the dashboard reads, on a timer inside the daemon. No extra process.
 
 ### 4.8 Security
@@ -121,8 +116,8 @@ Implement each page below. Items marked **[v2]** are deferred: design the config
 - **CAN** (lives here, not Networking): per interface bitrate, CAN-FD + data bitrate, listen-only, restart-ms, bring-up on boot (generated systemd unit doing `ip link set … type can …`); live bus state (error-active/passive/bus-off), error counters, last-10-frames peek; termination on/off where manifest declares GPIO-switchable termination.
 - GPIO: manifest-**named** pins only (never raw banks): direction, initial state, active-low, live value, manual toggle for outputs.
 - I2C: manifest-declared devices + admin-only bus scan button. SPI: display only.
-- **Companion MCU panel** (Arches STM32, Acadia Pico W): fw version, heartbeat, **signed firmware upload + flash** (same signing/compat rules as OS bundles), reset button; MCU-side settings rendered via the same schema engine if the protocol exposes them.
-- Platform panels: **Zion** — active bitstream, signed bitstream upload, load timing (boot vs on-demand); **Joshua** — PRU firmware selection per core, start/stop; **Arches** — camera enumeration, nvpmodel power mode.
+- **Companion MCU panel** (Arches STM32): fw version, heartbeat, **signed firmware upload + flash** (same signing/compat rules as OS bundles), reset button; MCU-side settings rendered via the same schema engine if the protocol exposes them.
+- Platform panel: **Arches** — camera enumeration, nvpmodel power mode.
 - **[v2]** Display/HMI settings (resolution, rotation, brightness, blank timeout).
 
 ## 5. Yocto integration
@@ -130,7 +125,7 @@ Implement each page below. Items marked **[v2]** are deferred: design the config
 Generate a `meta-soccentric-webconfig` layer containing:
 - Daemon recipe (`inherit cargo`, vendored crate tarball with checksums), static-assets recipe, systemd unit (non-root user, hardening directives: `ProtectSystem`, `NoNewPrivileges`, capability bounding), polkit rules for the privileged D-Bus operations.
 - A `webconfig-schemas` install directory convention other recipes use to register app settings, dashboard tiles, and alert packs.
-- Per-machine board-manifest generation hook and per-platform service allowlist files.
+- Board-manifest generation hook and the service allowlist file for Arches.
 - SPDX/SBOM generation enabled.
 
 ## 6. Testing

@@ -3,8 +3,8 @@
 //! The board manifest is a BSP-provided, read-only file at
 //! `/etc/webconfig/board.yaml` or `/usr/share/webconfig/board.yaml` declaring available I/O
 //! (CAN/serial/GPIO/I2C/MCU/FPGA/PRU) with Linux device names and human names.
-//! Per-platform dashboard tiles and panels are declared as **data, not code**;
-//! the six platforms differ only in this layer (spec §3).
+//! Dashboard tiles and panels are declared as **data, not code**, so
+//! board-specific quirks live in this layer rather than in code (spec §3).
 //!
 //! I/O rendering is 100% manifest-driven — zero hardcoded I/O (spec §4.9).
 
@@ -81,7 +81,7 @@ pub struct DashboardTile {
 /// The board manifest.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct BoardManifest {
-    /// Platform id: arches | acadia | zion | pinnacle | joshua | sequoia.
+    /// Platform id (always "arches" — this repo is Arches-only).
     pub platform: String,
     #[serde(default)]
     pub model: String,
@@ -166,36 +166,6 @@ mod tests {
         assert!(m.has("mcu-stm32"));
     }
 
-    #[test]
-    fn every_platform_manifest_parses() {
-        let cases: &[(&str, &str)] = &[
-            (
-                "arches",
-                include_str!("../../../board-manifests/arches.json"),
-            ),
-            (
-                "acadia",
-                include_str!("../../../board-manifests/acadia.json"),
-            ),
-            ("zion", include_str!("../../../board-manifests/zion.json")),
-            (
-                "pinnacle",
-                include_str!("../../../board-manifests/pinnacle.json"),
-            ),
-            (
-                "joshua",
-                include_str!("../../../board-manifests/joshua.json"),
-            ),
-            (
-                "sequoia",
-                include_str!("../../../board-manifests/sequoia.json"),
-            ),
-        ];
-        for (platform, raw) in cases {
-            let m: BoardManifest = serde_json::from_str(raw).unwrap();
-            assert_eq!(&m.platform.as_str(), platform, "platform mismatch");
-        }
-    }
 
     #[test]
     fn generic_yaml_manifest_parses_with_defaults() {

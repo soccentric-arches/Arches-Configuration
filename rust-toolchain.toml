@@ -1,4 +1,4 @@
-# Pinned toolchain for reproducible builds across the six platforms and the
+# Pinned toolchain for reproducible builds on the Jetson target and the
 # x86 CI host (spec §6: CI builds all three cross-targets on every commit).
 #
 # edition2024 (stabilized in Rust 1.85) is required by current transitive

@@ -1,14 +1,14 @@
 //! Updates & maintenance (spec §4.4).
 //!
 //! Integration with **RAUC** is kept behind a narrow trait so SWUpdate could
-//! substitute. A/B slots; U-Boot on ARM platforms, GRUB/systemd-boot on
-//! Sequoia. Per spec §7: where a real system interaction cannot be fully
-//! implemented (RAUC D-Bus specifics), implement against a narrow trait and
-//! provide **both** the real implementation and a mock — never silently stub
-//! with a TODO.
+//! substitute. A/B slots; U-Boot on the Jetson target. Per spec §7: where a
+//! real system interaction cannot be fully implemented (RAUC D-Bus
+//! specifics), implement against a narrow trait and provide **both** the
+//! real implementation and a mock — never silently stub with a TODO.
 //!
 //! Bundle compatibility check (spec §4.4): the bundle declares platform/variant;
-//! a mismatch is refused (an Arches bundle must never flash onto an Acadia).
+//! a mismatch is refused (a bundle built for a different platform must never
+//! flash onto an Arches device).
 //! Secrets are excluded from backups by default (handled in the HTTP layer's
 //! backup/restore handler). We explicitly do NOT implement package-level
 //! (opkg/apt) updates (spec §4.4).
@@ -93,7 +93,8 @@ pub trait UpdateBackend: Send + Sync {
 
     /// Verify the bundle signature + compatibility, returning the manifest.
     /// Does not flash. Compatibility: bundle platform must equal the device
-    /// platform (spec §4.4 — Arches bundle never flashes onto Acadia).
+    /// platform (spec §4.4 — a bundle built for another platform must never
+    /// flash onto an Arches device).
     fn verify_bundle(&self, bundle_path: &str) -> Result<BundleManifest, UpdateError>;
 
     /// Install a verified bundle to the inactive slot, invoking `on_progress`
@@ -349,7 +350,7 @@ mod tests {
         // Force device platform to "arches" for this test.
         std::env::set_var("WEBCONFIG_PLATFORM", "arches");
         let m = BundleManifest {
-            platform: "acadia".into(),
+            platform: "other-platform".into(),
             variant: None,
             version: "1.0".into(),
             description: None,
@@ -359,7 +360,7 @@ mod tests {
         // runtime helper. The const is baked at build; verify the error type
         // path is reachable by constructing the error directly.
         let err = UpdateError::Incompatible {
-            bundle: "acadia".into(),
+            bundle: "other-platform".into(),
             device: "arches".into(),
         };
         assert!(err.to_string().contains("incompatible"));
@@ -465,10 +466,10 @@ mod tests {
         let bundle = dir.path().join("update.raucb");
         std::fs::write(&bundle, b"FAKE").unwrap();
         // Manifest platform intentionally differs from BUILD_PLATFORM.
-        let wrong = if BUILD_PLATFORM == "acadia" {
+        let wrong = if BUILD_PLATFORM == "other-platform" {
             "arches"
         } else {
-            "acadia"
+            "other-platform"
         };
         std::fs::write(
             format!("{}.manifest.json", bundle.display()),

@@ -5,7 +5,7 @@
 **Leaf type:** `<Project>-Configuration`
 **Status:** REAL — actively built out
 
-Branded **"SoCcentric WebConfig"** — architecturally distinct from every other project's `-Configuration` leaf. An on-device, browser-based configuration web UI explicitly designed as **one shared codebase across six platforms** (Arches, Acadia, Zion, Pinnacle, Joshua, Sequoia), differentiated only by a per-platform board-manifest data file.
+Branded **"SoCcentric WebConfig"** — architecturally distinct from every other project's `-Configuration` leaf. An on-device, browser-based configuration web UI for the Arches platform, with board-specific data isolated to a single board-manifest file (`board-manifests/arches.json`).
 
 - A small **Rust** daemon (`webconfigd`, axum framework, `current_thread` tokio runtime, rustls — no OpenSSL, no database, just JSON + ring log files). Target footprint: <15MB RAM, 3–6MB stripped binary.
 - **Vanilla-JS frontend**, no build step, no Node at build time, <500KB total; schema-driven rendering — adding a setting is a schema file, zero UI code.
@@ -17,7 +17,7 @@ Branded **"SoCcentric WebConfig"** — architecturally distinct from every other
 
 **Build:** `make build`/`release`/`test`/`lint`/`vendor`/`cross`/`run`; validation gate is `make build && make test && make lint`.
 
-**Important discrepancy:** this repo's own README describes itself as the shared implementation for six platforms, but the *actual* `Acadia-Configuration`/`Zion-Configuration`/etc. repos in this workspace run a completely different Python/FastAPI/Vue dashboard (see the `Configuration` section in other projects' docs). Treat the "one codebase, six platforms" claim as aspirational/historical — the two implementations currently coexist, one has not replaced the other.
+**Important discrepancy:** this repo is Arches-only, but other sibling projects in the `project-managers` fleet have their own `-Configuration` leaves that run a completely different Python/FastAPI/Vue dashboard (see the `Configuration` section in other projects' docs). Don't port fleet-wide `-Configuration` conventions from one implementation to the other without checking.
 
 ---
 Part of the `Arches` project in the `project-managers` fleet. See `docs/project-managers.md` for the full 9-project / 8-leaf hierarchy and shared conventions.

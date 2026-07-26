@@ -652,19 +652,13 @@ pub struct FirmwareUpload {
     pub signed: bool,
 }
 
-/// Platform panels (spec §4.9): Zion bitstream, Joshua PRU, Arches cameras.
+/// Platform panel (spec §4.9): Arches cameras + Jetson power mode.
 pub async fn platform_panel(
     State(app): State<AppState>,
     _role: AuthRole,
 ) -> ApiResult<Json<serde_json::Value>> {
     let m = &app.manifest;
     let out = match m.platform.as_str() {
-        "zion" => serde_json::json!({
-            "fpga": m.of_kind(IoKind::Fpga),
-        }),
-        "joshua" => serde_json::json!({
-            "pru": m.of_kind(IoKind::Pru),
-        }),
         "arches" => serde_json::json!({
             "cameras": m.of_kind(IoKind::Camera),
             "power_modes": ["15W", "30W", "MAXN"],

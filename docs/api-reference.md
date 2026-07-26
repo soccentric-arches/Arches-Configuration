@@ -160,7 +160,7 @@ Base URL: `https://<device>:8443/api/v1`. All responses are JSON.
 | POST | `/io/i2c/scan?bus=` | **[admin]** | `{bus, addresses}`. |
 | GET | `/io/mcu` | any | companion MCU panel. |
 | POST | `/io/mcu/firmware` | **[admin]** | signed firmware upload (version, signed). |
-| GET | `/io/platform-panel` | any | Zion FPGA / Joshua PRU / Arches cameras. |
+| GET | `/io/platform-panel` | any | Arches cameras + nvpmodel power mode. |
 
 Feature configuration endpoints expose an explicit `enabled` field before their
 detail settings are applied. Alert rules also carry their own `enabled` field.
