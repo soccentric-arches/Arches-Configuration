@@ -200,3 +200,10 @@ a single board-manifest file (`board-manifests/arches.json`). See
   different Python/FastAPI/Vue dashboard instead of this Rust/vanilla-JS
   WebConfig. The two approaches coexist unreconciled across the fleet; don't
   port fleet-wide conventions from one to the other without checking.
+<!-- BEGIN loop-engine -->
+## Do's and Don'ts (maintained by the Loop Engine)
+
+*Appended by the Loop Engine on loop close; curated by a human when approving a
+loop out of `in-review/`. Nothing outside this fence is engine-writable.*
+
+<!-- END loop-engine -->
