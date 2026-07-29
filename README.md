@@ -36,7 +36,7 @@ frontend/                   # vanilla JS: index.html, styles.css, schema-form.js
 schemas/                    # *.schema.json — schema-driven rendering + validation
 board-manifests/            # arches.json (board-specific data) + generic.yaml fallback
 meta-webconfig/             # Yocto layer: daemon, static assets, schemas, manifest, hardened unit
-docs/                       # spec, API reference, schema format, board-manifest spec
+docs/                       # spec, API reference, schema format, board-manifest spec, planning/audits
 Makefile                    # build | release | test | lint | fmt | vendor | cross | run | clean
 ```
 
@@ -80,6 +80,7 @@ See [`meta-webconfig/README.md`](meta-webconfig/README.md).
 - [REST API reference](docs/api-reference.md)
 - [Schema format](docs/schema-format.md)
 - [Board-manifest format](docs/board-manifest.md)
+- [Production-readiness audit](docs/planning/MasterPlan.md) and its [acceptance checklist](docs/planning/Checkpoint.md)
 
 ## License
 
