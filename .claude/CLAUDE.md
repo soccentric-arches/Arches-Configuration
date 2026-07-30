@@ -1,58 +1,47 @@
-# CLAUDE.md - Arches-Configuration (WebConfig)
+# Arches-Configuration (WebConfig)
 
-Master SoCcentric CLAUDE.md applies. This file adds local knowledge only. See [project_specs.md](project_specs.md) for what this repo is and its architecture.
+Rust daemon plus vanilla-JS frontend: the on-device config UI for the Jetson. Ships into Arches-OS
+as the `meta-webconfig` Yocto layer. Board specifics live in one manifest file, not in code.
 
-## Commands
+## How you work here
 
-* Build: `make build` (debug, host target) — wraps `cargo build`
-* Release: `make release` — exact spec profile (opt-level=z, lto, codegen-units=1, panic=abort, stripped)
-* Test: `make test` — engine unit tests + in-crate HTTP integration tests (`crates/webconfigd/src/tests.rs`) against a tempdir fake sysroot, no hardware
-* Lint: `make lint` — `cargo clippy -D warnings` + `cargo fmt --check`
-* Validation gate (global section-9 step 6): `make build && make test && make lint`
-* Cross: `make cross` — x86_64, aarch64-unknown-linux-gnu, armv7-gnueabihf
-* Vendor: `make vendor` — regenerate offline crate tarball; build with `CARGO_NET_OFFLINE=1`
+* Commands: `.claude/commands/` — check, lint, validate.
+* Write: system interactions sit behind narrow traits with real and mock impls. Pick one explicitly via `make_backend` / `make_client` — never stub with a TODO.
+* Test: engine unit tests plus in-crate HTTP integration tests against a tempdir fake sysroot. No hardware needed.
+* Frontend has no build step. Native ES modules, no bundler, no node at build time, under 500 KB.
+
+## How you validate
+
+* Gate: `./.claude/validate.sh quick` (seconds) or `full` (adds build + tests). Run it before you claim done.
+* Exit codes: `0` pass, `1`-`76` fail, `77` a check never ran. **77 is not a pass.**
+* The gate and everything under `.claude/lib`, `hooks`, `commands`, `settings.json` is human-owned. Run it, never edit it.
 
 ## Do
 
-* Build/test via the root Makefile only (global section-12). Never bypass with ad-hoc cargo commands in CI/PR validation.
-* Stop a local daemon and clear its listener with `make stop`; override the default TLS port with `make stop WEBCONFIG_PORT=<port>`.
-* Keep the in-crate test pattern (`src/main.rs` → `src/tests.rs`) for the binary crate — external `tests/` integration tests cannot import `crate::routes`/`crate::state`.
-* Never silently stub a system interaction with a TODO — pick real vs mock explicitly via `make_backend`/`make_client`.
-* When a struct derives `Default`, every field type must impl `Default` (e.g. `IoKind` needed a `Default` derive so `Peripheral: Default` compiles — the derive fails the whole crate otherwise).
-* State assumptions in one line where a real interaction is narrowed (e.g. updates install takes a server-staged `bundle_path`, not multipart, in v1).
-* Match webconfig-engine handler contracts exactly when wiring the frontend (Vitals/UnitState/NetworkConfig/SystemConfig/AlertRule/SlotStatus/Peripheral shapes — see `docs/api-reference.md`).
-* Never let a component class set `display` unconditionally — `base.css` has a global `[hidden] { display: none !important; }` specifically so no component can re-break the hidden-attribute-vs-class-display bug that hit the old `.overlay`/`.banner` rules.
-* Native dialogs (`confirm()`/`prompt()`) are banned in the frontend — use `confirmDialog`/`promptDialog`/`formDialog` from `frontend/components/modal.js` instead.
-* Register every system applier in `appliers::all()` AND validate + apply it explicitly in `system::apply` / `network::apply` — `apply_all()` is not used on those routes.
-* `/system/info` returns per-interface MACs under `macs` plus `uptime_secs` (spec section-4.1).
-* For "secondary text" use the `.text-sm` utility class (with `.muted` for color) — never inline `style: 'font-size:...'`.
+* Go through the root Makefile. Never bypass it with ad-hoc cargo commands in CI or PR validation.
+* Keep the in-crate test pattern (`src/main.rs` -> `src/tests.rs`) — a binary crate has no lib target, so external `tests/` cannot import `crate::routes` or `crate::state`.
+* Give every field type a `Default` impl when a struct derives `Default` — one missing derive fails the whole crate.
+* Match the webconfig-engine handler contracts exactly when wiring the frontend. Shapes are in `docs/api-reference.md`.
+* Register every system applier in `appliers::all()` **and** validate + apply it explicitly in `system::apply` / `network::apply`. `apply_all()` is not used on those routes, so a forgotten applier means the config saves but never applies.
+* Use `confirmDialog` / `promptDialog` / `formDialog` from `frontend/components/modal.js`.
+* Use the `.text-sm` utility class (with `.muted`) for secondary text.
+* Return per-interface MACs under `macs` plus `uptime_secs` from `/system/info`.
 
 ## Don't
 
-* Don't route app-schema validation by `name.starts_with("app:")` on the validator key — validators are keyed by the schema file stem, while app-ness is decided by `descriptor.id`. Route via `descriptor.id.starts_with("app:")`. (Previously app settings were never server-validated.)
-* Don't add a `DELETE /logs/audit` route or an `AuditLog::clear()` method — the audit log is append-only (spec section-4.8). Only a full factory reset wipes it, inlined in `system::factory_reset`.
-* Don't set the session cookie `with_secure(false)` — the daemon is TLS-only (`server.rs`), so `with_secure(true)` is correct (spec section-4.8 httpOnly+Secure).
-* Don't expect the CSRF guard to return 403. Missing/invalid `X-CSRF-Token` on a mutating protected route returns 400 BadRequest (`csrf.rs`). Tests must assert `StatusCode::BAD_REQUEST`, not FORBIDDEN.
-* Don't validate `authorized_keys` by trusting any non-empty line — reject private-key material (`-----BEGIN`) and require each non-comment line to start with a known OpenSSH key-type prefix + a base64 blob (`appliers/ssh.rs`). `SshConfig.authorized_keys` is otherwise saved-but-never-applied if you forget to add the applier to `system::apply`.
-* Don't assume `ApiError::NotFound` takes a message — it is a unit variant. Use `ApiError::NotFound` directly.
-* Host cargo toolchain IS available (`~/.cargo/bin` on PATH via rustup, channel pinned by `rust-toolchain.toml`) — `make build && make test && make lint` runs and passes locally; no need to skip compile-verification.
-* Don't add node/build steps to the frontend. Vanilla JS (native ES modules, no bundler), <500 KB, no build step, no node at build time (spec section-2).
-* Don't hardcode I/O or board behavior in code — it lives in the board manifest (`board-manifests/arches.json`) as data (spec section-4.9, section-3).
-* Don't reintroduce `meta-soccentric-webconfig` as a path in docs — the Yocto layer directory is `meta-webconfig` on disk. The `soccentric-webconfig` string still appears legitimately as the Yocto collection name in `meta-webconfig/conf/layer.conf`'s `LAYERSERIES_COMPAT_`/`LAYERDEPENDS_`/`LAYERSERIES_COREVERSION_` overrides — a different concept from the directory name and correct as-is.
-* `MasterPlan.md` and `Checkpoint.md` live in `docs/planning/`, not repo root — keep the root to files with tooling/fleet contracts (README.md, CLAUDE.md, CHANGELOG.md, REPO_MAP.md). The two files cross-reference each other by bare filename since they're in the same directory — don't split them apart.
-* Don't assume CI and `Cargo.toml` agree on the Rust version — `.github/workflows/ci.yml` pins 1.75.0 while `Cargo.toml`/`rust-toolchain.toml` declare `rust-version = "1.85"`. Verify which is authoritative before bumping either in isolation.
-* Don't assume this is the only `-Configuration` pattern in the fleet — see [project_specs.md](project_specs.md).
-
-## Validation gate - .claude/validate.sh
-
-```
-./.claude/validate.sh quick   # seconds: board-manifest and schema JSON parse, meta-webconfig layer wiring, `clippy -D warnings` + `rustfmt --check`
-./.claude/validate.sh full    # + `make check` = build && test && lint
-```
-
-Exit codes follow the fleet contract: 0 pass, 1-76 fail, 77 means a check never ran (missing toolchain) - which is not a pass. Runs automatically via the Stop hook in .claude/settings.json, on demand via /validate, and as part of any loop the engine executes here.
-
-Human-owned: the Loop Engine runs this script and never edits it. If a check is wrong, fix it yourself or raise it in the loop's Lessons Learned.
+* **Don't let a component class set `display` unconditionally.** `base.css` carries a global `[hidden] { display: none !important; }` precisely so no component can re-break the hidden-attribute-vs-class-display bug.
+* **Don't use native `confirm()` / `prompt()`** in the frontend. Banned.
+* **Don't route app-schema validation by `name.starts_with("app:")`.** Validators are keyed by schema file stem; app-ness is decided by `descriptor.id`. Route via `descriptor.id`.
+* **Don't add a `DELETE /logs/audit` route or an `AuditLog::clear()`.** The audit log is append-only; only a full factory reset wipes it.
+* **Don't set the session cookie `with_secure(false)`.** The daemon is TLS-only.
+* **Don't expect 403 from the CSRF guard.** A missing or invalid `X-CSRF-Token` returns 400 BadRequest. Assert `BAD_REQUEST`.
+* **Don't trust any non-empty line in `authorized_keys`.** Reject `-----BEGIN` private-key material; require a known OpenSSH key-type prefix plus a base64 blob.
+* **Don't pass a message to `ApiError::NotFound`** — it is a unit variant.
+* **Don't add node or a build step to the frontend.**
+* **Don't hardcode I/O or board behavior.** It lives in `board-manifests/arches.json` as data.
+* **Don't write `meta-soccentric-webconfig` as a path.** The layer directory is `meta-webconfig`. The `soccentric-webconfig` string is legitimately the Yocto collection name in `layer.conf` — a different thing, correct as-is.
+* **Don't move `MasterPlan.md` / `Checkpoint.md` out of `docs/planning/`.** They cross-reference each other by bare filename, so splitting them breaks both.
+* **Don't assume CI and `Cargo.toml` agree on the Rust version.** `.github/workflows/ci.yml` pins 1.75.0 while `Cargo.toml` / `rust-toolchain.toml` declare 1.85. Establish which is authoritative before bumping either.
 
 <!-- BEGIN loop-engine -->
 ## Do's and Don'ts (maintained by the Loop Engine)
