@@ -1,5 +1,8 @@
-# TEMP (restored after vendoring): vendor source replacement + offline lifted
-# so cargo can reach crates.io to generate the lockfile and populate vendor/.
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "vendor"
 
 [target.aarch64-unknown-linux-gnu]
 linker = "aarch64-linux-gnu-gcc"
