@@ -1,6 +1,6 @@
 # Arches-Configuration
 
-**Remote:** `git@github.com:SiliconCentric/Arches-Configuration.git`
+**Remote:** `git@github.com:soccentric-arches/Arches-Configuration.git`
 **Parent project:** [Arches](../Arches.md) (target hardware: **NVIDIA Jetson** (Tegra family, L4T/JetPack OS) application processor with an **STM32** real-time co-processor.)
 **Leaf type:** `<Project>-Configuration`
 **Status:** REAL — actively built out
