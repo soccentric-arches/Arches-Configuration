@@ -1,4 +1,35 @@
-# SoCcentric WebConfig
+# Arches-Configuration
+
+## Project Summary
+
+Arches-Configuration is the Rust workspace for on-device system configuration. The reusable `webconfig-engine` crate models manifests and schemas, persists state, audits changes, creates backups, monitors the system, and applies changes through focused backends. Appliers cover access points, CAN, firewall, GPIO, hostname, journald, systemd-networkd, serial, SSH, time, Wi-Fi, and WireGuard.
+
+The `webconfigd` daemon supplies bootstrap and state management, authenticated HTTP routes, CSRF protection, TLS, server-sent events, jobs, systemd integration, alert dispatch, and update handling. API modules expose system, network, security, services, I/O, logs, monitoring, alerts, and updates. `schemas/` contains example and STM32 application schemas; `board-manifests/` contains Arches and generic target data; and `meta-webconfig` packages the service for Yocto.
+
+The Makefile defines debug build, fake-sysroot engine and HTTP integration tests, Clippy with warnings denied, rustfmt checking, and the combined `check` gate. Unit tests are embedded in `crates/webconfigd/src/tests.rs`; no separate top-level test directory was found, so live hardware behavior remains target-dependent. Statuses distinguish code presence from test evidence.
+
+The daemon depends on system privileges, systemd services, board-specific paths, and a compatible fake or real sysroot. Review rollback, privilege boundaries, manifest compatibility, and live service behavior before release. Also check restart recovery, concurrent configuration changes, persistence permissions, and the rendered browser assets on the target. No manual verification is implied by source presence or by a passing host build.
+
+## Features
+
+| # | Name / Description | Implemented? | Test Coverage? | Manual Test |
+|---:|---|---|---|---|
+| 1 | Rust workspace and webconfig-engine | Implemented | `make build`, `make lint` | [ ] Manual verification required |
+| 2 | Manifest and schema parsing | Implemented | Partial: daemon tests | [ ] Manual verification required |
+| 3 | Persistent store, backup, and audit | Implemented | Partial | [ ] Manual verification required |
+| 4 | Update workflow | Implemented | Partial | [ ] Manual verification required |
+| 5 | Network, Wi-Fi, WireGuard, firewall appliers | Implemented | Fake-sysroot integration gate | [ ] Manual verification required |
+| 6 | GPIO, CAN, serial, time, SSH, hostname appliers | Implemented | Partial | [ ] Manual verification required |
+| 7 | Authenticated HTTP API | Implemented | `make test` | [ ] Manual verification required |
+| 8 | CSRF, TLS, and session security | Implemented | Partial | [ ] Manual verification required |
+| 9 | SSE, jobs, monitoring, and alerts | Implemented | Partial: daemon tests | [ ] Manual verification required |
+| 10 | Yocto packaging and board manifests | Implemented | Unknown | [ ] Manual verification required |
+
+## Validation
+
+`make check`; `make build`; `make test`; `make lint`.
+
+## Existing Documentation
 
 An **on-device, browser-based configuration web UI** for the Arches
 Yocto/embedded-Linux platform (NVIDIA Jetson application processor + STM32
