@@ -1,6 +1,14 @@
 # Build artifacts
 /target
 **/target/
+# `**/target/` above would also match vendored crates whose package contains a
+# `src/target/` subdir (e.g. cc-1.3.0). Vendored crates are committed wholesale
+# for offline builds, so re-include everything under vendor/ (subsequent rules
+# below must not un-ignore them).
+!vendor/
+!vendor/**
+!vendor/**/target/
+!vendor/**/target/**
 
 # Release tarballs produced by tools/release-artifacts.sh (Checkpoint 3.2) —
 # regenerated per release, never committed.
@@ -23,4 +31,6 @@
 .env.*
 *.pem
 *.key
+!vendor/**/*.pem
+!vendor/**/*.key
 /data/
