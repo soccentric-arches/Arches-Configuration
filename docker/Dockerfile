@@ -80,13 +80,19 @@ ENV CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc \
     CC_armv7_unknown_linux_gnueabihf=arm-linux-gnueabihf-gcc
 
 # The cross linker is declared in .cargo/config.toml, so carry it into the build.
-COPY .cargo ./ .cargo/
-
+# WORKDIR first: COPY destinations below are relative to it (/build).
 WORKDIR /build
+COPY .cargo ./.cargo/
 
 # Copy manifest + lock + toolchain first to leverage the layer cache.
 COPY Cargo.toml Cargo.lock ./
 COPY rust-toolchain.toml ./
+
+# Vendored crates: .cargo/config.toml replaces crates.io with this directory
+# source, resolved relative to the directory containing .cargo (i.e. /build).
+# Without it, cargo fails with "failed to read root of directory source: /vendor".
+COPY vendor ./vendor
+
 COPY crates ./crates
 
 # board-manifests + schemas are embedded at compile time via include_str!(), so
@@ -122,11 +128,12 @@ COPY frontend ./frontend
 FROM debian:13-slim AS runtime
 
 # webconfigd is a static-ish binary (rustls, bundled sqlite); only libc + ca
-# certs are needed at runtime.
+# certs are needed at runtime — plus wget, which the HEALTHCHECK below uses.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates \
       tzdata \
+      wget \
  && rm -rf /var/lib/apt/lists/* \
  && useradd --system --no-create-home --uid 1001 webconfig
 

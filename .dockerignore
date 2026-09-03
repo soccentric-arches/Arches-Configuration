@@ -1,0 +1,18 @@
+# Keep the docker build context (repo root) small: only what the Dockerfile
+# COPYs — .cargo, Cargo.toml/lock, rust-toolchain.toml, crates/, vendor/,
+# board-manifests/, schemas/, frontend/. Everything else is excluded.
+.git
+.github
+.claude
+target
+data
+docker
+doc
+tools
+meta-webconfig
+*.md
+.dockerignore
+.gitignore
+LICENSE
+Makefile
+herdr.sh
