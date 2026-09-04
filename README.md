@@ -78,7 +78,7 @@ schemas/                    # *.schema.json — schema-driven rendering + valida
 board-manifests/            # arches.json (board-specific data) + generic.yaml fallback
 meta-webconfig/             # Yocto layer: daemon, static assets, schemas, manifest, hardened unit
 docs/                       # spec, API reference, schema format, board-manifest spec, planning/audits
-Makefile                    # build | release | test | lint | fmt | vendor | cross | run | clean
+Makefile                    # build | test | lint | fmt | check | vendor | run-mock | clean
 ```
 
 ## Build & test
@@ -86,13 +86,14 @@ Makefile                    # build | release | test | lint | fmt | vendor | cro
 The repo-root Makefile is the single entry point (per SoCcentric conventions):
 
 ```bash
-make build    # debug build (host target)
-make release  # exact spec release profile (opt-level=z, lto, panic=abort, stripped)
+make build    # production webconfigd Docker image (fleet default)
 make test     # engine + HTTP integration tests (fake sysroot, no hardware)
 make lint     # clippy -D warnings + rustfmt --check
+make fmt      # format the workspace in place
+make check    # validation gate: build && test && lint
 make vendor   # regenerate the offline crate tarball for reproducible builds
-make cross    # build all three cross-targets: x86_64, aarch64, armv7
-make run      # run the daemon against a tempdir fake sysroot (dev)
+make run-mock # run the daemon against a tempdir fake sysroot (dev)
+make run      # run the webconfigd container; UI on the LAN at https://<host-ip>:8443
 ```
 
 Validation gate (used by the git workflows and CI): `make build && make test && make lint`.

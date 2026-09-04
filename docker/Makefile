@@ -37,10 +37,12 @@ build-armv7:
 		--build-arg RUST_TARGET=$(ARMV7_TARGET) \
 		--load -f Dockerfile -t $(IMAGE)-armv7 ..
 
+# -p 0.0.0.0 is explicit on purpose: it guarantees LAN access even if the
+# Docker daemon is configured with an "ip": "127.0.0.1" default.
 run:
-	@echo "Running $(IMAGE) (port 8443) ..."
+	@echo "Running $(IMAGE) (port 8443, published on all interfaces)..."
 	docker run --rm -d --name webconfigd \
-		-p 8443:8443 \
+		-p 0.0.0.0:8443:8443 \
 		-v webconfig-data:/data \
 		$(IMAGE)
 

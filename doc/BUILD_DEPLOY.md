@@ -34,8 +34,8 @@ Cargo debug and release outputs are written below `target/`, with target-specifi
 ## 7. Deployment, install, and run
 
 - `make run-mock` runs against a temporary fake sysroot and is the hardware-free smoke path.
-- `make run` runs against the real host, including live `/proc` and real backends; it is conditional on a suitable host environment.
 - `make stop` stops the process listening on `WEBCONFIG_PORT` (default `8443`).
+- Real-host runs (live `/proc`, real backends) are done by launching the daemon directly (`cargo run -p webconfigd`) or via the container (`make -C docker run`); they are conditional on a suitable host environment.
 - Yocto installation is performed by the Arches-OS image recipe, not by a standalone installer in this repository. Use the release artifact workflow and the matching OS image build for target deployment.
 
 There is no cloud deployment target in this Makefile. Target installation requires the corresponding Yocto image, board configuration, and target access.
@@ -46,4 +46,4 @@ There is no cloud deployment target in this Makefile. Target installation requir
 
 ## 9. Hardware, cloud, and manual verification caveats
 
-The automated test target explicitly uses a fake sysroot, so it cannot validate board permissions, real backends, or service integration. Verify `make run` only on an approved host/target. Cross builds and Yocto packaging are conditional on toolchains, network access for dependencies, and matching board manifests.
+The automated test target explicitly uses a fake sysroot, so it cannot validate board permissions, real backends, or service integration. Verify real-host runs only on an approved host/target. Cross builds and Yocto packaging are conditional on toolchains, network access for dependencies, and matching board manifests.

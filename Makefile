@@ -7,13 +7,17 @@
 # Targets:
 #   make toolchain  — install rustup + the exact pinned toolchain (one-time
 #                     host setup; see rust-toolchain.toml)
-#   make build      — build the production webconfigd Docker image (fleet default)
+#   make build      — build the production webconfigd Docker image (fleet
+#                     default). Cross builds (arm64/armv7) and container
+#                     logs/clean live in docker/Makefile: make -C docker …
+#   make run        — run the webconfigd container, publish 8443 on the LAN
+#                     (UI at https://<host-ip>:8443; stop with make stop)
 #   make test       — engine + HTTP integration tests (fake sysroot, no HW)
 #   make lint       — clippy + rustfmt --check
 #   make fmt        — format in place
+#   make check      — validation gate: build && test && lint
 #   make vendor     — (re)generate the vendored offline crate tarball
-#   make run        — run the daemon against the real host (live /proc, real
-#                     backends); persistent state in ./data (dev)
+#   make release-artifacts — package release tarballs + checksums for Yocto
 #   make run-mock   — run against a tempdir fake sysroot (mock backends, no HW)
 #   make stop       — stop the process listening on the WebConfig TCP port
 #   make clean      — remove target/
@@ -76,21 +80,6 @@ vendor: ## Regenerate the vendored offline crate tarball
 release-artifacts: ## Package release tarballs + compute real checksums for webconfigd.bb
 	@./tools/release-artifacts.sh
 
-# Cross-compile parity check for CI (spec §6).
-# Dev run against the REAL host sysroot (spec §6): no WEBCONFIG_SYSROOT is
-# set, so resolve_sysroot() uses "/" and is_real_root() is true — the daemon
-# reads live /proc + /sys and uses the real systemd/update backends (mock
-# backends are only selected for a tempdir fake sysroot). State (config.db,
-# cert.pem, key.pem) is redirected to a persistent, gitignored ./data so the
-# first-boot admin and config survive restarts, mirroring a device's /data
-# partition. Wipe ./data to reset to first-boot. For the no-hardware mock
-# mode, use `make run-mock`.
-run: ## Run the daemon against the real host (live /proc, real backends)
-	@mkdir -p data; \
-	WEBCONFIG_DATA_DIR="$$(pwd)/data" \
-	RUST_LOG=info \
-	$(CARGO) run -p webconfigd -- --
-
 # Mock mode: run against a tempdir fake sysroot so no hardware is required and
 # no host side effects occur (spec §6). Vitals read as zeros; backends are
 # mocks. The tempdir is wiped by the OS on reboot; state does not persist.
@@ -102,8 +91,13 @@ run-mock: ## Run against a tempdir fake sysroot (mock backends, no hardware)
 
 # Stop the process holding the default daemon port, or an overridden
 # WEBCONFIG_PORT. A clear port is already in the desired state.
-stop: ## Stop the process listening on WEBCONFIG_PORT (default: 8443)
-	@case "$$WEBCONFIG_PORT" in \
+stop: ## Stop the container (make run) or bare daemon on WEBCONFIG_PORT
+	@if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx webconfigd; then \
+		echo '==> stopping webconfigd container'; \
+		$(MAKE) -C docker stop; \
+		exit 0; \
+	fi; \
+	case "$$WEBCONFIG_PORT" in \
 		[1-9]|[1-9][0-9]|[1-9][0-9][0-9]|[1-9][0-9][0-9][0-9]|[1-9][0-9][0-9][0-9][0-9]) ;; \
 		*) echo "WEBCONFIG_PORT must be an integer between 1 and 65535" >&2; exit 2 ;; \
 	esac; \
@@ -133,40 +127,33 @@ clean: ## Remove target/
 # ── Docker (fleet-standard build) ────────────────────────────────────────────
 # The default build is the production container image (daemon + frontend +
 # schemas + board manifest) — see docker/Dockerfile. `make build` = Docker.
+# Cross builds (arm64/armv7) and container logs/clean stay in
+# docker/Makefile: `make -C docker build-arm64`, `make -C docker logs`, …
 
-.PHONY: docker-build docker-build-arm64 docker-build-armv7 docker-run docker-stop docker-logs docker-clean
-
-build: docker-build ## Build the production webconfigd image in Docker (fleet default)
-
-docker-build: ## Build the production webconfigd image (host arch)
+build: ## Build the production webconfigd image in Docker (fleet default)
 	$(MAKE) -C docker build IMAGE_NAME=arches-webconfigd
 
-docker-build-arm64: ## Cross-build the arm64 webconfigd image (Raspberry Pi 5 / Zynq MPSoC)
-	$(MAKE) -C docker build-arm64 IMAGE_NAME=arches-webconfigd
-
-docker-build-armv7: ## Cross-build the armv7 webconfigd image (32-bit Pi 2/3-class)
-	$(MAKE) -C docker build-armv7 IMAGE_NAME=arches-webconfigd
-
-docker-run: ## Run the container (production, port 8443)
-	$(MAKE) -C docker run IMAGE_NAME=arches-webconfigd
-
-docker-stop: ## Stop and remove the container
-	$(MAKE) -C docker stop
-
-docker-logs: ## Tail container logs
-	$(MAKE) -C docker logs
-
-docker-clean: ## Remove the built image
-	$(MAKE) -C docker clean IMAGE_NAME=arches-webconfigd
+# Publish 8443 on every host interface so the UI is reachable from other
+# machines on the LAN (https://<host-ip>:8443). First boot generates a
+# self-signed TLS cert into the `webconfig-data` volume — accept the browser
+# warning. Stop it with `make stop`.
+run: ## Run the webconfigd container, publish port 8443 on the LAN
+	@$(MAKE) -C docker run IMAGE_NAME=arches-webconfigd
+	@sleep 1; \
+	lan_ip=$$(hostname -I 2>/dev/null | awk '{print $$1}'); \
+	if [ -z "$$lan_ip" ]; then \
+		lan_ip=$$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<NF;i++) if($$i=="src") print $$(i+1)}' | head -1); \
+	fi; \
+	echo; \
+	echo '  ==> webconfig UI:  https://localhost:8443'; \
+	if [ -n "$$lan_ip" ]; then \
+		echo "                     https://$$lan_ip:8443   (local network)"; \
+	fi; \
+	echo '  ==> self-signed TLS on first boot — accept the browser warning'; \
+	echo '  ==> stop it with: make stop'
 
 # Convenience alias: full validation gate (§9 step 6).
 check: build test lint ## Full validation gate: build (Docker) && test && lint
-
-# ── Fleet-standard aliases ────────────────────────────────────────────────────
-# Same verbs mean the same thing in every repo; these forward to this
-# repo's own targets rather than duplicating their recipes.
-.PHONY: format
-format: fmt ## Alias for fmt
 
 # ── Help ──────────────────────────────────────────────────────────────────────
 # Targets are self-documenting: text after `## ` on a target line is picked up
