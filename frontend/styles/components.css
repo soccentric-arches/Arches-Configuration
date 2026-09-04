@@ -13,7 +13,7 @@
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
   cursor: pointer;
-  transition: background var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease), box-shadow var(--duration-fast) var(--ease), opacity var(--duration-fast) var(--ease);
+  transition: background var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease), box-shadow var(--duration-fast) var(--ease), opacity var(--duration-fast) var(--ease), transform var(--duration-fast) var(--ease);
   white-space: nowrap;
   min-width: 112px;
   user-select: none;
@@ -178,6 +178,11 @@
 
 .card-body>*+* {
   margin-top: var(--space-4);
+}
+
+/* Tactile press: buttons sink slightly while held. */
+.btn:active {
+  transform: translateY(1px) scale(0.98);
 }
 
 .card-body>.btn {

@@ -93,12 +93,12 @@ body::before {
    starts the animation — the login → app hand-off slides in fluidly). */
 #app-shell,
 .auth-shell {
-  animation: fade-in var(--duration-slow) var(--ease) both;
+  animation: fade-in 260ms var(--ease) both;
 }
 
-/* Every routed page fades/slides in on mount. */
+/* Every routed page fades/slides in on mount — quick, not drowsy. */
 #view > * {
-  animation: page-enter var(--duration-slow) var(--ease) both;
+  animation: page-enter 240ms var(--ease) both;
 }
 
 /* Cards cascade in — staggered per sibling so grids ripple. `backwards` fill
@@ -109,13 +109,59 @@ body::before {
   animation: card-enter var(--duration-normal) var(--ease) backwards;
 }
 
-#view .card:nth-child(2), .auth-shell .card:nth-child(2) { animation-delay: 40ms; }
-#view .card:nth-child(3), .auth-shell .card:nth-child(3) { animation-delay: 80ms; }
-#view .card:nth-child(4), .auth-shell .card:nth-child(4) { animation-delay: 120ms; }
-#view .card:nth-child(5), .auth-shell .card:nth-child(5) { animation-delay: 160ms; }
-#view .card:nth-child(6), .auth-shell .card:nth-child(6) { animation-delay: 200ms; }
-#view .card:nth-child(7), .auth-shell .card:nth-child(7) { animation-delay: 240ms; }
-#view .card:nth-child(n+8) { animation-delay: 280ms; }
+#view .card:nth-child(2), .auth-shell .card:nth-child(2) { animation-delay: 24ms; }
+#view .card:nth-child(3), .auth-shell .card:nth-child(3) { animation-delay: 48ms; }
+#view .card:nth-child(4), .auth-shell .card:nth-child(4) { animation-delay: 72ms; }
+#view .card:nth-child(5), .auth-shell .card:nth-child(5) { animation-delay: 96ms; }
+#view .card:nth-child(6), .auth-shell .card:nth-child(6) { animation-delay: 120ms; }
+#view .card:nth-child(7), .auth-shell .card:nth-child(7) { animation-delay: 144ms; }
+#view .card:nth-child(n+8) { animation-delay: 168ms; }
+
+/* Read-only data items ripple in after their card (overview identity etc.). */
+@keyframes item-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.data-item {
+  animation: item-in 180ms var(--ease) backwards;
+}
+
+.data-item:nth-child(2) { animation-delay: 30ms; }
+.data-item:nth-child(3) { animation-delay: 60ms; }
+.data-item:nth-child(4) { animation-delay: 90ms; }
+.data-item:nth-child(5) { animation-delay: 120ms; }
+.data-item:nth-child(n+6) { animation-delay: 140ms; }
+
+/* Sidebar links ripple down the rail on first paint. */
+@keyframes nav-in {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.sidebar-link,
+.sidebar-section-label {
+  animation: nav-in 200ms var(--ease) backwards;
+}
+
+.sidebar-nav > :nth-child(2) { animation-delay: 16ms; }
+.sidebar-nav > :nth-child(3) { animation-delay: 32ms; }
+.sidebar-nav > :nth-child(4) { animation-delay: 48ms; }
+.sidebar-nav > :nth-child(5) { animation-delay: 64ms; }
+.sidebar-nav > :nth-child(6) { animation-delay: 80ms; }
+.sidebar-nav > :nth-child(7) { animation-delay: 96ms; }
+.sidebar-nav > :nth-child(8) { animation-delay: 112ms; }
+.sidebar-nav > :nth-child(n+9) { animation-delay: 128ms; }
+
+/* The topbar slides down from under the app-shell reveal. */
+@keyframes topbar-in {
+  from { opacity: 0; transform: translateY(-100%); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.topbar {
+  animation: topbar-in 260ms var(--ease) backwards;
+}
 
 /* Page title re-enters when the route changes (topbar.js re-triggers it). */
 .page-title-enter {
