@@ -1,27 +1,26 @@
+// Top bar: brand (home button + board identity), page title, search, theme
+// switch, session, logout. Navigation lives in the sidebar; on narrow
+// screens the hamburger here opens it as an off-canvas drawer.
+
 import { el } from '../core/dom.js';
 import { icon } from '../core/icons.js';
 import { Button } from './button.js';
 import { ThemeSwitch } from './theme-switch.js';
+
 /** Topbar({ onToggleSidebar, onOpenPalette, onLogout, onHome }) -> { element, setTitle, setBadge, setSession, setBoard } */
 export function Topbar({ onToggleSidebar, onOpenPalette, onLogout, onHome }) {
   const title = el('span', { class: 'page-title' }, '');
   const badge = el('span', { class: 'badge badge-info', hidden: true });
   const session = el('span', { class: 'muted text-sm' });
-  // Mobile-only: opens the off-canvas drawer. The desktop collapse/expand
-  // control lives inside the sidebar itself (components/sidebar.js) — the
-  // topbar no longer duplicates it.
+  // Mobile-only: opens the off-canvas drawer.
   const mobileToggle = Button({
     variant: 'ghost', size: 'sm', icon: 'menu', title: 'Open navigation',
     onClick: onToggleSidebar,
   });
   mobileToggle.classList.add('sidebar-mobile-toggle');
 
-  // Brand block doubles as the board identity header: app name on the first
-  // line, device model + serial on the second (setBoard, below). Like a real
-  // board's management header, the device is identified at a glance.
   // Brand block doubles as the board identity header AND the home button:
-  // clicking it navigates to the main page (Overview) — the whole device
-  // header behaves like a clickable logo.
+  // app name over device model + serial (setBoard, below).
   const brandSub = el('span', { class: 'brand-sub', hidden: true });
   const brand = el('button', {
     type: 'button', class: 'topbar-brand',
@@ -38,6 +37,7 @@ export function Topbar({ onToggleSidebar, onOpenPalette, onLogout, onHome }) {
     'aria-label': 'Search pages and actions',
   }, el('span', { class: 'search-trigger-copy' }, icon('search', { size: 15 }), el('span', { class: 'search-trigger-label' }, 'Search pages and actions')),
     el('kbd', { class: 'cmdk-hint-kbd' }, 'Ctrl K'));
+
   const logoutButton = Button({
     variant: 'ghost', size: 'sm', icon: 'logout', title: 'Log out', onClick: onLogout,
   });
@@ -63,14 +63,18 @@ export function Topbar({ onToggleSidebar, onOpenPalette, onLogout, onHome }) {
       title.textContent = t;
       // Re-trigger the slide-in so route changes feel fluid (see base.css).
       title.classList.remove('page-title-enter');
-      void title.offsetWidth; // restart the animation
+      void title.offsetWidth;
       title.classList.add('page-title-enter');
     },
-    setBadge: (t) => { if (t) { badge.textContent = t.toUpperCase(); badge.hidden = false; } else badge.hidden = true; },
-    setSession: (username, role) => { session.textContent = username ? `${username} · ${role || ''}` : ''; },
-    // setBoard(info) — feed the payload of GET /api/v1/system/info. Shows
-    // model (falling back to board name / platform) plus serial; hides the
-    // line entirely when nothing is known (pre-auth, fetch failure).
+    setBadge: (t) => {
+      if (t) { badge.textContent = t.toUpperCase(); badge.hidden = false; }
+      else badge.hidden = true;
+    },
+    setSession: (username, role) => {
+      session.textContent = username ? `${username} · ${role || ''}` : '';
+    },
+    // setBoard(info) — payload of GET /api/v1/system/info: model (falling
+    // back to board name / platform) plus serial; hidden when unknown.
     setBoard: (info) => {
       const model = info && (info.model || info.board_name || info.platform) || '';
       const serial = info && info.serial_number ? ` · SN ${info.serial_number}` : '';

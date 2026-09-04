@@ -16,9 +16,9 @@
   --zinc-900: #18181b;
 
   /* Semantic surface colors */
-  --background: #f8fafc;
+  --background: #fbf8f3;
   --foreground: var(--zinc-900);
-  --muted: var(--zinc-100);
+  --muted: #f5efe8;
   --muted-foreground: var(--zinc-500);
   --card: #ffffff;
   --card-foreground: var(--zinc-900);
@@ -26,13 +26,13 @@
   --popover-foreground: var(--zinc-900);
   --border: var(--zinc-200);
   --input: var(--zinc-200);
-  --ring: #93c5fd;
+  --ring: #fb923c;
 
-  /* Accent (light blue) */
-  --primary: #0ea5e9;
+  /* Accent — light orange (brand) */
+  --primary: #ea580c;
   --primary-foreground: #ffffff;
-  --primary-hover: #0284c7;
-  --primary-light: #7dd3fc;
+  --primary-hover: #c2410c;
+  --primary-light: #fb923c;
   --secondary: var(--zinc-100);
   --secondary-foreground: var(--zinc-900);
   --secondary-hover: var(--zinc-200);
@@ -60,7 +60,7 @@
   /* Brand mark — the XConfig "X" logo */
   --x-red: #dc2626;
 
-  /* Toast surface — dark slate pill that pops on the light app background */
+  /* Toast surface — dark slate card that pops on the light app background */
   --toast-bg: var(--zinc-900);
   --toast-foreground: #ffffff;
 
@@ -69,7 +69,7 @@
   --sidebar-border: transparent;
   --sidebar-foreground: var(--zinc-700);
   --sidebar-muted: var(--zinc-500);
-  --sidebar-active-bg: #eff6ff;
+  --sidebar-active-bg: #fff7ed;
   --sidebar-active-foreground: var(--primary);
   --sidebar-hover-bg: var(--zinc-100);
 
@@ -130,9 +130,10 @@
   --duration-normal: 200ms;
   --duration-slow: 320ms;
 
-  /* Auth-screen background glow (radial gradients on .auth-shell) */
-  --page-glow-1: #eef2ff;
-  --page-glow-2: #f5f3ff;
+  /* Auth-screen background glow (radial gradients on .auth-shell) —
+     warm orange/amber washes for the light orange theme. */
+  --page-glow-1: #ffedd5;
+  --page-glow-2: #fef3c7;
 }
 
 /* ── Dark theme ──────────────────────────────────────────────────────────────
@@ -146,30 +147,29 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  /* Semantic surfaces — soft graphite base (not near-black), lifted cards,
-     and clearly visible borders/inputs. Roughly mirrors the light theme's
-     relationships (card lighter than muted is inverted for dark). */
-  --background: #141417;
+  /* Semantic surfaces — warm-tinted charcoal, so the ember glows and the
+     orange accent feel intentional (cool-blue neutrals + orange = clash). */
+  --background: #161312;
   --foreground: var(--zinc-50);
-  --muted: #232329;
-  --muted-foreground: #b4b4bc;
-  --card: #1e1e23;
+  --muted: #262120;
+  --muted-foreground: #bab1a8;
+  --card: #1e1a18;
   --card-foreground: var(--zinc-50);
-  --popover: #26262c;
+  --popover: #2b2623;
   --popover-foreground: var(--zinc-50);
-  --border: #35353c;
-  --input: #3b3b42;
-  --ring: #38bdf8;
+  --border: #3a332f;
+  --input: #413b36;
+  --ring: #fb923c;
 
-  /* Accent — sky shifted lighter so text/rings stay legible on dark */
-  --primary: #38bdf8;
-  --primary-foreground: #082f49;
-  --primary-hover: #7dd3fc;
-  --primary-light: #0284c7;
-  --secondary: #2d2d34;
+  /* Accent — light orange lifted for dark surfaces */
+  --primary: #fb923c;
+  --primary-foreground: #431407;
+  --primary-hover: #fdba74;
+  --primary-light: #c2410c;
+  --secondary: #332e2a;
   --secondary-foreground: var(--zinc-100);
-  --secondary-hover: #3a3a42;
-  --accent: #2d2d34;
+  --secondary-hover: #413a35;
+  --accent: #332e2a;
   --accent-foreground: var(--zinc-100);
 
   /* Status — same hues as light, brighter text tones + dark-tinted surfaces
@@ -192,20 +192,20 @@
   --info-border: #1f6f9f;
 
   /* Toast — elevated above the dark app background */
-  --toast-bg: var(--zinc-700);
+  --toast-bg: #48403a;
   --toast-foreground: #fafafa;
 
   /* Brand mark — slightly brighter red for dark surfaces */
   --x-red: #ef4444;
 
   /* Sidebar */
-  --sidebar-bg: #17171b;
+  --sidebar-bg: #191513;
   --sidebar-border: transparent;
   --sidebar-foreground: var(--zinc-200);
   --sidebar-muted: var(--zinc-400);
-  --sidebar-active-bg: #17455f;
+  --sidebar-active-bg: #3f2410;
   --sidebar-active-foreground: var(--primary);
-  --sidebar-hover-bg: #24242a;
+  --sidebar-hover-bg: #282320;
 
   /* Shadows — near-black so elevation still reads on dark surfaces */
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, .35), 0 1px 1px rgba(0, 0, 0, .25);
@@ -213,7 +213,8 @@
   --shadow-md: 0 8px 18px rgba(0, 0, 0, .45), 0 2px 5px rgba(0, 0, 0, .30);
   --shadow-lg: 0 16px 36px rgba(0, 0, 0, .55), 0 5px 10px rgba(0, 0, 0, .35);
 
-  /* Auth-screen background glow — visible deep-blue/indigo on graphite */
-  --page-glow-1: #1d3350;
-  --page-glow-2: #26203e;
+  /* Auth-screen background glow — warm ember/amber light on the dark
+     surfaces, matching the orange accent. */
+  --page-glow-1: #3a2110;
+  --page-glow-2: #33260f;
 }

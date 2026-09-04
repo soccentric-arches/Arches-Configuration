@@ -131,7 +131,7 @@
 .card {
   /* A touch of glass: slightly translucent over the ambient background, with
      a light blur so the page glows read through the card edges. */
-  background: color-mix(in srgb, var(--card) 90%, transparent);
+  background: color-mix(in srgb, var(--card) 82%, transparent);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   color: var(--card-foreground);
@@ -346,7 +346,8 @@ textarea.input {
 .switch-track {
   width: 36px;
   height: 20px;
-  border-radius: 999px;
+  /* Rounded rectangle, not a pill — the design system never uses pills. */
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--primary) 22%, var(--card));
   border: 1px solid color-mix(in srgb, var(--primary) 45%, var(--border));
   position: relative;
@@ -920,9 +921,9 @@ textarea.input {
   width: 248px;
   height: 38px;
   padding: 0 var(--space-3);
-  background: color-mix(in srgb, var(--card) 92%, var(--muted));
-  /* Neutral border on purpose: this pill sits at the top-right of every
-     page, and an accent-blue outline read as a stray line on the edge. */
+  background: color-mix(in srgb, var(--card) 80%, transparent);
+  /* Neutral border on purpose: this control sits at the top-right of every
+     page, and an accent-blue outline read as a stray box on the edge. */
   border-color: var(--border);
   color: var(--muted-foreground);
   justify-content: space-between;

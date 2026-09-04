@@ -1,4 +1,4 @@
-// Entry point: builds the sidebar/topbar shell, wires the auth flow
+// Entry point: builds the top navbar shell, wires the auth flow
 // (first-boot / login / logout), and hands off to the router. Loaded as a
 // native ES module (spec §2: no bundler, no node at build time — the browser
 // resolves every `import` directly against these static files).
@@ -55,7 +55,7 @@ Store.onSessionChange((username, role) => topbar.setSession(username, role));
 // and the browser window title. Non-fatal on failure — the bar simply keeps
 // the app name only.
 Store.onSessionChange((username) => {
-  if (!username) { topbar.setBoard(null); setWindowTitleSuffix(null); return; }
+  if (!username) { navbar.setBoard(null); setWindowTitleSuffix(null); return; }
   api.get('/api/v1/system/info').then((info) => {
     topbar.setBoard(info);
     const model = info.model || info.board_name || info.platform || '';
