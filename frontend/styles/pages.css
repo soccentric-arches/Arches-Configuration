@@ -205,6 +205,18 @@
   grid-template-columns: 1fr;
 }
 
+/* System control matches the Power page: a narrow, focused danger-zone
+   column with its consequential actions stacked one per row. */
+.system-control-page {
+  display: flex;
+  flex-direction: column;
+  max-width: 760px;
+}
+
+.system-control-page .action-list {
+  grid-template-columns: 1fr;
+}
+
 .card-footer>.action-list {
   width: 100%;
 }

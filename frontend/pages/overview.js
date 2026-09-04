@@ -43,6 +43,16 @@ function metric(label, explanation, gaugeOpts = {}) {
     };
 }
 
+function fmtUptimeCompact(seconds) {
+    if (!seconds) return '0m';
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    if (days) return `${days}d ${hours}h`;
+    if (hours) return `${hours}h ${minutes}m`;
+    return `${minutes}m`;
+}
+
 function usagePercent(total, available) {
     return total ? Math.max(0, Math.min(100, (1 - available / total) * 100)) : null;
 }
@@ -132,7 +142,9 @@ export async function render(api, store) {
     const cpu = metric('CPU load (1m)', 'Average runnable work over the last minute; higher means more CPU demand.', { yFmt: (v) => v.toFixed(2), sub: '1m load avg' });
     const memory = metric('Memory used', 'Percentage of RAM currently unavailable for new work.', { max: 100, yFmt: (v) => `${v.toFixed(0)}%`, sub: 'of RAM' });
     const temperature = metric('Highest temperature', 'Highest sensor reading currently reported by the board.', { max: 100, yFmt: (v) => `${v.toFixed(0)}°C`, sub: 'sensor peak' });
-    const uptime = metric('Uptime', 'Time elapsed since the operating system last booted.', null);
+    // Uptime is unbounded (it only grows), so the gauge normalizes against a
+    // rolling max like CPU load — the ring fills as the device keeps running.
+    const uptime = metric('Uptime', 'Time elapsed since the operating system last booted.', { yFmt: fmtUptimeCompact, sub: 'since last boot' });
     const connectionBadge = Badge('online', 'success');
 
     function setConnectionState(online) {
@@ -148,7 +160,7 @@ export async function render(api, store) {
         const temperatures = (snapshot.temperatures || []).map(item => item.temp_millideg_c / 1000);
         const hottest = temperatures.length ? Math.max(...temperatures) : null;
         temperature.update(hottest == null ? '—' : `${hottest.toFixed(0)} C`, hottest);
-        uptime.update(fmtUptime(snapshot.uptime_secs));
+        uptime.update(fmtUptime(snapshot.uptime_secs), snapshot.uptime_secs);
     }
     updateVitals(vitals);
 

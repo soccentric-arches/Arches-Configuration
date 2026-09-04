@@ -24,6 +24,16 @@ function fmtRate(bytesPerSec) {
   return `${bytesPerSec.toFixed(0)} B/s`;
 }
 
+function fmtUptimeCompact(seconds) {
+  if (!seconds) return '0m';
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days) return `${days}d ${hours}h`;
+  if (hours) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
 // A metric tile that owns its own radial gauge (ring on top, label under it
 // — the number lives in the ring) and updates in place rather than being
 // torn down and rebuilt on every SSE tick (keeps the gauge alive and avoids
@@ -69,13 +79,15 @@ export async function render(api, store) {
   const disk = metricTile('Physical storage', { max: 100, yFmt: (v) => `${v.toFixed(0)}%`, sub: 'of storage' });
   const swap = metricTile('Swap', { max: 100, yFmt: (v) => `${v.toFixed(0)}%`, sub: 'of swap' });
   const temp = metricTile('Hottest', { max: 100, yFmt: (v) => `${v.toFixed(0)}°C`, sub: 'sensor peak' });
-  const uptimeEl = el('div', { class: 'tile-value' }, '—');
+  const uptimeEl = el('div', { class: 'tile-value', hidden: true }, '—');
   const bootCountEl = el('div', { class: 'tile-sub', style: 'margin-top:6px' }, 'Boots: —');
   const bootReasonEl = el('div', { class: 'tile-sub' }, 'Last boot: —');
-  // Same ring-top/text-bottom rhythm as the gauge tiles (value plays the
-  // gauge's role at the top).
+  // Uptime is unbounded, so its gauge normalizes against a rolling max (like
+  // CPU load) — the ring fills as the device keeps running, and the center
+  // number counts up on every vitals tick.
+  const uptimeGauge = RadialGauge({ size: 124, label: 'Uptime gauge', yFmt: fmtUptimeCompact, sub: 'since last boot' });
   const uptimeTile = el('div', { class: 'card gauge-tile' }, el('div', { class: 'card-body gauge-tile-body' },
-    uptimeEl,
+    uptimeGauge.element,
     el('h3', { class: 'gauge-title' }, 'Uptime'),
     el('div', { class: 'gauge-sub' }, 'Time since last boot'),
     bootCountEl, bootReasonEl));
@@ -114,7 +126,7 @@ export async function render(api, store) {
     const maxTemp = (v.temperatures || []).map(t => t.temp_millideg_c / 1000).reduce((a, b) => Math.max(a, b), -Infinity);
     temp.update(Number.isFinite(maxTemp) ? `${maxTemp.toFixed(0)}°C` : '—', Number.isFinite(maxTemp) ? maxTemp : null);
 
-    uptimeEl.textContent = v.uptime_secs ? `${Math.round(v.uptime_secs / 60)} min` : '—';
+    uptimeGauge.push(v.uptime_secs);
     bootCountEl.textContent = `Boots: ${v.boot_count != null ? v.boot_count : '—'}`;
     bootReasonEl.textContent = `Last boot: ${v.last_boot_reason || '—'}`;
 
@@ -139,6 +151,7 @@ export async function render(api, store) {
     source.close();
     // Gauges keep a themechange listener — remove it with the page.
     for (const tile of [cpu, mem, disk, swap, temp]) tile.gauge.destroy();
+    uptimeGauge.destroy();
     for (const t of netTiles.values()) { t.rx.gauge.destroy(); t.tx.gauge.destroy(); }
   });
 

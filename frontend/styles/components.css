@@ -129,7 +129,11 @@
 
 /* ---------- Card ---------- */
 .card {
-  background: var(--card);
+  /* A touch of glass: slightly translucent over the ambient background, with
+     a light blur so the page glows read through the card edges. */
+  background: color-mix(in srgb, var(--card) 90%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   color: var(--card-foreground);
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
@@ -917,6 +921,9 @@ textarea.input {
   height: 38px;
   padding: 0 var(--space-3);
   background: color-mix(in srgb, var(--card) 92%, var(--muted));
+  /* Neutral border on purpose: this pill sits at the top-right of every
+     page, and an accent-blue outline read as a stray line on the edge. */
+  border-color: var(--border);
   color: var(--muted-foreground);
   justify-content: space-between;
   box-shadow: var(--shadow-xs);

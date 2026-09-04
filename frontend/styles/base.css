@@ -23,6 +23,43 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* ── Scrollbars: hidden app-wide ──────────────────────────────────────────
+   Scrolling still works everywhere (wheel, touch, keyboard, drag) — the
+   bars are just not drawn. The sidebar nav already did this; now it is
+   consistent for the main content, tables, and any scroll container.
+   overflow-x is clamped so stray wide elements can never introduce a
+   horizontal scrollbar. */
+* {
+  scrollbar-width: none; /* Firefox */
+}
+
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none; /* Chromium / Safari */
+}
+
+html,
+body {
+  overflow-x: hidden;
+}
+
+/* ── Ambient page background ─────────────────────────────────────────────
+   Two soft glows (the same tokens the auth screen uses) over the base
+   color, fixed so they stay put while scrolling. Cards, the topbar and the
+   sidebar are slightly translucent and pick this layer up through
+   backdrop-blur — that is what gives the pages their glassy depth. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 12% 8%, var(--page-glow-1) 0%, transparent 42%),
+    radial-gradient(circle at 88% 92%, var(--page-glow-2) 0%, transparent 45%),
+    var(--muted);
+}
+
 /* ── Motion — page-level animation layer ─────────────────────────────────────
    Everything animates on transform/opacity only (compositor-friendly for the
    device class this UI runs on), rides the shared --ease/--duration tokens,

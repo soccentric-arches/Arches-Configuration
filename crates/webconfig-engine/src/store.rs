@@ -366,10 +366,23 @@ pub mod system {
         pub gps_device: Option<String>,
         #[serde(default)]
         pub gps_pps_device: Option<String>,
+        /// Which satellite constellations the receiver may use. Defaults to
+        /// all of them (GPS, GLONASS, Galileo, BeiDou); receivers that don't
+        /// support one simply ignore it. An empty list means the same — the
+        /// receiver decides (spec §4.1).
+        #[serde(default = "default_gps_constellations")]
+        pub gps_constellations: Vec<String>,
         /// Manual date/time for air-gapped sites (ISO-8601 local). Applied via
         /// `timedatectl set-time` (spec §4.1).
         #[serde(default)]
         pub manual_datetime: Option<String>,
+    }
+
+    fn default_gps_constellations() -> Vec<String> {
+        ["gps", "glonass", "galileo", "beidou"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
     }
 
     #[derive(Debug, Clone, Default, Serialize, Deserialize)]
