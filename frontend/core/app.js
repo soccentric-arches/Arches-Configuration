@@ -22,6 +22,7 @@ let authController;
 const sidebar = Sidebar({
   navItems: NAV,
   onNavigate: (id) => { closeMobileSidebar(); go(id); },
+  onToggle: () => toggleSidebar(),
 });
 document.getElementById('sidebar-mount').replaceWith(sidebar.element);
 
@@ -37,6 +38,9 @@ function toggleSidebar() {
     appShell.classList.toggle('sidebar-open');
   } else {
     appShell.classList.toggle('sidebar-collapsed');
+    // The collapse control lives in the sidebar — keep its chevron/label in
+    // sync with the shell state.
+    sidebar.setCollapsed(appShell.classList.contains('sidebar-collapsed'));
   }
 }
 function closeMobileSidebar() { appShell.classList.remove('sidebar-open'); }

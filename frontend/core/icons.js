@@ -23,6 +23,7 @@ const ICONS = {
   logout: '<path d="M9 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3"/><path d="M14 16l4-4-4-4M18 12H8"/>',
   chevronDown: '<path d="M6 9l6 6 6-6"/>',
   chevronRight: '<path d="M9 6l6 6-6 6"/>',
+  chevronLeft: '<path d="M15 6l-6 6 6 6"/>',
   refresh: '<path d="M4 4v5h5M20 20v-5h-5"/><path d="M4.6 15A8 8 0 0 0 19 9M19.4 9A8 8 0 0 0 5 15"/>',
   clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',

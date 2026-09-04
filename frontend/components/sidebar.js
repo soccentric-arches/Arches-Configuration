@@ -2,10 +2,12 @@ import { el } from '../core/dom.js';
 import { icon } from '../core/icons.js';
 
 /**
- * Sidebar({ navItems, onNavigate }) -> { element, setActive }
+ * Sidebar({ navItems, onNavigate, onToggle }) -> { element, setActive, setCollapsed }
  * navItems: [{ id, label, icon, category }]
+ * onToggle: desktop collapse/expand handler — the control lives in the
+ * sidebar header so it belongs to the sidebar, not the main page topbar.
  */
-export function Sidebar({ navItems, onNavigate }) {
+export function Sidebar({ navItems, onNavigate, onToggle }) {
   const links = new Map();
 
   const groupedItems = new Map();
@@ -38,7 +40,19 @@ export function Sidebar({ navItems, onNavigate }) {
       }),
     ]));
 
-  const element = el('aside', { class: 'sidebar', id: 'sidebar' }, nav);
+  // Collapse/expand control, owned by the sidebar. The chevron flips
+  // direction via CSS when the shell gets `sidebar-collapsed` (layout.css).
+  const toggleBtn = el('button', {
+    type: 'button',
+    class: 'sidebar-toggle',
+    title: 'Collapse navigation',
+    'aria-label': 'Collapse navigation',
+    'aria-expanded': 'true',
+  }, icon('chevronLeft', { size: 16 }));
+  if (onToggle) toggleBtn.addEventListener('click', onToggle);
+
+  const header = el('div', { class: 'sidebar-header' }, toggleBtn);
+  const element = el('aside', { class: 'sidebar', id: 'sidebar' }, header, nav);
 
   function setActive(routeId) {
     for (const [id, link] of links) {
@@ -49,5 +63,14 @@ export function Sidebar({ navItems, onNavigate }) {
     }
   }
 
-  return { element, setActive };
+  // setCollapsed(bool) — app.js calls this after toggling the shell class so
+  // the button's label flips (Collapse ↔ Expand navigation). Mobile ignores
+  // it: the drawer header is hidden and the topbar hamburger opens it.
+  function setCollapsed(collapsed) {
+    toggleBtn.title = collapsed ? 'Expand navigation' : 'Collapse navigation';
+    toggleBtn.setAttribute('aria-label', toggleBtn.title);
+    toggleBtn.setAttribute('aria-expanded', String(!collapsed));
+  }
+
+  return { element, setActive, setCollapsed };
 }
