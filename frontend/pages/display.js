@@ -3,7 +3,7 @@
 import { el } from '../core/dom.js';
 import { Card } from '../components/card.js';
 import { Badge } from '../components/badge.js';
-import { EmptyState } from '../components/empty-state.js';
+import { DataItem } from '../components/data-item.js';
 import { peripheralsOf } from './hardware-utils.js';
 
 const DISPLAY_INTERFACES = [
@@ -24,15 +24,13 @@ export async function render(api) {
     const interfaceCard = Card({
         title: 'Display interfaces',
         subtitle: 'Port availability is declared by the selected board manifest.',
-    }, ...DISPLAY_INTERFACES.map(([id, label, description]) => el('div', { class: 'row' },
-        el('div', {}, el('strong', {}, label), el('div', { class: 'field-help' }, description)),
-        Badge(supportedPorts.has(id) ? 'available' : 'not declared', supportedPorts.has(id) ? 'success' : 'neutral'))));
+    }, ...DISPLAY_INTERFACES.map(([id, label, description]) => DataItem(
+        Badge(supportedPorts.has(id) ? 'available' : 'not declared', supportedPorts.has(id) ? 'success' : 'neutral'),
+        label, description)));
     const cards = displays.map(display => Card({ title: display.human_name || display.id, subtitle: display.device },
-        el('div', { class: 'row' }, el('span', {}, 'Status'), el('span', { class: 'muted' }, 'Manifest-defined')),
-        el('div', { class: 'row' }, el('span', {}, 'Capabilities'), el('span', { class: 'muted' }, Object.keys(display.caps || {}).length ? Object.entries(display.caps).map(([key, value]) => `${key}: ${value}`).join(', ') : 'Board-defined defaults'))));
-    const panelRows = panelDisplays.map(display => el('div', { class: 'row' },
-        el('strong', {}, display.human_name || display.id || 'Display'),
-        el('span', { class: 'muted' }, display.device || JSON.stringify(display))));
+        DataItem('Manifest-defined', 'Status'),
+        DataItem(Object.keys(display.caps || {}).length ? Object.entries(display.caps).map(([key, value]) => `${key}: ${value}`).join(', ') : 'Board-defined defaults', 'Capabilities'))));
+    const panelRows = panelDisplays.map(display => DataItem(display.device || JSON.stringify(display), display.human_name || display.id || 'Display'));
     const panelCard = panelDisplays.length
         ? Card({ title: 'Platform displays', subtitle: 'Additional display information reported by the platform panel.' }, ...panelRows)
         : null;

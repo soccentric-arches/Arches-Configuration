@@ -206,13 +206,11 @@
 }
 
 .topbar-brand .logo-mark {
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  /* Brand mark: the red X (icons.js `x`) — no tile behind it. */
-  color: var(--x-red);
 }
 
 .topbar-brand .brand-text {

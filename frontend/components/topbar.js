@@ -4,6 +4,7 @@
 
 import { el } from '../core/dom.js';
 import { icon } from '../core/icons.js';
+import { XLogo } from './logo.js';
 import { Button } from './button.js';
 import { ThemeSwitch } from './theme-switch.js';
 
@@ -27,7 +28,7 @@ export function Topbar({ onToggleSidebar, onOpenPalette, onLogout, onHome }) {
     title: 'Go to overview', 'aria-label': 'Go to overview',
     onclick: onHome,
   },
-    el('span', { class: 'logo-mark x-logo', 'aria-hidden': 'true' }, icon('x', { size: 20, strokeWidth: 3.4 })),
+    el('span', { class: 'logo-mark' }, XLogo({ size: 30 })),
     el('span', { class: 'brand-text-group' },
       el('span', { class: 'brand-text' }, 'XConfig'),
       brandSub));

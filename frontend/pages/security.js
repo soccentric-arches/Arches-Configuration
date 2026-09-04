@@ -9,6 +9,7 @@ import { Toggle } from '../components/toggle.js';
 import { Button } from '../components/button.js';
 import { Table } from '../components/table.js';
 import { Badge } from '../components/badge.js';
+import { DataItem } from '../components/data-item.js';
 import { EmptyState } from '../components/empty-state.js';
 import { confirmDialog, formDialog, infoDialog } from '../components/modal.js';
 import { ActionList, ActionRow } from '../components/action-row.js';
@@ -57,8 +58,7 @@ export async function render(api, store) {
         },
       }, 'Save'))),
   }, idle.wrap, plainHttp.wrap, el('div', { class: 'toggle-stack' }, wgEn.wrap), wgPort.wrap,
-    el('div', { class: 'row' }, el('span', { class: 'muted text-sm' }, 'WireGuard public key:'),
-      wg.public_key ? el('code', { class: 'mono' }, wg.public_key) : Badge(wg.has_private_key ? 'key present, no peer' : 'not generated yet', 'neutral')));
+    DataItem(wg.public_key ? el('code', { class: 'mono' }, wg.public_key) : Badge(wg.has_private_key ? 'key present, no peer' : 'not generated yet', 'neutral'), 'WireGuard public key'));
 
   // ---------- TLS identity: customer cert/key upload + CSR generator ----------
   const tlsCert = Field({ label: 'Certificate (PEM)', type: 'textarea', placeholder: '-----BEGIN CERTIFICATE-----\n…', help: 'Leaf cert first, then any intermediates. Replaces the self-signed identity.' });
@@ -134,8 +134,8 @@ export async function render(api, store) {
   // ---------- Exposure (read-only) ----------
   const exposureCard = Card({ title: 'Exposure', subtitle: 'Effective UI reachability and open services by interface.' },
     el('div', { class: 'field-row' },
-      el('div', {}, el('div', { class: 'field-label' }, 'UI reachability'), el('div', { class: 'field-help' }, 'The XConfig interface remains reachable for local recovery.'), Badge(exposure.ui_always_reachable ? 'yes' : 'no', exposure.ui_always_reachable ? 'info' : 'neutral')),
-      el('div', {}, el('div', { class: 'field-label' }, 'Plain HTTP'), el('div', { class: 'field-help' }, 'Whether unencrypted HTTP access is permitted.'), Badge(exposure.plain_http ? 'allowed' : 'blocked', exposure.plain_http ? 'warning' : 'success'))),
+      DataItem(Badge(exposure.ui_always_reachable ? 'yes' : 'no', exposure.ui_always_reachable ? 'info' : 'neutral'), 'UI reachability', 'The XConfig interface remains reachable for local recovery.'),
+      DataItem(Badge(exposure.plain_http ? 'allowed' : 'blocked', exposure.plain_http ? 'warning' : 'success'), 'Plain HTTP', 'Whether unencrypted HTTP access is permitted.')),
     el('div', { class: 'stack' }, ...(exposure.per_interface || []).map(p =>
       el('div', { class: 'row text-sm' }, el('strong', {}, p.interface + ':'), (p.open_services || []).join(', ') || 'none'))));
 

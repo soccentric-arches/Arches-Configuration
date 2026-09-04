@@ -5,6 +5,7 @@ import { el } from '../core/dom.js';
 import { Card } from '../components/card.js';
 import { Badge } from '../components/badge.js';
 import { Table } from '../components/table.js';
+import { DataItem } from '../components/data-item.js';
 import { RadialGauge } from '../components/radial-chart.js';
 
 function fmtBytes(bytes) {
@@ -187,23 +188,23 @@ export async function render(api, store) {
 
     const identity = Card({ title: 'Device identity', subtitle: 'Hardware and board identifiers reported by the device.' },
         el('div', { class: 'overview-detail-grid' },
-            el('div', {}, el('div', { class: 'field-label' }, 'Hostname'), el('div', { class: 'field-help' }, 'Name used to identify this device on the network.'), el('div', {}, config.hostname || '—')),
-            el('div', {}, el('div', { class: 'field-label' }, 'Platform'), el('div', { class: 'field-help' }, 'Board family and manifest selected for this device.'), info ? Badge(info.platform || '—', 'info') : '—'),
-            el('div', {}, el('div', { class: 'field-label' }, 'Model'), el('div', { class: 'field-help' }, 'Hardware model reported by the platform.'), el('div', {}, info && info.model || '—')),
-            el('div', {}, el('div', { class: 'field-label' }, 'Board'), el('div', { class: 'field-help' }, 'Specific board name used for hardware capabilities.'), el('div', {}, info && info.board_name || '—')),
-            el('div', {}, el('div', { class: 'field-label' }, 'Hardware revision'), el('div', { class: 'field-help' }, 'Physical board revision identifier.'), el('div', {}, info && info.hardware_revision || '—')),
-            el('div', {}, el('div', { class: 'field-label' }, 'Serial number'), el('div', { class: 'field-help' }, 'Inventory identifier assigned to this device.'), el('div', {}, info && info.serial_number || '—')),
+            DataItem(config.hostname || '—', 'Hostname', 'Name used to identify this device on the network.'),
+            DataItem(info ? Badge(info.platform || '—', 'info') : '—', 'Platform', 'Board family and manifest selected for this device.'),
+            DataItem(info && info.model || '—', 'Model', 'Hardware model reported by the platform.'),
+            DataItem(info && info.board_name || '—', 'Board', 'Specific board name used for hardware capabilities.'),
+            DataItem(info && info.hardware_revision || '—', 'Hardware revision', 'Physical board revision identifier.'),
+            DataItem(info && info.serial_number || '—', 'Serial number', 'Inventory identifier assigned to this device.'),
         ));
 
     const software = Card({ title: 'System information', subtitle: 'Operating system, kernel, bootloader, and XConfig build metadata.' },
         el('div', { class: 'overview-detail-grid' },
-            el('div', {}, el('div', { class: 'field-label' }, 'Operating system'), el('div', { class: 'field-help' }, 'Base operating system running on the device.'), el('div', {}, info && info.os_name || '—')),
-            el('div', {}, el('div', { class: 'field-label' }, 'OS version'), el('div', { class: 'field-help' }, 'Release version of the installed operating system.'), el('div', {}, info && info.os_version || '—')),
-            el('div', {}, el('div', { class: 'field-label' }, 'OS revision'), el('div', { class: 'field-help' }, 'Build or source revision of the operating system.'), el('div', {}, info && info.os_revision || '—')),
-            el('div', {}, el('div', { class: 'field-label' }, 'Kernel'), el('div', { class: 'field-help' }, 'Linux kernel version currently running.'), el('div', {}, info && info.kernel_version || '—')),
-            el('div', {}, el('div', { class: 'field-label' }, 'Bootloader'), el('div', { class: 'field-help' }, 'Software that starts and selects the operating system.'), el('div', {}, info && info.bootloader_version || '—')),
-            el('div', {}, el('div', { class: 'field-label' }, 'XConfig version'), el('div', { class: 'field-help' }, 'Installed version of this management interface.'), el('div', {}, info && info.software_version || '—')),
-            el('div', {}, el('div', { class: 'field-label' }, 'XConfig revision'), el('div', { class: 'field-help' }, 'Source or build revision of this management interface.'), el('div', {}, info && info.software_revision || '—')),
+            DataItem(info && info.os_name || '—', 'Operating system', 'Base operating system running on the device.'),
+            DataItem(info && info.os_version || '—', 'OS version', 'Release version of the installed operating system.'),
+            DataItem(info && info.os_revision || '—', 'OS revision', 'Build or source revision of the operating system.'),
+            DataItem(info && info.kernel_version || '—', 'Kernel', 'Linux kernel version currently running.'),
+            DataItem(info && info.bootloader_version || '—', 'Bootloader', 'Software that starts and selects the operating system.'),
+            DataItem(info && info.software_version || '—', 'XConfig version', 'Installed version of this management interface.'),
+            DataItem(info && info.software_revision || '—', 'XConfig revision', 'Source or build revision of this management interface.'),
         ));
 
     return el('div', {},

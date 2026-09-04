@@ -29,7 +29,18 @@
   <div id="auth-screen" class="auth-shell" hidden>
     <section id="first-boot" class="card auth-card" hidden>
       <div class="card-body">
-        <div class="logo-mark" style="margin:0 auto var(--space-4)"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></div>
+        <svg class="auth-logo" viewBox="0 0 48 48" width="88" height="88" fill="none" aria-label="XConfig" role="img">
+          <defs>
+            <linearGradient id="xauth-grad-a" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#fb923c"/>
+              <stop offset="55%" stop-color="#f0562c"/>
+              <stop offset="100%" stop-color="#dc2626"/>
+            </linearGradient>
+          </defs>
+          <path d="M13.5 13.5 L37.5 37.5 M37.5 13.5 L13.5 37.5" stroke="rgba(15,10,8,0.22)" stroke-width="8.5" stroke-linecap="round"/>
+          <path d="M11.5 11.5 L36.5 36.5 M36.5 11.5 L11.5 36.5" stroke="url(#xauth-grad-a)" stroke-width="8.5" stroke-linecap="round"/>
+          <circle cx="11.5" cy="11.5" r="3" fill="#fdba74"/><circle cx="36.5" cy="11.5" r="3" fill="#fdba74"/><circle cx="11.5" cy="36.5" r="3" fill="#fdba74"/><circle cx="36.5" cy="36.5" r="3" fill="#fdba74"/>
+        </svg>
         <h1>Create an administrator</h1>
         <p class="lede">This device has no configured password. Create an admin to continue (CRA/SB-327: no default credentials).</p>
         <form id="first-boot-form" class="stack">
@@ -44,7 +55,18 @@
 
     <section id="login" class="card auth-card" hidden>
       <div class="card-body">
-        <div class="logo-mark" style="margin:0 auto var(--space-4)"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></div>
+        <svg class="auth-logo" viewBox="0 0 48 48" width="88" height="88" fill="none" aria-label="XConfig" role="img">
+          <defs>
+            <linearGradient id="xauth-grad-b" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#fb923c"/>
+              <stop offset="55%" stop-color="#f0562c"/>
+              <stop offset="100%" stop-color="#dc2626"/>
+            </linearGradient>
+          </defs>
+          <path d="M13.5 13.5 L37.5 37.5 M37.5 13.5 L13.5 37.5" stroke="rgba(15,10,8,0.22)" stroke-width="8.5" stroke-linecap="round"/>
+          <path d="M11.5 11.5 L36.5 36.5 M36.5 11.5 L11.5 36.5" stroke="url(#xauth-grad-b)" stroke-width="8.5" stroke-linecap="round"/>
+          <circle cx="11.5" cy="11.5" r="3" fill="#fdba74"/><circle cx="36.5" cy="11.5" r="3" fill="#fdba74"/><circle cx="11.5" cy="36.5" r="3" fill="#fdba74"/><circle cx="36.5" cy="36.5" r="3" fill="#fdba74"/>
+        </svg>
         <h1>Sign in</h1>
         <p class="lede">SoCcentric XConfig</p>
         <form id="login-form" class="stack">

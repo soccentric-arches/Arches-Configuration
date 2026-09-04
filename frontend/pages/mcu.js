@@ -8,6 +8,7 @@ import { Button } from '../components/button.js';
 import { EmptyState } from '../components/empty-state.js';
 import { renderSchemaForm } from '../components/schema-form.js';
 import { ActionList, ActionRow } from '../components/action-row.js';
+import { DataItem } from '../components/data-item.js';
 
 export async function render(api, store) {
     const data = await api.get('/api/v1/io');
@@ -50,7 +51,7 @@ export async function render(api, store) {
 
     const firmwareCard = Card({
         title: mcu.human_name || 'Companion MCU',
-        subtitle: `Current firmware: ${mcuCfg.firmware_version || 'unknown'} · ${mcu.device}`,
+        subtitle: `Signed firmware staging for ${mcu.device}.`,
         footer: ActionList(ActionRow('Flash firmware', 'Upload the signed firmware image and its detached signature; the server verifies the signature against the board-manifest trust anchor before flashing.', Button({
             onClick: async () => {
                 if (!version.get()) { store.toast('Enter a firmware version', 'error'); return; }
@@ -70,7 +71,7 @@ export async function render(api, store) {
                 } catch (e) { store.toast(e.message, 'error'); }
             },
         }, 'Verify + flash'))),
-    }, el('div', { class: 'toggle-stack' }, enabled.wrap), settings, version.wrap,
+    }, DataItem(mcuCfg.firmware_version || 'unknown', 'Current firmware', 'Version reported by the installed companion MCU.'), el('div', { class: 'toggle-stack' }, enabled.wrap), settings, version.wrap,
         el('label', { class: 'field' }, el('span', { class: 'field-label' }, 'Firmware image (.bin)'), firmwareFile),
         el('label', { class: 'field' }, el('span', { class: 'field-label' }, 'Detached signature (.sig)'), signatureFile));
 

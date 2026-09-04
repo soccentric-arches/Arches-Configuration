@@ -7,6 +7,7 @@ import { Button } from '../components/button.js';
 import { ActionList, ActionRow } from '../components/action-row.js';
 import { EmptyState } from '../components/empty-state.js';
 import { peripheralsOf, saveIo, wireEntryGate } from './hardware-utils.js';
+import { DataItem } from '../components/data-item.js';
 
 export async function render(api, store) {
     const data = await api.get('/api/v1/io');
@@ -34,7 +35,7 @@ export async function render(api, store) {
         subtitle: camera.device,
     },
         enabled.wrap,
-        el('div', { class: 'row' }, el('span', {}, 'Capabilities'), el('span', { class: 'muted' }, Object.keys(camera.caps || {}).length ? Object.entries(camera.caps).map(([key, value]) => `${key}: ${value}`).join(', ') : 'Board-defined defaults'))));
+        DataItem(Object.keys(camera.caps || {}).length ? Object.entries(camera.caps).map(([key, value]) => `${key}: ${value}`).join(', ') : 'Board-defined defaults', 'Capabilities'))));
 
     const panelCameras = panel.cameras || [];
     const capabilityCard = panelCameras.length ? Card({ title: 'Platform camera inventory', subtitle: 'Additional board-level camera information reported by the platform panel.' },
