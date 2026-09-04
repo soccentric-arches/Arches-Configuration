@@ -30,6 +30,8 @@ const topbar = Topbar({
   onToggleSidebar: toggleSidebar,
   onOpenPalette: openCommandPalette,
   onLogout: () => authController.logout(),
+  // Clicking the brand (XConfig + board identity) returns to the main page.
+  onHome: () => go('overview'),
 });
 document.getElementById('topbar-mount').replaceWith(topbar.element);
 

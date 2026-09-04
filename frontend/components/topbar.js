@@ -2,8 +2,8 @@ import { el } from '../core/dom.js';
 import { icon } from '../core/icons.js';
 import { Button } from './button.js';
 import { ThemeSwitch } from './theme-switch.js';
-/** Topbar({ onToggleSidebar, onOpenPalette, onLogout }) -> { element, setTitle, setBadge, setSession, setBoard } */
-export function Topbar({ onToggleSidebar, onOpenPalette, onLogout }) {
+/** Topbar({ onToggleSidebar, onOpenPalette, onLogout, onHome }) -> { element, setTitle, setBadge, setSession, setBoard } */
+export function Topbar({ onToggleSidebar, onOpenPalette, onLogout, onHome }) {
   const title = el('span', { class: 'page-title' }, '');
   const badge = el('span', { class: 'badge badge-info', hidden: true });
   const session = el('span', { class: 'muted text-sm' });
@@ -19,8 +19,15 @@ export function Topbar({ onToggleSidebar, onOpenPalette, onLogout }) {
   // Brand block doubles as the board identity header: app name on the first
   // line, device model + serial on the second (setBoard, below). Like a real
   // board's management header, the device is identified at a glance.
+  // Brand block doubles as the board identity header AND the home button:
+  // clicking it navigates to the main page (Overview) — the whole device
+  // header behaves like a clickable logo.
   const brandSub = el('span', { class: 'brand-sub', hidden: true });
-  const brand = el('div', { class: 'topbar-brand' },
+  const brand = el('button', {
+    type: 'button', class: 'topbar-brand',
+    title: 'Go to overview', 'aria-label': 'Go to overview',
+    onclick: onHome,
+  },
     el('span', { class: 'logo-mark x-logo', 'aria-hidden': 'true' }, icon('x', { size: 20, strokeWidth: 3.4 })),
     el('span', { class: 'brand-text-group' },
       el('span', { class: 'brand-text' }, 'XConfig'),
