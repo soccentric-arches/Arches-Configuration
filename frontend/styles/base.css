@@ -23,6 +23,93 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* ── Motion — page-level animation layer ─────────────────────────────────────
+   Everything animates on transform/opacity only (compositor-friendly for the
+   device class this UI runs on), rides the shared --ease/--duration tokens,
+   and is fully disabled under prefers-reduced-motion. */
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes card-enter {
+  from { opacity: 0; transform: translateY(8px) scale(0.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes banner-in {
+  from { opacity: 0; transform: translateY(-100%); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes title-in {
+  from { opacity: 0; transform: translateX(-6px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* App shell + auth screen reveal once shown (un-hiding `display: none`
+   starts the animation — the login → app hand-off slides in fluidly). */
+#app-shell,
+.auth-shell {
+  animation: fade-in var(--duration-slow) var(--ease) both;
+}
+
+/* Every routed page fades/slides in on mount. */
+#view > * {
+  animation: page-enter var(--duration-slow) var(--ease) both;
+}
+
+/* Cards cascade in — staggered per sibling so grids ripple. `backwards` fill
+   holds the from-state during the stagger delay but releases transform after
+   completion, so the hover-lift transition keeps working. */
+#view .card,
+.auth-shell .card {
+  animation: card-enter var(--duration-normal) var(--ease) backwards;
+}
+
+#view .card:nth-child(2), .auth-shell .card:nth-child(2) { animation-delay: 40ms; }
+#view .card:nth-child(3), .auth-shell .card:nth-child(3) { animation-delay: 80ms; }
+#view .card:nth-child(4), .auth-shell .card:nth-child(4) { animation-delay: 120ms; }
+#view .card:nth-child(5), .auth-shell .card:nth-child(5) { animation-delay: 160ms; }
+#view .card:nth-child(6), .auth-shell .card:nth-child(6) { animation-delay: 200ms; }
+#view .card:nth-child(7), .auth-shell .card:nth-child(7) { animation-delay: 240ms; }
+#view .card:nth-child(n+8) { animation-delay: 280ms; }
+
+/* Page title re-enters when the route changes (topbar.js re-triggers it). */
+.page-title-enter {
+  animation: title-in var(--duration-normal) var(--ease);
+}
+
+/* The commit-confirm / reconnect banner slides down from under the topbar. */
+.banner {
+  animation: banner-in var(--duration-normal) var(--ease) backwards;
+}
+
+/* Theme switches feel fluid: the big surfaces cross-fade their palette. */
+body,
+.topbar,
+.sidebar,
+.overlay-card {
+  transition: background-color var(--duration-slow) var(--ease), border-color var(--duration-slow) var(--ease), color var(--duration-slow) var(--ease);
+}
+
+/* Users who prefer reduced motion get the same UI without the movement. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 h1,
 h2,
 h3,

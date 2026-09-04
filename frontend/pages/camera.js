@@ -6,7 +6,7 @@ import { Toggle } from '../components/toggle.js';
 import { Button } from '../components/button.js';
 import { ActionList, ActionRow } from '../components/action-row.js';
 import { EmptyState } from '../components/empty-state.js';
-import { peripheralsOf, saveIo } from './hardware-utils.js';
+import { peripheralsOf, saveIo, wireEntryGate } from './hardware-utils.js';
 
 export async function render(api, store) {
     const data = await api.get('/api/v1/io');
@@ -15,11 +15,17 @@ export async function render(api, store) {
     const subsystemEnabled = Toggle({ label: 'Enable camera subsystem', checked: data.config && data.config.cameras_enabled !== false });
     const cameraStates = cameras.map(camera => {
         const existing = (data.config && data.config.cameras || []).find(item => item.name === camera.id) || {};
-        return { camera, enabled: Toggle({ label: 'Enable camera', checked: existing.enabled !== false }) };
+        return { camera, existing, enabled: Toggle({ label: 'Enable camera', checked: existing.enabled === true }) };
     });
+    // Enable-before-configure: the subsystem toggle unlocks the cameras.
+    wireEntryGate({ subsystem: subsystemEnabled, rows: cameraStates, controls: () => [] });
 
     const save = async () => {
-        await saveIo(api, data, { cameras_enabled: subsystemEnabled.get(), cameras: cameraStates.map(({ camera, enabled }) => ({ name: camera.id, enabled: enabled.get() })) });
+        // Disabled AND never-configured cameras are omitted (nothing to store).
+        const cameras = cameraStates
+            .filter(({ camera, enabled, existing }) => enabled.get() || existing.name != null)
+            .map(({ camera, enabled }) => ({ name: camera.id, enabled: enabled.get() }));
+        await saveIo(api, data, { cameras_enabled: subsystemEnabled.get(), cameras });
         store.toast('Camera settings saved', 'success');
     };
 

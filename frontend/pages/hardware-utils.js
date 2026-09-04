@@ -23,3 +23,34 @@ export async function saveIo(api, data, updates) {
         ...updates,
     }, extraHeaders);
 }
+
+// setControlsEnabled(controls, on) — enable/disable the wrapped inputs of
+// Toggle/Field widgets (both expose `.input`). Used by the hardware pages to
+// lock configuration until the owning subsystem/peripheral is enabled: the
+// server rejects configuration writes for anything the request leaves
+// disabled, so the UI mirrors that contract.
+export function setControlsEnabled(controls, on) {
+    for (const control of controls) {
+        if (control && control.input) control.input.disabled = !on;
+    }
+}
+
+// gateRows(rows, subsystemOn) — lock each row's controls: the row's own
+// enable toggle is usable only when the subsystem is on; the row's remaining
+// controls only when the subsystem AND the entry are enabled. `controls(row)`
+// returns the per-row controls to lock beyond the enable toggle.
+export function wireEntryGate({ subsystem, rows, onChange, controls }) {
+    const sync = () => {
+        const sub = subsystem.get();
+        for (const row of rows) {
+            if (row.enabled && row.enabled.input) row.enabled.input.disabled = !sub;
+            setControlsEnabled(controls(row), sub && row.enabled.get());
+        }
+    };
+    subsystem.input.addEventListener('change', sync);
+    for (const row of rows) {
+        if (row.enabled && row.enabled.input) row.enabled.input.addEventListener('change', sync);
+    }
+    sync();
+    return sync;
+}]

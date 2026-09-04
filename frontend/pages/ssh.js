@@ -21,7 +21,7 @@ export async function render(api, store) {
         if (!sshd.get()) {
             const ok = await confirmDialog({
                 title: 'Disable SSH daemon?',
-                description: 'Disabling sshd stops the SSH service immediately. Any active SSH session — including this one, if you are connected over SSH — will be disconnected. You will need console or WebConfig access to re-enable it.',
+                description: 'Disabling sshd stops the SSH service immediately. Any active SSH session — including this one, if you are connected over SSH — will be disconnected. You will need console or XConfig access to re-enable it.',
                 confirmLabel: 'Disable and apply',
                 variant: 'destructive',
             });

@@ -20,7 +20,7 @@ export async function render(api, store) {
 
     const mcuData = await api.get('/api/v1/io/mcu').catch(() => ({ config: data.config && data.config.mcu }));
     const mcuCfg = mcuData.config || (data.config && data.config.mcu) || {};
-    const enabled = Toggle({ label: 'Enable companion MCU', checked: mcuCfg.enabled !== false });
+    const enabled = Toggle({ label: 'Enable companion MCU', checked: mcuCfg.enabled === true });
     const version = Field({ label: 'Firmware version' });
     const firmwareFile = el('input', { type: 'file', accept: '.bin,application/octet-stream', class: 'input' });
     const signatureFile = el('input', { type: 'file', accept: '.sig,application/octet-stream', class: 'input' });
@@ -35,6 +35,18 @@ export async function render(api, store) {
             settings = schemaForm.element;
         }
     }
+    // Enable-before-configure: the hardware enable toggle locks firmware
+    // staging and the settings form — the server rejects configuration writes
+    // for a disabled MCU (409), so the UI mirrors the gate.
+    const syncMcuLocks = () => {
+        const on = enabled.get();
+        version.input.disabled = !on;
+        firmwareFile.disabled = !on;
+        signatureFile.disabled = !on;
+        if (schemaForm) schemaForm.setLocked(!on);
+    };
+    enabled.input.addEventListener('change', syncMcuLocks);
+    syncMcuLocks();
 
     const firmwareCard = Card({
         title: mcu.human_name || 'Companion MCU',
@@ -65,7 +77,10 @@ export async function render(api, store) {
     const saveSettings = async () => {
         const config = data.config || {};
         await api.put('/api/v1/io', {
-            serial: config.serial || [], can: config.can || [], gpio: config.gpio || [], cameras: config.cameras || [],
+            serial: config.serial || [], serial_enabled: config.serial_enabled === true,
+            can: config.can || [], can_enabled: config.can_enabled === true,
+            gpio: config.gpio || [], gpio_enabled: config.gpio_enabled === true,
+            cameras: config.cameras || [], cameras_enabled: config.cameras_enabled === true,
             mcu: { kind: mcuCfg.kind || 'stm32', enabled: enabled.get(), firmware_version: mcuCfg.firmware_version, settings: schemaForm ? schemaForm.getValue() : mcuCfg.settings || {} },
             board_leds: config.board_leds || {},
         });

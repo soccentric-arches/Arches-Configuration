@@ -1731,7 +1731,7 @@ async fn security_put_apply_and_exposure_via_http() {
             &serde_json::json!({
                 "session_idle_timeout_secs": 1200,
                 "allow_plain_http": true,
-                "wireguard": { "enabled": false, "port": 51820, "peers": [] },
+                "wireguard": { "enabled": true, "port": 51820, "peers": [] },
                 "certificates": [],
             })
             .to_string(),
@@ -2478,6 +2478,78 @@ async fn serial_apply_writes_baud_unit_and_rejects_conflicts() {
         .path()
         .join("etc/systemd/system/webconfig-serial-ttyTHS0.service")
         .exists());
+
+    // ── Enable-before-configure (spec §4.9) ──
+    // A PUT that leaves a subsystem disabled may not change that subsystem's
+    // configuration — only the enable flags themselves are writable.
+    let configure_while_disabled = serde_json::json!({
+        "serial": [{ "device": "/dev/ttyTHS0", "enabled": true, "baud": 9600, "mode": "rs232", "owner": "customer" }],
+        "serial_enabled": true,
+        "can": [{ "name": "can0", "enabled": false, "bitrate": 250000, "fd": false, "data_bitrate": 0, "listen_only": false, "restart_ms": 100, "up_on_boot": false }],
+        "can_enabled": true,
+        "gpio": [], "gpio_enabled": true,
+        "cameras": [], "cameras_enabled": true, "mcu": null, "board_leds": {},
+    })
+    .to_string();
+    let (st, _, body) = send(
+        &app,
+        "PUT",
+        "/api/v1/io",
+        Some(&cookie),
+        Some(&csrf),
+        Some(&configure_while_disabled.to_string()),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CONFLICT, "{body}");
+    assert!(body.contains("disabled"), "{body}");
+
+    // Enabling the previously-disabled CAN interface in the same write is the
+    // intended enable flow — accepted, and the config change is persisted.
+    let enable_and_configure = serde_json::json!({
+        "serial": [{ "device": "/dev/ttyTHS0", "enabled": true, "baud": 9600, "mode": "rs232", "owner": "customer" }],
+        "serial_enabled": true,
+        "can": [{ "name": "can0", "enabled": true, "bitrate": 250000, "fd": false, "data_bitrate": 0, "listen_only": false, "restart_ms": 100, "up_on_boot": false }],
+        "can_enabled": true,
+        "gpio": [], "gpio_enabled": true,
+        "cameras": [], "cameras_enabled": true, "mcu": null, "board_leds": {},
+    })
+    .to_string();
+    let (st, _, _) = send(
+        &app,
+        "PUT",
+        "/api/v1/io",
+        Some(&cookie),
+        Some(&csrf),
+        Some(&enable_and_configure.to_string()),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let (st, _, body) = send(&app, "GET", "/api/v1/io", Some(&cookie), Some(&csrf), None).await;
+    assert_eq!(st, StatusCode::OK);
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(v["config"]["can"][0]["bitrate"], 250000);
+
+    // Once enabled, a disabled ENTRY cannot be reconfigured either (subsystem
+    // stays on, the entry's enabled flag flips back off with new fields).
+    let entry_disabled_with_changes = serde_json::json!({
+        "serial": [{ "device": "/dev/ttyTHS0", "enabled": true, "baud": 9600, "mode": "rs232", "owner": "customer" }],
+        "serial_enabled": true,
+        "can": [{ "name": "can0", "enabled": false, "bitrate": 1000000, "fd": true, "data_bitrate": 0, "listen_only": false, "restart_ms": 100, "up_on_boot": false }],
+        "can_enabled": true,
+        "gpio": [], "gpio_enabled": true,
+        "cameras": [], "cameras_enabled": true, "mcu": null, "board_leds": {},
+    })
+    .to_string();
+    let (st, _, _) = send(
+        &app,
+        "PUT",
+        "/api/v1/io",
+        Some(&cookie),
+        Some(&csrf),
+        Some(&entry_disabled_with_changes.to_string()),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CONFLICT);
 
     // Duplicate device (same UART, two entries) is rejected at PUT (409), even
     // though the two owners differ — ownership is per-device (spec §4.9).

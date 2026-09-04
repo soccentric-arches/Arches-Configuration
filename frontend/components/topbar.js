@@ -2,7 +2,6 @@ import { el } from '../core/dom.js';
 import { icon } from '../core/icons.js';
 import { Button } from './button.js';
 import { ThemeSwitch } from './theme-switch.js';
-
 /** Topbar({ onToggleSidebar, onOpenPalette, onLogout }) -> { element, setTitle, setBadge, setSession, setBoard } */
 export function Topbar({ onToggleSidebar, onOpenPalette, onLogout }) {
   const title = el('span', { class: 'page-title' }, '');
@@ -22,9 +21,9 @@ export function Topbar({ onToggleSidebar, onOpenPalette, onLogout }) {
   // board's management header, the device is identified at a glance.
   const brandSub = el('span', { class: 'brand-sub', hidden: true });
   const brand = el('div', { class: 'topbar-brand' },
-    el('span', { class: 'logo-mark' }, 'W'),
+    el('span', { class: 'logo-mark x-logo', 'aria-hidden': 'true' }, icon('x', { size: 20, strokeWidth: 3.4 })),
     el('span', { class: 'brand-text-group' },
-      el('span', { class: 'brand-text' }, 'WebConfig'),
+      el('span', { class: 'brand-text' }, 'XConfig'),
       brandSub));
 
   const searchTrigger = el('button', {
@@ -52,7 +51,14 @@ export function Topbar({ onToggleSidebar, onOpenPalette, onLogout }) {
 
   return {
     element,
-    setTitle: (t) => { title.textContent = t; },
+    setTitle: (t) => {
+      if (title.textContent === t) return;
+      title.textContent = t;
+      // Re-trigger the slide-in so route changes feel fluid (see base.css).
+      title.classList.remove('page-title-enter');
+      void title.offsetWidth; // restart the animation
+      title.classList.add('page-title-enter');
+    },
     setBadge: (t) => { if (t) { badge.textContent = t.toUpperCase(); badge.hidden = false; } else badge.hidden = true; },
     setSession: (username, role) => { session.textContent = username ? `${username} · ${role || ''}` : ''; },
     // setBoard(info) — feed the payload of GET /api/v1/system/info. Shows

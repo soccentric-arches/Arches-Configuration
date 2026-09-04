@@ -6,7 +6,7 @@ use axum::Json;
 use serde::Serialize;
 use tower_sessions::Session;
 use webconfig_engine::manifest::IoKind;
-use webconfig_engine::store::io::IoConfig;
+use webconfig_engine::store::io::{BoardLedConfig, IoConfig, McuConfig};
 
 use crate::api::{apply_and_audit, audit, username};
 use crate::auth::AuthRole;
@@ -30,6 +30,125 @@ pub async fn get(
         // silently clobber each other's read-modify-write).
         "io_version": version,
     })))
+}
+
+// ── Enable-before-configure gate (spec §4.9) ────────────────────────────────────────────────
+// Configuration is only accepted for subsystems/peripherals that the REQUEST
+// leaves enabled: a PUT that keeps something disabled may only carry its
+// stored state through (that's what the locked UI sends) — any field change
+// is rejected with 409. Enabling and configuring in the same write is the
+// intended enable flow; what's forbidden is configuring something that STAYS
+// disabled.
+
+fn gate_conflict(label: &str) -> ApiError {
+    ApiError::Conflict(format!(
+        "{label} is disabled — enable it before configuring it"
+    ))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn gate_entries<T, K>(
+    label: &str,
+    request_subsystem_enabled: bool,
+    current: &[T],
+    request: &[T],
+    key: impl Fn(&T) -> K,
+    get_enabled: impl Fn(&T) -> bool,
+    set_enabled: impl Fn(&mut T, bool),
+) -> Result<(), ApiError>
+where
+    T: Clone + PartialEq,
+    K: std::hash::Hash + Eq,
+{
+    let cur_by_key: std::collections::HashMap<K, &T> =
+        current.iter().map(|e| (key(e), e)).collect();
+    if !request_subsystem_enabled {
+        // Request keeps the subsystem disabled: entries must pass through
+        // untouched (no adds, no removes, no field changes).
+        if request.len() != current.len() {
+            return Err(gate_conflict(label));
+        }
+        for r in request {
+            let Some(c) = cur_by_key.get(&key(r)) else {
+                return Err(gate_conflict(label));
+            };
+            let mut masked = r.clone();
+            set_enabled(&mut masked, get_enabled(c));
+            if masked != **c {
+                return Err(gate_conflict(label));
+            }
+        }
+        return Ok(());
+    }
+    // Request enables the subsystem: entries the request leaves DISABLED may
+    // only flip their `enabled` flag (new entries must be omitted entirely —
+    // a disabled peripheral has nothing to configure or store yet).
+    for r in request {
+        if !get_enabled(r) {
+            let Some(c) = cur_by_key.get(&key(r)) else {
+                return Err(gate_conflict(label));
+            };
+            let mut masked = r.clone();
+            set_enabled(&mut masked, get_enabled(c));
+            if masked != **c {
+                return Err(gate_conflict(label));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn gate_mcu(current: &Option<McuConfig>, request: &Option<McuConfig>) -> Result<(), ApiError> {
+    let Some(req) = request else { return Ok(()) }; // clearing is always allowed
+    if req.enabled {
+        return Ok(()); // the request enables the MCU — free to configure
+    }
+    match current {
+        Some(cur) => {
+            let mut masked = req.clone();
+            masked.enabled = cur.enabled;
+            masked.firmware_version = cur.firmware_version.clone();
+            masked.settings = cur.settings.clone();
+            if masked != *cur {
+                return Err(gate_conflict("the companion MCU"));
+            }
+            Ok(())
+        }
+        None => {
+            // First sighting while staying disabled: only a bare stub (kind +
+            // enabled flag) is accepted — settings/firmware need an enable.
+            let bare = McuConfig {
+                kind: req.kind.clone(),
+                enabled: req.enabled,
+                firmware_version: None,
+                settings: Default::default(),
+            };
+            if req != &bare {
+                return Err(gate_conflict("the companion MCU"));
+            }
+            Ok(())
+        }
+    }
+}
+
+fn gate_board_leds(current: &BoardLedConfig, request: &BoardLedConfig) -> Result<(), ApiError> {
+    if !request.enabled {
+        let mut masked = request.clone();
+        masked.enabled = current.enabled;
+        masked.app = current.app.clone();
+        if masked != *current {
+            return Err(gate_conflict("board status LEDs"));
+        }
+        return Ok(());
+    }
+    if !request.app.enabled {
+        let mut masked = request.app.clone();
+        masked.enabled = current.app.enabled;
+        if masked != current.app {
+            return Err(gate_conflict("the application status LED"));
+        }
+    }
+    Ok(())
 }
 
 /// Short content fingerprint of an `IoConfig`, used as a simple ETag-like
@@ -497,6 +616,49 @@ pub async fn put(
             )));
         }
     }
+    // Enable-before-configure: reject any change to a subsystem or peripheral
+    // that the request leaves disabled (the enable flags themselves stay
+    // writable; enabling + configuring in one write is the intended flow).
+    let current_io = app.engine.load()?.io;
+    gate_entries(
+        "serial ports",
+        req.serial_enabled,
+        &current_io.serial,
+        &req.serial,
+        |s| s.device.clone(),
+        |s| s.enabled,
+        |s, v| s.enabled = v,
+    )?;
+    gate_entries(
+        "CAN interfaces",
+        req.can_enabled,
+        &current_io.can,
+        &req.can,
+        |c| c.name.clone(),
+        |c| c.enabled,
+        |c, v| c.enabled = v,
+    )?;
+    gate_entries(
+        "GPIO pins",
+        req.gpio_enabled,
+        &current_io.gpio,
+        &req.gpio,
+        |g| g.name.clone(),
+        |g| g.enabled,
+        |g, v| g.enabled = v,
+    )?;
+    gate_entries(
+        "cameras",
+        req.cameras_enabled,
+        &current_io.cameras,
+        &req.cameras,
+        |c| c.name.clone(),
+        |c| c.enabled,
+        |c, v| c.enabled = v,
+    )?;
+    gate_mcu(&current_io.mcu, &req.mcu)?;
+    gate_board_leds(&current_io.board_leds, &req.board_leds)?;
+
     let user = username(&session).await;
     let cfg = app.engine.update(move |c| {
         c.io = req.clone();

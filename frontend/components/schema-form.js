@@ -70,6 +70,15 @@ export function renderSchemaForm(descriptor, values) {
 
   if (descriptor.title) root.appendChild(el('h2', {}, descriptor.title));
 
+  // Enable-before-configure: a schema may declare an `enabled` bool field —
+  // it acts as the section gate: all other fields stay disabled until it is
+  // checked, matching the server-side gate on PUT (services.rs). While the
+  // gate is closed, getValue() carries the loaded values through so an
+  // enable-only save never invents field changes.
+  const gate = (descriptor.groups || []).flatMap(g => g.fields || [])
+    .concat(descriptor.fields || [])
+    .find(f => f.id === 'enabled' && f.field_type === 'bool') ? inputs.enabled : null;
+
   const groups = descriptor.groups && descriptor.groups.length ? descriptor.groups : [{
     id: '_default', title: '', fields: descriptor.fields || [],
   }];
@@ -105,14 +114,25 @@ export function renderSchemaForm(descriptor, values) {
   }
 
   function getValue() {
+    // While the gate is closed, non-gate fields carry their LOADED values (the
+    // locked inputs hold them) — an enable-only save never invents changes.
+    if (gate && !gate.input.checked) {
+      return { ...values0, enabled: readOne(gate.input, gate.field) };
+    }
     const out = {};
     for (const [id, { input, field }] of Object.entries(inputs)) out[id] = readOne(input, field);
     return out;
   }
 
   function validate() {
+    const gateOff = gate && !gate.input.checked;
     let ok = true;
-    for (const [, { input, field, errorEl }] of Object.entries(inputs)) {
+    for (const [id, { input, field, errorEl }] of Object.entries(inputs)) {
+      if (gateOff && (!gate || id !== 'enabled')) {
+        // Locked fields are not validated while the gate is closed.
+        errorEl.hidden = true; errorEl.textContent = '';
+        continue;
+      }
       const msg = validateField(field, readOne(input, field));
       if (msg) { ok = false; errorEl.textContent = msg; errorEl.hidden = false; }
       else { errorEl.hidden = true; errorEl.textContent = ''; }
@@ -120,7 +140,21 @@ export function renderSchemaForm(descriptor, values) {
     return ok;
   }
 
-  return { element: root, getValue, validate };
+  /** setLocked(locked) — external gate (e.g. the MCU page locks the settings
+   * form on the hardware enable toggle rather than a schema field). */
+  function setLocked(locked) {
+    for (const [id, entry] of Object.entries(inputs)) {
+      if (gate && id === 'enabled') continue;
+      entry.input.disabled = locked;
+    }
+  }
+
+  if (gate) {
+    gate.input.addEventListener('change', () => setLocked(!gate.input.checked));
+    setLocked(!gate.input.checked);
+  }
+
+  return { element: root, getValue, validate, setLocked };
 }
 
 export { validateField };

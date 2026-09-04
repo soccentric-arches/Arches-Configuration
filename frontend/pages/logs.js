@@ -36,7 +36,7 @@ export async function render(api, store) {
   }, sourceRows).element;
   const sourcesCard = Card({
     title: 'Available log sources',
-    subtitle: 'Sources exposed by this Linux image and the WebConfig daemon.',
+    subtitle: 'Sources exposed by this Linux image and the XConfig daemon.',
   }, sourceList);
 
   // ---------- Journal viewer ----------
@@ -136,7 +136,7 @@ export async function render(api, store) {
   await loadAudit();
   const auditCard = Card({
     title: 'Audit log',
-    subtitle: 'Administrative actions recorded by WebConfig. The audit log is append-only (spec §4.8) — it is not deletable from the UI; only a full factory reset wipes it.',
+    subtitle: 'Administrative actions recorded by XConfig. The audit log is append-only (spec §4.8) — it is not deletable from the UI; only a full factory reset wipes it.',
     footer: ActionList(
       ActionRow('Refresh audit log', 'Reload the recorded administrative actions from the device.', Button({ variant: 'outline', onClick: loadAudit }, 'Refresh')),
     ),

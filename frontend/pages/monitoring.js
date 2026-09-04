@@ -1,13 +1,14 @@
 // Monitoring page (spec §4.5): live vitals via the daemon's SSE endpoint
 // (spec §3 — one SSE endpoint for dashboard push), with an initial REST
-// fetch for a fast first paint and rolling sparkline history per metric.
+// fetch for a fast first paint and one shadcn-style radial gauge per metric
+// (components/radial-chart.js — the number is displayed as text in the ring).
 
 import { el } from '../core/dom.js';
 import { Card } from '../components/card.js';
 import { Field } from '../components/field.js';
 import { Button } from '../components/button.js';
 import { ActionList, ActionRow } from '../components/action-row.js';
-import { Sparkline } from '../components/sparkline.js';
+import { RadialGauge } from '../components/radial-chart.js';
 
 function fmtBytes(b) {
   if (!b) return '0 B';
@@ -16,35 +17,70 @@ function fmtBytes(b) {
   return `${n.toFixed(1)} ${u[i]}`;
 }
 
-// A metric tile that owns its own sparkline and updates in place rather
-// than being torn down and rebuilt on every SSE tick (keeps the chart
-// history alive and avoids visible flicker on a several-times-a-second feed).
-function metricTile(label) {
-  const valueEl = el('div', { class: 'tile-value' }, '—');
-  const spark = Sparkline({ height: 42, label: `${label} history` });
-  const node = el('div', { class: 'card' },
-    el('div', { class: 'card-body' }, el('h3', {}, label), el('div', { class: 'tile-sub' }, 'Live telemetry'), valueEl, spark.canvas));
+function fmtRate(bytesPerSec) {
+  if (bytesPerSec == null) return '—';
+  if (bytesPerSec >= 1048576) return `${(bytesPerSec / 1048576).toFixed(1)} MB/s`;
+  if (bytesPerSec >= 1024) return `${(bytesPerSec / 1024).toFixed(1)} KB/s`;
+  return `${bytesPerSec.toFixed(0)} B/s`;
+}
+
+// A metric tile that owns its own radial gauge (ring on top, label under it
+// — the number lives in the ring) and updates in place rather than being
+// torn down and rebuilt on every SSE tick (keeps the gauge alive and avoids
+// visible flicker).
+function metricTile(label, gaugeOpts = {}) {
+  const gauge = RadialGauge({ size: 124, label: `${label} gauge`, ...gaugeOpts });
+  const node = el('div', { class: 'card gauge-tile' },
+    el('div', { class: 'card-body gauge-tile-body' },
+      gauge.element,
+      el('h3', { class: 'gauge-title' }, label),
+      el('div', { class: 'gauge-sub' }, 'Live telemetry')));
   return {
     node,
-    update(text, numericValue) {
-      valueEl.textContent = text;
-      if (numericValue != null) spark.push(numericValue);
+    gauge,
+    update(_text, numericValue) {
+      if (numericValue != null) gauge.push(numericValue);
     },
   };
 }
 
+// Network tiles show THROUGHPUT (bytes/s over the SSE tick interval), not
+// the raw rising counter — charted as a gauge normalized to the strongest
+// sample seen, with the rate as the center text.
+function netMetricTile(label) {
+  const tile = metricTile(label, { yFmt: (v) => fmtRate(v), sub: 'bytes/s' });
+  let prev = null; // { bytes, t }
+  tile.pushCounter = (bytes) => {
+    const now = performance.now();
+    let rate = null;
+    if (prev && bytes >= prev.bytes) {
+      const dt = (now - prev.t) / 1000;
+      if (dt > 0.2) rate = (bytes - prev.bytes) / dt;
+    }
+    prev = { bytes, t: now };
+    if (rate != null) tile.gauge.push(rate);
+  };
+  return tile;
+}
+
 export async function render(api, store) {
-  const cpu = metricTile('CPU load (1m)');
-  const mem = metricTile('Memory');
-  const disk = metricTile('Physical storage');
-  const swap = metricTile('Swap');
-  const temp = metricTile('Hottest');
+  const cpu = metricTile('CPU load (1m)', { yFmt: (v) => v.toFixed(2), sub: '1m load avg' });
+  const mem = metricTile('Memory', { max: 100, yFmt: (v) => `${v.toFixed(0)}%`, sub: 'of RAM' });
+  const disk = metricTile('Physical storage', { max: 100, yFmt: (v) => `${v.toFixed(0)}%`, sub: 'of storage' });
+  const swap = metricTile('Swap', { max: 100, yFmt: (v) => `${v.toFixed(0)}%`, sub: 'of swap' });
+  const temp = metricTile('Hottest', { max: 100, yFmt: (v) => `${v.toFixed(0)}°C`, sub: 'sensor peak' });
   const uptimeEl = el('div', { class: 'tile-value' }, '—');
   const bootCountEl = el('div', { class: 'tile-sub', style: 'margin-top:6px' }, 'Boots: —');
   const bootReasonEl = el('div', { class: 'tile-sub' }, 'Last boot: —');
-  const uptimeTile = el('div', { class: 'card' }, el('div', { class: 'card-body' }, el('h3', {}, 'Uptime'), el('div', { class: 'tile-sub' }, 'Time since last boot'), uptimeEl, bootCountEl, bootReasonEl));
+  // Same ring-top/text-bottom rhythm as the gauge tiles (value plays the
+  // gauge's role at the top).
+  const uptimeTile = el('div', { class: 'card gauge-tile' }, el('div', { class: 'card-body gauge-tile-body' },
+    uptimeEl,
+    el('h3', { class: 'gauge-title' }, 'Uptime'),
+    el('div', { class: 'gauge-sub' }, 'Time since last boot'),
+    bootCountEl, bootReasonEl));
   const netTiles = new Map();
-  const netHost = el('div', { class: 'card-grid' });
+  const netHost = el('div', { class: 'card-grid grid-2' });
 
   const liveDot = el('span', { class: 'live-dot' });
   const liveLabel = el('span', { class: 'muted text-sm' }, 'Connecting…');
@@ -52,9 +88,9 @@ export async function render(api, store) {
   function ensureNetTiles(iface) {
     if (!netTiles.has(iface)) {
       // Spec §4.5: per-interface traffic counters from /sys/class/net/*/statistics
-      // — show both rx and tx, each with its own rolling sparkline.
-      const rx = metricTile(`${iface} rx`);
-      const tx = metricTile(`${iface} tx`);
+      // — show both directions, charted as real throughput (bytes/s deltas).
+      const rx = netMetricTile(`${iface} rx`);
+      const tx = netMetricTile(`${iface} tx`);
       netTiles.set(iface, { rx, tx });
       netHost.appendChild(rx.node);
       netHost.appendChild(tx.node);
@@ -84,8 +120,8 @@ export async function render(api, store) {
 
     for (const n of v.net || []) {
       const t = ensureNetTiles(n.iface);
-      t.rx.update(fmtBytes(n.rx_bytes), n.rx_bytes / 1024);
-      t.tx.update(fmtBytes(n.tx_bytes), n.tx_bytes / 1024);
+      t.rx.pushCounter(n.rx_bytes);
+      t.tx.pushCounter(n.tx_bytes);
     }
   }
 
@@ -99,7 +135,12 @@ export async function render(api, store) {
     try { renderVitals(JSON.parse(e.data)); } catch (_) { /* skip malformed tick */ }
   });
   source.addEventListener('error', () => { liveDot.classList.remove('live'); liveLabel.textContent = 'Reconnecting…'; });
-  store.registerCleanup(() => source.close());
+  store.registerCleanup(() => {
+    source.close();
+    // Gauges keep a themechange listener — remove it with the page.
+    for (const tile of [cpu, mem, disk, swap, temp]) tile.gauge.destroy();
+    for (const t of netTiles.values()) { t.rx.gauge.destroy(); t.tx.gauge.destroy(); }
+  });
 
   // ---------- Service health strip (spec §4.5) ----------
   // One glanceable badge per manifest-allowlisted service: active=green,
@@ -124,6 +165,7 @@ export async function render(api, store) {
     } catch (_) { healthHost.replaceChildren(el('p', { class: 'error-text' }, 'Service health unavailable.')); }
   }
   loadServiceHealth();
+  const healthCard = Card({ title: 'Service health', subtitle: 'Allowlisted services and their current systemd state (spec §4.5).' }, healthHost);
 
   // ---------- eMMC wear ----------
   const dev = Field({ label: 'Block device', value: 'mmcblk0', placeholder: 'mmcblk0' });
@@ -143,8 +185,7 @@ export async function render(api, store) {
     el('div', { class: 'page-header row', style: 'justify-content:space-between' },
       el('div', {}, el('h1', {}, 'Monitoring'), el('p', {}, 'Live vitals, pushed over SSE.')),
       el('div', { class: 'row' }, liveDot, liveLabel)),
-    Card({ title: 'Vitals', subtitle: 'Live CPU, memory, physical storage, swap, temperature, and uptime readings.' }, el('div', { class: 'card-grid' }, cpu.node, mem.node, disk.node, swap.node, uptimeTile, temp.node)),
+    Card({ title: 'Vitals', subtitle: 'Live CPU, memory, physical storage, swap, temperature, and uptime readings.' }, el('div', { class: 'card-grid grid-2' }, cpu.node, mem.node, disk.node, swap.node, uptimeTile, temp.node)),
     Card({ title: 'Network throughput', subtitle: 'Per-interface receive throughput from the live telemetry stream.' }, netHost),
-    Card({ title: 'Service health', subtitle: 'Allowlisted services and their current systemd state (spec §4.5).' }, healthHost),
-    emmcCard);
+    el('div', { class: 'card-grid grid-2' }, healthCard, emmcCard));
 }

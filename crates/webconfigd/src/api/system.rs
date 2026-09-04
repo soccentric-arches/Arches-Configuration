@@ -222,7 +222,7 @@ pub async fn info(State(app): State<AppState>) -> ApiResult<Json<serde_json::Val
             "/etc/bootloader_version",
             "/proc/device-tree/chosen/bootloader-version",
         ]),
-        "software_name": "WebConfig",
+        "software_name": "XConfig",
         "software_version": env!("CARGO_PKG_VERSION"),
         "software_revision": std::env::var("WEBCONFIG_REVISION").unwrap_or_else(|_| unknown()),
         "os_release": kv,

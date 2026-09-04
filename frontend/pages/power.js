@@ -12,7 +12,7 @@ export function render(api, store) {
         onClick: async () => {
             if (!await confirmDialog({
                 title: 'Reboot device?',
-                description: 'The device will restart. The WebConfig connection will return when it is ready.',
+                description: 'The device will restart. The XConfig connection will return when it is ready.',
                 confirmLabel: 'Reboot',
             })) return;
             await api.post('/api/v1/system/reboot', {});

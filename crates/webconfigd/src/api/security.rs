@@ -25,6 +25,19 @@ pub async fn put(
     Json(req): Json<SecurityConfig>,
 ) -> ApiResult<Json<SecurityConfig>> {
     role.require_admin("security.put")?;
+    // Enable-before-configure: a PUT that leaves WireGuard disabled may only
+    // carry its stored state through — port and peer edits are rejected with
+    // 409. Enabling + configuring in one write is the intended flow.
+    let current = app.engine.load()?.security;
+    if !req.wireguard.enabled {
+        let mut masked = req.wireguard.clone();
+        masked.enabled = current.wireguard.enabled;
+        if masked != current.wireguard {
+            return Err(ApiError::Conflict(
+                "WireGuard is disabled — enable it before configuring it".into(),
+            ));
+        }
+    }
     let user = username(&session).await;
     let cfg = app.engine.update(move |c| {
         c.security = req.clone();

@@ -7,7 +7,7 @@ import { Toggle } from '../components/toggle.js';
 import { Button } from '../components/button.js';
 import { ActionList, ActionRow } from '../components/action-row.js';
 import { Table } from '../components/table.js';
-import { peripheralsOf, saveIo } from './hardware-utils.js';
+import { peripheralsOf, saveIo, wireEntryGate } from './hardware-utils.js';
 
 export async function render(api, store) {
     const data = await api.get('/api/v1/io');
@@ -22,9 +22,19 @@ export async function render(api, store) {
         const baud = Field({ label: 'Baud', type: 'number', value: existing.baud || 115200 });
         const mode = Field({ label: 'Mode', type: 'select', value: existing.mode || peripheral.caps?.modes?.[0] || 'rs232', options: (peripheral.caps?.modes || ['rs232']).map(value => ({ value, label: value.toUpperCase() })) });
         const owner = Field({ label: 'Owner', type: 'select', value: existing.owner || 'unassigned', options: ['unassigned', 'console', 'customer', 'modbus'].map(value => ({ value, label: value })) });
-        return { peripheral, enabled: Toggle({ label: 'Enable serial port', checked: existing.enabled !== false }), baud, mode, owner };
+        return { peripheral, existing, enabled: Toggle({ label: 'Enable serial port', checked: existing.enabled === true }), baud, mode, owner };
     });
-    const save = async () => { await saveIo(api, data, { serial_enabled: subsystemEnabled.get(), serial: rows.map(row => ({ device: row.peripheral.device, enabled: row.enabled.get(), baud: Number(row.baud.get()) || 115200, mode: row.mode.get(), owner: row.owner.get() })) }); store.toast('Serial settings saved', 'success'); };
+    // Enable-before-configure: the subsystem toggle unlocks the ports; each
+    // port's enable toggle unlocks its baud/mode/owner settings.
+    wireEntryGate({ subsystem: subsystemEnabled, rows, controls: row => [row.baud, row.mode, row.owner] });
+    const save = async () => {
+        // Disabled AND never-configured ports are omitted (nothing to store).
+        const serial = rows
+            .filter(row => row.enabled.get() || row.existing.device != null)
+            .map(row => ({ device: row.peripheral.device, enabled: row.enabled.get(), baud: Number(row.baud.get()) || 115200, mode: row.mode.get(), owner: row.owner.get() }));
+        await saveIo(api, data, { serial_enabled: subsystemEnabled.get(), serial });
+        store.toast('Serial settings saved', 'success');
+    };
     const apply = async () => { await api.post('/api/v1/io/serial/apply', {}); store.toast('Serial applied', 'success'); };
     const i2cTable = Table({ columns: ['Bus', 'Address', 'Status'], caption: 'I2C devices' }, (i2cData.devices || []).map(device => [
         el('code', {}, `i2c-${device.bus}`), el('code', {}, device.address), device.status,

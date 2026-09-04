@@ -42,6 +42,21 @@ pub async fn put(
     Json(req): Json<AlertsConfig>,
 ) -> ApiResult<Json<serde_json::Value>> {
     role.require_admin("alerts.put")?;
+    // Enable-before-configure: a PUT that leaves alerting disabled may only
+    // carry its stored state through — rules, webhooks, and MQTT edits are
+    // rejected with 409. Enabling + configuring in one write is the intended
+    // enable flow.
+    let current = app.engine.load()?.alerts;
+    if !req.enabled {
+        let mut masked = req.clone();
+        masked.enabled = current.enabled;
+        if masked != current {
+            return Err(ApiError::Conflict(
+                "Alerting is disabled — enable it before configuring rules, webhooks, or MQTT"
+                    .into(),
+            ));
+        }
+    }
     validate_alerts_config(&req)?;
     let user = username(&session).await;
     let cfg = app.engine.update(move |c| {

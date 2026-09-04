@@ -57,7 +57,7 @@ Store.onSessionChange((username) => {
   api.get('/api/v1/system/info').then((info) => {
     topbar.setBoard(info);
     const model = info.model || info.board_name || info.platform || '';
-    setWindowTitleSuffix(['WebConfig', model].filter(Boolean).join(' · '));
+    setWindowTitleSuffix(['XConfig', model].filter(Boolean).join(' · '));
   }).catch(() => { /* leave the chip hidden and the default title */ });
 });
 Store.onReconnected(() => renderCurrent());

@@ -17,8 +17,8 @@ let sidebarApi = null;
 let topbarApi = null;
 let current = null;
 // Window-title suffix — set from the board identity (app.js) so the browser
-// tab reads like a device header: "System — WebConfig · <model>".
-let titleSuffix = 'SoCcentric WebConfig';
+// tab reads like a device header: "System — XConfig · <model>".
+let titleSuffix = 'SoCcentric XConfig';
 // The last hash we actually rendered — lets the hashchange guard below revert
 // browser back/forward or a manual hash edit if the current page is dirty,
 // the same way `go()` already guards programmatic navigation.
@@ -37,11 +37,11 @@ export function initRouter({ sidebar, topbar }) {
 }
 
 /** setWindowTitleSuffix(s) — app.js feeds the board identity here
- * (e.g. "WebConfig · Arches Orin · SN 1042"); re-applies the current page
+ * (e.g. "XConfig · Arches Orin · SN 1042"); re-applies the current page
  * title immediately, and every later navigation picks it up too. Passing a
  * falsy value restores the default app-only title. */
 export function setWindowTitleSuffix(s) {
-  titleSuffix = s || 'SoCcentric WebConfig';
+  titleSuffix = s || 'SoCcentric XConfig';
   const meta = current == null ? null : routeMeta(current);
   document.title = meta ? `${meta.label} — ${titleSuffix}` : titleSuffix;
 }
@@ -75,7 +75,7 @@ async function confirmDiscardIfDirty() {
     try {
       await saveDirtyPage();
     } catch (e) {
-      console.error('[WebConfig] unable to save before navigation', e);
+      console.error('[XConfig] unable to save before navigation', e);
       return false;
     }
   }

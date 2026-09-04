@@ -7,18 +7,31 @@
       "title": "General",
       "fields": [
         {
+          "id": "enabled",
+          "title": "Enable this app",
+          "field_type": "bool",
+          "help": "Enable the app before configuring it \u2014 settings stay locked while disabled."
+        },
+        {
           "id": "site_id",
           "title": "Site ID",
           "field_type": "string",
-          "required": true,
-          "validation": { "min_len": 1, "max_len": 32, "pattern": "^[A-Za-z0-9_-]+$" },
-          "help": "Unique identifier for this installation site."
+          "required": false,
+          "validation": {
+            "min_len": 1,
+            "max_len": 32,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "help": "Unique identifier for this installation site. Configure after enabling the app."
         },
         {
           "id": "poll_interval_secs",
           "title": "Poll interval (s)",
           "field_type": "int",
-          "validation": { "min": 1, "max": 3600 },
+          "validation": {
+            "min": 1,
+            "max": 3600
+          },
           "help": "How often the app polls the upstream server."
         },
         {
@@ -26,10 +39,22 @@
           "title": "Log level",
           "field_type": "enum",
           "options": [
-            { "value": "error", "label": "Error" },
-            { "value": "warn", "label": "Warning" },
-            { "value": "info", "label": "Info" },
-            { "value": "debug", "label": "Debug" }
+            {
+              "value": "error",
+              "label": "Error"
+            },
+            {
+              "value": "warn",
+              "label": "Warning"
+            },
+            {
+              "value": "info",
+              "label": "Info"
+            },
+            {
+              "value": "debug",
+              "label": "Debug"
+            }
           ]
         },
         {
@@ -47,7 +72,10 @@
           "id": "api_token",
           "title": "API token",
           "field_type": "secret",
-          "validation": { "min_len": 16, "max_len": 256 },
+          "validation": {
+            "min_len": 16,
+            "max_len": 256
+          },
           "help": "Stored on the device only; never returned in backups."
         }
       ]
@@ -57,12 +85,38 @@
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
     "properties": {
-      "site_id": { "type": "string", "minLength": 1, "maxLength": 32, "pattern": "^[A-Za-z0-9_-]+$" },
-      "poll_interval_secs": { "type": "integer", "minimum": 1, "maximum": 3600 },
-      "log_level": { "type": "string", "enum": ["error", "warn", "info", "debug"] },
-      "telemetry_enabled": { "type": "boolean" },
-      "api_token": { "type": "string", "minLength": 16, "maxLength": 256 }
+      "enabled": {
+        "type": "boolean"
+      },
+      "site_id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 32,
+        "pattern": "^[A-Za-z0-9_-]+$"
+      },
+      "poll_interval_secs": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 3600
+      },
+      "log_level": {
+        "type": "string",
+        "enum": [
+          "error",
+          "warn",
+          "info",
+          "debug"
+        ]
+      },
+      "telemetry_enabled": {
+        "type": "boolean"
+      },
+      "api_token": {
+        "type": "string",
+        "minLength": 16,
+        "maxLength": 256
+      }
     },
-    "required": ["site_id"]
+    "required": []
   }
 }

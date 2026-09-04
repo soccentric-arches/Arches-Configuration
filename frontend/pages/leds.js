@@ -21,22 +21,45 @@ export async function render(api, store) {
     const leds = peripheralsOf(data, 'gpio').filter(isLed);
     const boardLeds = data.config && data.config.board_leds || {};
     const appConfig = boardLeds.app || {};
+    const gpioSubsystemOn = data.config && data.config.gpio_enabled === true;
     const ledOptions = [{ value: '', label: 'Not assigned' }, ...leds.map(led => ({ value: led.peripheral ? led.peripheral.id : led.id, label: led.human_name || led.id }))];
     const serviceOptions = [{ value: '', label: 'Any application' }, ...(services || []).map(service => ({ value: service.unit, label: service.unit }))];
     const boardLedsEnabled = Toggle({ label: 'Enable automatic board status LEDs', checked: boardLeds.enabled !== false });
     const systemLed = Field({ label: 'System status LED', type: 'select', value: boardLeds.system_led || '', options: ledOptions, help: 'Red indicates a system error, green indicates good, and amber indicates a warning.' });
     const osLed = Field({ label: 'OS status LED', type: 'select', value: boardLeds.os_led || '', options: ledOptions, help: 'Used for operating-system health and service readiness.' });
     const hardwareLed = Field({ label: 'Hardware status LED', type: 'select', value: boardLeds.hardware_led || '', options: ledOptions, help: 'Used for thermal, peripheral, and hardware faults.' });
-    const appLedsEnabled = Toggle({ label: 'Enable application status LED', checked: appConfig.enabled });
+    const appLedsEnabled = Toggle({ label: 'Enable application status LED', checked: appConfig.enabled === true });
     const appLed = Field({ label: 'Application LED', type: 'select', value: appConfig.led || '', options: ledOptions });
     const appService = Field({ label: 'Application service', type: 'select', value: appConfig.service || '', options: serviceOptions, help: 'The selected service drives the application LED status.' });
     const rows = leds.map(peripheral => {
         const existing = (data.config && data.config.gpio || []).find(item => item.name === peripheral.id) || {};
-        return { peripheral, enabled: Toggle({ label: 'Enable LED', checked: existing.enabled !== false }), initial: Toggle({ label: 'On at boot', checked: existing.initial_state === true }), existing };
+        return { peripheral, existing, enabled: Toggle({ label: 'Enable LED', checked: existing.enabled === true }), initial: Toggle({ label: 'On at boot', checked: existing.initial_state === true }), existing };
     });
+    // Enable-before-configure: the board-LED policy unlocks the domain LEDs;
+    // the app LED unlock also unlocks the application LED/service pair. The
+    // LED GPIO rows additionally require the GPIO subsystem to be enabled.
+    const syncLedLocks = () => {
+        const boardOn = boardLedsEnabled.get();
+        for (const f of [systemLed, osLed, hardwareLed]) f.input.disabled = !boardOn;
+        const appOn = boardOn && appLedsEnabled.get();
+        appLed.input.disabled = !appOn;
+        appService.input.disabled = !appOn;
+        for (const row of rows) {
+            row.enabled.input.disabled = !gpioSubsystemOn;
+            row.initial.input.disabled = !gpioSubsystemOn || !row.enabled.get();
+        }
+    };
+    boardLedsEnabled.input.addEventListener('change', syncLedLocks);
+    appLedsEnabled.input.addEventListener('change', syncLedLocks);
+    for (const row of rows) row.enabled.input.addEventListener('change', syncLedLocks);
+    syncLedLocks();
     const save = async () => {
+        // Disabled AND never-configured LED pins are omitted (nothing to store).
+        const ledRows = rows
+            .filter(row => row.enabled.get() || row.existing.name != null)
+            .map(row => ({ name: row.peripheral.id, enabled: row.enabled.get(), direction: 'out', active_low: row.peripheral.caps?.active_low || false, initial_state: row.initial.get() }));
         await saveIo(api, data, {
-            gpio: [...(data.config && data.config.gpio || []).filter(item => !rows.some(row => row.peripheral.id === item.name)), ...rows.map(row => ({ name: row.peripheral.id, enabled: row.enabled.get(), direction: 'out', active_low: row.peripheral.caps?.active_low || false, initial_state: row.initial.get() }))],
+            gpio: [...(data.config && data.config.gpio || []).filter(item => !leds.some(({ peripheral }) => peripheral.id === item.name)), ...ledRows],
             board_leds: {
                 enabled: boardLedsEnabled.get(),
                 system_led: systemLed.get() || null,

@@ -6,7 +6,7 @@ import { Field } from '../components/field.js';
 import { Toggle } from '../components/toggle.js';
 import { Button } from '../components/button.js';
 import { ActionList, ActionRow } from '../components/action-row.js';
-import { peripheralsOf, saveIo } from './hardware-utils.js';
+import { peripheralsOf, saveIo, wireEntryGate } from './hardware-utils.js';
 
 export async function render(api, store) {
     const data = await api.get('/api/v1/io');
@@ -14,9 +14,20 @@ export async function render(api, store) {
     const subsystemEnabled = Toggle({ label: 'Enable CAN subsystem', checked: data.config && data.config.can_enabled !== false });
     const rows = peripherals.map(peripheral => {
         const existing = (data.config && data.config.can || []).find(item => item.name === peripheral.device) || {};
-        return { peripheral, enabled: Toggle({ label: 'Enable CAN interface', checked: existing.enabled !== false }), bitrate: Field({ label: 'Bitrate', type: 'number', value: existing.bitrate || 500000 }), fd: Toggle({ label: 'CAN FD', checked: existing.fd }), dataBitrate: Field({ label: 'FD data bitrate', type: 'number', value: existing.data_bitrate || 2000000 }), listenOnly: Toggle({ label: 'Listen only', checked: existing.listen_only }), upOnBoot: Toggle({ label: 'Up on boot', checked: existing.up_on_boot !== false }), existing };
+        return { peripheral, existing, enabled: Toggle({ label: 'Enable CAN interface', checked: existing.enabled === true }), bitrate: Field({ label: 'Bitrate', type: 'number', value: existing.bitrate || 500000 }), fd: Toggle({ label: 'CAN FD', checked: existing.fd }), dataBitrate: Field({ label: 'FD data bitrate', type: 'number', value: existing.data_bitrate || 2000000 }), listenOnly: Toggle({ label: 'Listen only', checked: existing.listen_only }), upOnBoot: Toggle({ label: 'Up on boot', checked: existing.up_on_boot === true }) };
     });
-    const save = async () => { await saveIo(api, data, { can_enabled: subsystemEnabled.get(), can: rows.map(row => ({ name: row.peripheral.device, enabled: row.enabled.get(), bitrate: Number(row.bitrate.get()) || 500000, fd: row.fd.get(), data_bitrate: Number(row.dataBitrate.get()) || 0, listen_only: row.listenOnly.get(), restart_ms: row.existing.restart_ms || 100, up_on_boot: row.upOnBoot.get() })) }); store.toast('CAN settings saved', 'success'); };
+    // Enable-before-configure: the subsystem toggle unlocks the interfaces;
+    // each interface's enable toggle unlocks its own settings.
+    wireEntryGate({ subsystem: subsystemEnabled, rows, controls: row => [row.bitrate, row.fd, row.dataBitrate, row.listenOnly, row.upOnBoot] });
+    const save = async () => {
+        // Enable-before-configure: entries that are disabled AND not yet in the
+        // stored config are omitted — a disabled peripheral has nothing to store.
+        const can = rows
+            .filter(row => row.enabled.get() || row.existing.name != null)
+            .map(row => ({ name: row.peripheral.device, enabled: row.enabled.get(), bitrate: Number(row.bitrate.get()) || 500000, fd: row.fd.get(), data_bitrate: Number(row.dataBitrate.get()) || 0, listen_only: row.listenOnly.get(), restart_ms: row.existing.restart_ms || 100, up_on_boot: row.upOnBoot.get() }));
+        await saveIo(api, data, { can_enabled: subsystemEnabled.get(), can });
+        store.toast('CAN settings saved', 'success');
+    };
     const apply = async () => { await api.post('/api/v1/io/can/apply', {}); store.toast('CAN applied', 'success'); };
 
     return el('div', {}, el('div', { class: 'page-header' }, el('h1', {}, 'CAN'), el('p', {}, 'Configure CAN bitrate, FD mode, listen-only behavior, and startup.')),

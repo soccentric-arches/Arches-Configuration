@@ -195,14 +195,11 @@
 .topbar-brand .logo-mark {
   width: 26px;
   height: 26px;
-  border-radius: var(--radius-md);
-  background: linear-gradient(135deg, var(--primary), var(--primary-light));
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
-  font-size: var(--text-sm);
-  font-weight: var(--weight-bold);
+  /* Brand mark: the red X (icons.js `x`) — no tile behind it. */
+  color: var(--x-red);
 }
 
 .topbar .page-title {
@@ -274,7 +271,7 @@
 }
 
 .theme-opt-active {
-  background: var(--muted);
+  background: var(--accent);
   color: var(--foreground);
   box-shadow: var(--shadow-xs);
 }

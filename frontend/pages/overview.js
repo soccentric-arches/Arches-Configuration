@@ -5,6 +5,7 @@ import { el } from '../core/dom.js';
 import { Card } from '../components/card.js';
 import { Badge } from '../components/badge.js';
 import { Table } from '../components/table.js';
+import { RadialGauge } from '../components/radial-chart.js';
 
 function fmtBytes(bytes) {
     if (!bytes) return '0 B';
@@ -23,11 +24,22 @@ function fmtUptime(seconds) {
     return [days && `${days}d`, hours && `${hours}h`, `${minutes}m`].filter(Boolean).join(' ');
 }
 
-function metric(label, explanation) {
-    const value = el('div', { class: 'tile-value' }, '—');
+// One radial gauge per metric — ring on top, label below — with the number
+// as text in the ring (shadcn/ui radial style). Pass `gaugeOpts = null` for
+// a plain value tile (same top-value/bottom-text rhythm, no ring).
+function metric(label, explanation, gaugeOpts = {}) {
+    if (gaugeOpts === null) {
+        const value = el('div', { class: 'tile-value' }, '—');
+        return {
+            node: el('div', { class: 'card overview-metric gauge-tile' }, el('div', { class: 'card-body gauge-tile-body' }, value, el('div', { class: 'overview-metric-label gauge-title' }, label), el('div', { class: 'tile-sub gauge-sub' }, explanation))),
+            update(text) { value.textContent = text; },
+        };
+    }
+    const gauge = RadialGauge({ size: 116, label: `${label} gauge`, ...gaugeOpts });
     return {
-        node: el('div', { class: 'card overview-metric' }, el('div', { class: 'card-body' }, el('div', { class: 'overview-metric-label' }, label), el('div', { class: 'tile-sub' }, explanation), value)),
-        update(text) { value.textContent = text; },
+        node: el('div', { class: 'card overview-metric gauge-tile' }, el('div', { class: 'card-body gauge-tile-body' }, gauge.element, el('div', { class: 'overview-metric-label gauge-title' }, label), el('div', { class: 'tile-sub gauge-sub' }, explanation))),
+        update(_text, numeric) { if (numeric != null) gauge.push(numeric); },
+        gauge,
     };
 }
 
@@ -117,10 +129,10 @@ export async function render(api, store) {
         api.get('/api/v1/io/pci').catch(() => null),
     ]);
 
-    const cpu = metric('CPU load (1m)', 'Average runnable work over the last minute; higher means more CPU demand.');
-    const memory = metric('Memory used', 'Percentage of RAM currently unavailable for new work.');
-    const temperature = metric('Highest temperature', 'Highest sensor reading currently reported by the board.');
-    const uptime = metric('Uptime', 'Time elapsed since the operating system last booted.');
+    const cpu = metric('CPU load (1m)', 'Average runnable work over the last minute; higher means more CPU demand.', { yFmt: (v) => v.toFixed(2), sub: '1m load avg' });
+    const memory = metric('Memory used', 'Percentage of RAM currently unavailable for new work.', { max: 100, yFmt: (v) => `${v.toFixed(0)}%`, sub: 'of RAM' });
+    const temperature = metric('Highest temperature', 'Highest sensor reading currently reported by the board.', { max: 100, yFmt: (v) => `${v.toFixed(0)}°C`, sub: 'sensor peak' });
+    const uptime = metric('Uptime', 'Time elapsed since the operating system last booted.', null);
     const connectionBadge = Badge('online', 'success');
 
     function setConnectionState(online) {
@@ -130,12 +142,12 @@ export async function render(api, store) {
 
     function updateVitals(snapshot) {
         const load = snapshot.load && snapshot.load[0];
-        cpu.update(load == null ? '—' : load.toFixed(2));
+        cpu.update(load == null ? '—' : load.toFixed(2), load);
         const memoryUsed = usagePercent(snapshot.mem_total_kb, snapshot.mem_available_kb);
-        memory.update(memoryUsed == null ? '—' : `${memoryUsed.toFixed(0)}%`);
+        memory.update(memoryUsed == null ? '—' : `${memoryUsed.toFixed(0)}%`, memoryUsed);
         const temperatures = (snapshot.temperatures || []).map(item => item.temp_millideg_c / 1000);
         const hottest = temperatures.length ? Math.max(...temperatures) : null;
-        temperature.update(hottest == null ? '—' : `${hottest.toFixed(0)} C`);
+        temperature.update(hottest == null ? '—' : `${hottest.toFixed(0)} C`, hottest);
         uptime.update(fmtUptime(snapshot.uptime_secs));
     }
     updateVitals(vitals);
@@ -145,7 +157,11 @@ export async function render(api, store) {
         try { updateVitals(JSON.parse(event.data)); setConnectionState(true); } catch (_) { /* skip malformed tick */ }
     });
     source.addEventListener('error', () => setConnectionState(false));
-    store.registerCleanup(() => source.close());
+    store.registerCleanup(() => {
+        source.close();
+        // Gauges keep a themechange listener — remove it with the page.
+        for (const m of [cpu, memory, temperature]) m.gauge && m.gauge.destroy();
+    });
 
     const refresh = async () => {
         try {
@@ -167,15 +183,15 @@ export async function render(api, store) {
             el('div', {}, el('div', { class: 'field-label' }, 'Serial number'), el('div', { class: 'field-help' }, 'Inventory identifier assigned to this device.'), el('div', {}, info && info.serial_number || '—')),
         ));
 
-    const software = Card({ title: 'System information', subtitle: 'Operating system, kernel, bootloader, and WebConfig build metadata.' },
+    const software = Card({ title: 'System information', subtitle: 'Operating system, kernel, bootloader, and XConfig build metadata.' },
         el('div', { class: 'overview-detail-grid' },
             el('div', {}, el('div', { class: 'field-label' }, 'Operating system'), el('div', { class: 'field-help' }, 'Base operating system running on the device.'), el('div', {}, info && info.os_name || '—')),
             el('div', {}, el('div', { class: 'field-label' }, 'OS version'), el('div', { class: 'field-help' }, 'Release version of the installed operating system.'), el('div', {}, info && info.os_version || '—')),
             el('div', {}, el('div', { class: 'field-label' }, 'OS revision'), el('div', { class: 'field-help' }, 'Build or source revision of the operating system.'), el('div', {}, info && info.os_revision || '—')),
             el('div', {}, el('div', { class: 'field-label' }, 'Kernel'), el('div', { class: 'field-help' }, 'Linux kernel version currently running.'), el('div', {}, info && info.kernel_version || '—')),
             el('div', {}, el('div', { class: 'field-label' }, 'Bootloader'), el('div', { class: 'field-help' }, 'Software that starts and selects the operating system.'), el('div', {}, info && info.bootloader_version || '—')),
-            el('div', {}, el('div', { class: 'field-label' }, 'WebConfig version'), el('div', { class: 'field-help' }, 'Installed version of this management interface.'), el('div', {}, info && info.software_version || '—')),
-            el('div', {}, el('div', { class: 'field-label' }, 'WebConfig revision'), el('div', { class: 'field-help' }, 'Source or build revision of this management interface.'), el('div', {}, info && info.software_revision || '—')),
+            el('div', {}, el('div', { class: 'field-label' }, 'XConfig version'), el('div', { class: 'field-help' }, 'Installed version of this management interface.'), el('div', {}, info && info.software_version || '—')),
+            el('div', {}, el('div', { class: 'field-label' }, 'XConfig revision'), el('div', { class: 'field-help' }, 'Source or build revision of this management interface.'), el('div', {}, info && info.software_revision || '—')),
         ));
 
     return el('div', {},

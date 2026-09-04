@@ -22,6 +22,10 @@
   height: 40px;
   font-size: var(--text-xl);
   margin: 0 auto var(--space-4);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--x-red);
 }
 
 .auth-card h1 {

@@ -33,11 +33,12 @@ export async function render(api, store) {
   function renderRules() {
     const rows = rules.map((r, idx) => {
       const ruleEnabled = Toggle({ label: 'Enabled', checked: r.enabled !== false });
+      ruleEnabled.input.disabled = !enabled.get();
       ruleEnabled.input.addEventListener('change', () => { r.enabled = ruleEnabled.get(); });
       return [
         r.id, r.metric, r.comparison, String(r.threshold), String(r.duration_secs || 0), (r.actions || []).join(', '),
         ruleEnabled.wrap,
-        Button({ variant: 'link', size: 'sm', title: 'Remove this alert rule from the unsaved list', onClick: () => { rules.splice(idx, 1); renderRules(); } }, 'Delete'),
+        (() => { const del = Button({ variant: 'link', size: 'sm', title: 'Remove this alert rule from the unsaved list', onClick: () => { rules.splice(idx, 1); renderRules(); } }, 'Delete'); del.disabled = !enabled.get(); return del; })(),
       ];
     });
     const content = rows.length
@@ -88,14 +89,26 @@ export async function render(api, store) {
   const mqttTopic = Field({ label: 'MQTT event topic base', value: mqttEventTopic, placeholder: 'soccentric/events', help: 'Fired events are published to <base>/<rule_id>.' });
   mqttTopic.input.addEventListener('change', () => { mqttEventTopic = mqttTopic.get(); });
 
-  const notifyCard = Card({
-    title: 'Notification targets',
-    subtitle: 'Where push actions deliver fired/cleared events (spec §4.7). Webhook targets receive a JSON POST; MQTT events publish to the broker configured under Services → MQTT.',
-  }, webhookHost, el('div', { class: 'field-row' }, newHook.wrap, Button({ variant: 'outline', onClick: () => {
+  // Enable-before-configure: with alerting off, rules, notification targets,
+  // and the add-rule form are locked — the save only carries the enable flip.
+  const webhookAddBtn = Button({ variant: 'outline', onClick: () => {
     const u = newHook.get().trim();
     if (!u) { store.toast('Enter a webhook URL', 'error'); return; }
     webhooks.push(u); newHook.set(''); renderWebhooks();
-  } }, 'Add webhook')), mqttTopic.wrap);
+  } }, 'Add webhook');
+  const syncAlertLocks = () => {
+    const on = enabled.get();
+    for (const f of [id, metric, op, thr, dur, actWebhook, actMqtt, newHook, mqttTopic]) f.input.disabled = !on;
+    webhookAddBtn.disabled = !on;
+    renderRules(); // re-render the table with per-row locks applied
+  };
+  enabled.input.addEventListener('change', syncAlertLocks);
+  syncAlertLocks();
+
+  const notifyCard = Card({
+    title: 'Notification targets',
+    subtitle: 'Where push actions deliver fired/cleared events (spec §4.7). Webhook targets receive a JSON POST; MQTT events publish to the broker configured under Services → MQTT.',
+  }, webhookHost, el('div', { class: 'field-row' }, newHook.wrap, webhookAddBtn), mqttTopic.wrap);
 
   // ---------- Save ------------------------------------------------------
   const rulesCard = Card({

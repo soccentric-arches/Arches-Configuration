@@ -34,6 +34,11 @@ export async function render(api, store) {
   const plainHttp = Toggle({ label: 'Allow plain HTTP (first-boot opt-in)', checked: sec.allow_plain_http });
   const wgEn = Toggle({ label: 'WireGuard enabled', checked: sec.wireguard && sec.wireguard.enabled });
   const wgPort = Field({ label: 'WireGuard port', type: 'number', value: sec.wireguard && sec.wireguard.port });
+  // Enable-before-configure: the WireGuard enable toggle locks the port (the
+  // server rejects configuration writes while WireGuard stays disabled).
+  const syncWgLock = () => { wgPort.input.disabled = !wgEn.get(); };
+  wgEn.input.addEventListener('change', syncWgLock);
+  syncWgLock();
 
   const configCard = Card({
     title: 'Security config',
@@ -67,7 +72,7 @@ export async function render(api, store) {
         try {
           await api.post('/api/v1/security/tls', { cert: tlsCert.get(), key: tlsKey.get() });
           tlsCert.set(''); tlsKey.set('');
-          await infoDialog({ title: 'Identity updated', body: el('div', { class: 'stack text-sm' }, el('p', {}, 'The cert/key pair was validated and written. Restart the WebConfig daemon (or reboot) for it to take effect — the running listener still serves the previous cert.'), el('p', { class: 'muted' }, 'A mismatched pair is rejected before anything is written, so a bad upload cannot break TLS on the next boot.')) });
+          await infoDialog({ title: 'Identity updated', body: el('div', { class: 'stack text-sm' }, el('p', {}, 'The cert/key pair was validated and written. Restart the XConfig daemon (or reboot) for it to take effect — the running listener still serves the previous cert.'), el('p', { class: 'muted' }, 'A mismatched pair is rejected before anything is written, so a bad upload cannot break TLS on the next boot.')) });
           store.toast('TLS identity updated', 'success');
         } catch (e) { store.toast(e.message, 'error'); }
       },
@@ -129,7 +134,7 @@ export async function render(api, store) {
   // ---------- Exposure (read-only) ----------
   const exposureCard = Card({ title: 'Exposure', subtitle: 'Effective UI reachability and open services by interface.' },
     el('div', { class: 'field-row' },
-      el('div', {}, el('div', { class: 'field-label' }, 'UI reachability'), el('div', { class: 'field-help' }, 'The WebConfig interface remains reachable for local recovery.'), Badge(exposure.ui_always_reachable ? 'yes' : 'no', exposure.ui_always_reachable ? 'info' : 'neutral')),
+      el('div', {}, el('div', { class: 'field-label' }, 'UI reachability'), el('div', { class: 'field-help' }, 'The XConfig interface remains reachable for local recovery.'), Badge(exposure.ui_always_reachable ? 'yes' : 'no', exposure.ui_always_reachable ? 'info' : 'neutral')),
       el('div', {}, el('div', { class: 'field-label' }, 'Plain HTTP'), el('div', { class: 'field-help' }, 'Whether unencrypted HTTP access is permitted.'), Badge(exposure.plain_http ? 'allowed' : 'blocked', exposure.plain_http ? 'warning' : 'success'))),
     el('div', { class: 'stack' }, ...(exposure.per_interface || []).map(p =>
       el('div', { class: 'row text-sm' }, el('strong', {}, p.interface + ':'), (p.open_services || []).join(', ') || 'none'))));

@@ -57,6 +57,9 @@
   /* Warning text on warning-bg surfaces (callouts, commit-confirm banner) */
   --warning-foreground: #92400e;
 
+  /* Brand mark — the XConfig "X" logo */
+  --x-red: #dc2626;
+
   /* Toast surface — dark slate pill that pops on the light app background */
   --toast-bg: var(--zinc-900);
   --toast-foreground: #ffffff;
@@ -125,6 +128,7 @@
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
   --duration-fast: 120ms;
   --duration-normal: 200ms;
+  --duration-slow: 320ms;
 
   /* Auth-screen background glow (radial gradients on .auth-shell) */
   --page-glow-1: #eef2ff;
@@ -142,17 +146,19 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  /* Semantic surfaces — zinc-950 base, slightly lifted cards */
-  --background: #09090b;
-  --foreground: var(--zinc-100);
-  --muted: #131316;
-  --muted-foreground: var(--zinc-400);
-  --card: #101013;
-  --card-foreground: var(--zinc-100);
-  --popover: var(--zinc-900);
-  --popover-foreground: var(--zinc-100);
-  --border: var(--zinc-800);
-  --input: var(--zinc-800);
+  /* Semantic surfaces — soft graphite base (not near-black), lifted cards,
+     and clearly visible borders/inputs. Roughly mirrors the light theme's
+     relationships (card lighter than muted is inverted for dark). */
+  --background: #141417;
+  --foreground: var(--zinc-50);
+  --muted: #232329;
+  --muted-foreground: #b4b4bc;
+  --card: #1e1e23;
+  --card-foreground: var(--zinc-50);
+  --popover: #26262c;
+  --popover-foreground: var(--zinc-50);
+  --border: #35353c;
+  --input: #3b3b42;
   --ring: #38bdf8;
 
   /* Accent — sky shifted lighter so text/rings stay legible on dark */
@@ -160,43 +166,46 @@
   --primary-foreground: #082f49;
   --primary-hover: #7dd3fc;
   --primary-light: #0284c7;
-  --secondary: var(--zinc-800);
+  --secondary: #2d2d34;
   --secondary-foreground: var(--zinc-100);
-  --secondary-hover: var(--zinc-700);
-  --accent: var(--zinc-800);
+  --secondary-hover: #3a3a42;
+  --accent: #2d2d34;
   --accent-foreground: var(--zinc-100);
 
   /* Status — same hues as light, brighter text tones + dark-tinted surfaces
      (badges pair color: var(--x) with background: var(--x-bg), so this
      combination keeps AA contrast in both themes) */
   --success: #4ade80;
-  --success-bg: #052e16;
-  --success-border: #166534;
+  --success-bg: #143d28;
+  --success-border: #2e7d4f;
   --warning: #fbbf24;
-  --warning-bg: #451a03;
-  --warning-border: #92400e;
+  --warning-bg: #45300f;
+  --warning-border: #a16207;
   --warning-foreground: #fcd34d;
   --destructive: #f87171;
-  --destructive-bg: #450a0a;
-  --destructive-border: #991b1b;
+  --destructive-bg: #451f1e;
+  --destructive-border: #b3403a;
   --destructive-hover: #fca5a5;
   --destructive-foreground: #450a0a;
   --info: #7dd3fc;
-  --info-bg: #082f49;
-  --info-border: #075985;
+  --info-bg: #143a52;
+  --info-border: #1f6f9f;
 
   /* Toast — elevated above the dark app background */
   --toast-bg: var(--zinc-700);
   --toast-foreground: #fafafa;
 
+  /* Brand mark — slightly brighter red for dark surfaces */
+  --x-red: #ef4444;
+
   /* Sidebar */
-  --sidebar-bg: #0b0b0e;
+  --sidebar-bg: #17171b;
   --sidebar-border: transparent;
-  --sidebar-foreground: var(--zinc-300);
-  --sidebar-muted: var(--zinc-500);
-  --sidebar-active-bg: #0c2d44;
+  --sidebar-foreground: var(--zinc-200);
+  --sidebar-muted: var(--zinc-400);
+  --sidebar-active-bg: #17455f;
   --sidebar-active-foreground: var(--primary);
-  --sidebar-hover-bg: var(--zinc-900);
+  --sidebar-hover-bg: #24242a;
 
   /* Shadows — near-black so elevation still reads on dark surfaces */
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, .35), 0 1px 1px rgba(0, 0, 0, .25);
@@ -204,7 +213,7 @@
   --shadow-md: 0 8px 18px rgba(0, 0, 0, .45), 0 2px 5px rgba(0, 0, 0, .30);
   --shadow-lg: 0 16px 36px rgba(0, 0, 0, .55), 0 5px 10px rgba(0, 0, 0, .35);
 
-  /* Auth-screen background glow — faint deep-blue/indigo on near-black */
-  --page-glow-1: #0c1c33;
-  --page-glow-2: #171334;
+  /* Auth-screen background glow — visible deep-blue/indigo on graphite */
+  --page-glow-1: #1d3350;
+  --page-glow-2: #26203e;
 }

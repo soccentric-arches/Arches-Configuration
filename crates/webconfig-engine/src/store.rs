@@ -708,7 +708,7 @@ pub mod alerts {
         true
     }
 
-    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     pub struct AlertsConfig {
         /// Global alert-engine switch (spec §4.7). Defaults to **true** so the
         /// shipped per-platform default packs (disk-full, watchdog-reset,
@@ -730,7 +730,7 @@ pub mod alerts {
         pub mqtt_event_topic: Option<String>,
     }
 
-    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+    #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
     pub struct AlertRule {
         pub id: String,
         #[serde(default = "default_enabled")]
@@ -786,7 +786,7 @@ pub mod security {
         900
     }
 
-    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+    #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
     pub struct WireGuardConfig {
         #[serde(default)]
         pub enabled: bool,
@@ -798,7 +798,7 @@ pub mod security {
         pub peers: Vec<WgPeer>,
     }
 
-    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+    #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
     pub struct WgPeer {
         pub public_key: String,
         #[serde(default)]
@@ -856,7 +856,7 @@ pub mod io {
         pub board_leds: BoardLedConfig,
     }
 
-    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+    #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
     pub struct BoardLedConfig {
         #[serde(default = "default_enabled")]
         pub enabled: bool,
@@ -870,7 +870,7 @@ pub mod io {
         pub app: AppLedConfig,
     }
 
-    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+    #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
     pub struct AppLedConfig {
         #[serde(default)]
         pub enabled: bool,
@@ -880,11 +880,14 @@ pub mod io {
         pub service: Option<String>,
     }
 
+    // Enable-before-configure (spec §4.9): hardware subsystems and peripheral
+    // entries start DISABLED — an operator must enable them (the API rejects
+    // configuration writes with 409 while the gate is closed).
     fn default_enabled() -> bool {
-        true
+        false
     }
 
-    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+    #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
     pub struct SerialPort {
         pub device: String,
         #[serde(default = "default_enabled")]
@@ -902,7 +905,7 @@ pub mod io {
         "unassigned".to_string()
     }
 
-    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+    #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
     pub struct CanInterface {
         pub name: String,
         #[serde(default = "default_enabled")]
@@ -921,7 +924,7 @@ pub mod io {
         pub up_on_boot: bool,
     }
 
-    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+    #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
     pub struct GpioPin {
         pub name: String,
         #[serde(default = "default_enabled")]
@@ -934,14 +937,14 @@ pub mod io {
         pub initial_state: Option<bool>,
     }
 
-    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+    #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
     pub struct CameraConfig {
         pub name: String,
         #[serde(default = "default_enabled")]
         pub enabled: bool,
     }
 
-    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+    #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
     pub struct McuConfig {
         pub kind: String, // "stm32" | "picow"
         #[serde(default = "default_enabled")]

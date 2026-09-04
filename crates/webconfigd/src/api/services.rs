@@ -241,6 +241,58 @@ pub async fn put_app_settings(
     Json(req): Json<serde_json::Value>,
 ) -> ApiResult<Json<serde_json::Value>> {
     role.require_mutate_apps("apps.settings.put")?;
+    // ── Enable-before-configure ──
+    // Two gate sources:
+    //   1. The section's schema declares an `enabled` bool field: a closed
+    //      gate (settings.enabled != true; missing = disabled) blocks every
+    //      other key change until the app is enabled.
+    //   2. A manifest peripheral declares this schema as its settings schema
+    //      (companion MCU): gated by the hardware enable in io.mcu instead.
+    let loaded = app.engine.load()?;
+    let current_settings = loaded
+        .app_settings
+        .get(&id)
+        .cloned()
+        .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
+    // App schemas are keyed by file stem (`app-example`) — the same id the
+    // settings URL carries. A schema declares the gate if it has an `enabled`
+    // bool field; a manifest peripheral whose `settings_schema` names this
+    // schema (companion MCU) is gated by the hardware enable in io.mcu instead.
+    let declares_gate = app.schema.descriptors().iter().any(|(stem, d)| {
+        stem == &id
+            && d.groups
+                .iter()
+                .flat_map(|g| g.fields.iter())
+                .any(|f| f.id == "enabled" && f.field_type == "bool")
+    });
+    let mcu_gate_closed = app.schema.descriptors().iter().any(|(stem, d)| {
+        stem == &id
+            && app.manifest.peripherals.iter().any(|p| {
+                p.caps.get("settings_schema").and_then(|v| v.as_str()) == Some(d.id.as_str())
+            })
+    }) && !loaded.io.mcu.as_ref().map(|m| m.enabled).unwrap_or(false);
+    let gate_closed = if declares_gate {
+        // Request-side: if the request leaves the app disabled, only stored
+        // values may pass through — enabling + configuring in one write is the
+        // intended enable flow.
+        req.get("enabled").and_then(|v| v.as_bool()) != Some(true)
+    } else {
+        mcu_gate_closed
+    };
+    if gate_closed {
+        if let (Some(cur), Some(new)) = (current_settings.as_object(), req.as_object()) {
+            for (k, v) in new {
+                if k == "enabled" {
+                    continue;
+                }
+                if cur.get(k) != Some(v) {
+                    return Err(ApiError::Conflict(format!(
+                        "{id} settings are disabled — enable the app before configuring it"
+                    )));
+                }
+            }
+        }
+    }
     let user = username(&session).await;
     let id_for_update = id.clone();
     let req_for_update = req.clone();
