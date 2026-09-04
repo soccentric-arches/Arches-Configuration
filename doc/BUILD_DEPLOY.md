@@ -34,8 +34,8 @@ Cargo debug and release outputs are written below `target/`, with target-specifi
 ## 7. Deployment, install, and run
 
 - `make run-mock` runs against a temporary fake sysroot and is the hardware-free smoke path.
-- `make stop` stops the process listening on `WEBCONFIG_PORT` (default `8443`).
-- Real-host runs (live `/proc`, real backends) are done by launching the daemon directly (`cargo run -p webconfigd`) or via the container (`make -C docker run`); they are conditional on a suitable host environment.
+- `make run` starts the production container and publishes port 8443 on all host interfaces, so the UI is reachable from the local network at `https://<host-ip>:8443`; a self-signed TLS certificate is generated on first boot.
+- `make stop` stops the webconfigd container when one is running, otherwise the process listening on `WEBCONFIG_PORT` (default `8443`).
 - Yocto installation is performed by the Arches-OS image recipe, not by a standalone installer in this repository. Use the release artifact workflow and the matching OS image build for target deployment.
 
 There is no cloud deployment target in this Makefile. Target installation requires the corresponding Yocto image, board configuration, and target access.
