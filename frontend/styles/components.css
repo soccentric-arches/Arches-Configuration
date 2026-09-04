@@ -100,7 +100,7 @@
 }
 
 .btn-destructive:hover:not(:disabled) {
-  background: #b91c1c;
+  background: var(--destructive-hover);
 }
 
 .btn-destructive-outline {
@@ -490,8 +490,8 @@ textarea.input {
 }
 
 .toast {
-  background: var(--zinc-900);
-  color: #fff;
+  background: var(--toast-bg);
+  color: var(--toast-foreground);
   padding: 10px 14px;
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
@@ -616,7 +616,7 @@ textarea.input {
 }
 .callout-warning {
   background: var(--warning-bg);
-  color: #92400e;
+  color: var(--warning-foreground);
   border-color: var(--warning-border);
 }
 
@@ -626,7 +626,7 @@ textarea.input {
   top: var(--topbar-height);
   z-index: 15;
   background: var(--warning-bg);
-  color: #92400e;
+  color: var(--warning-foreground);
   border-bottom: 1px solid var(--warning-border);
   padding: 10px var(--space-5);
   display: flex;

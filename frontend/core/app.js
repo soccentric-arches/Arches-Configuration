@@ -3,9 +3,9 @@
 // native ES module (spec §2: no bundler, no node at build time — the browser
 // resolves every `import` directly against these static files).
 
-import { onUnauthorized } from './api.js';
+import { api, onUnauthorized } from './api.js';
 import { Store } from './store.js';
-import { initRouter, go, renderCurrent, NAV } from './router.js';
+import { initRouter, go, renderCurrent, NAV, setWindowTitleSuffix } from './router.js';
 import { createAuthController } from './auth.js';
 import { installBeforeUnloadGuard } from './dirty-guard.js';
 import { initShortcuts, registerShortcut } from './shortcuts.js';
@@ -43,6 +43,19 @@ function closeMobileSidebar() { appShell.classList.remove('sidebar-open'); }
 document.getElementById('sidebar-scrim').addEventListener('click', closeMobileSidebar);
 
 Store.onSessionChange((username, role) => topbar.setSession(username, role));
+
+// Board identity for the title bar (like a real board's header): fetch the
+// read-only device info once per session and surface it in the topbar chip
+// and the browser window title. Non-fatal on failure — the bar simply keeps
+// the app name only.
+Store.onSessionChange((username) => {
+  if (!username) { topbar.setBoard(null); setWindowTitleSuffix(null); return; }
+  api.get('/api/v1/system/info').then((info) => {
+    topbar.setBoard(info);
+    const model = info.model || info.board_name || info.platform || '';
+    setWindowTitleSuffix(['WebConfig', model].filter(Boolean).join(' · '));
+  }).catch(() => { /* leave the chip hidden and the default title */ });
+});
 Store.onReconnected(() => renderCurrent());
 Store.onReload(() => renderCurrent());
 installBeforeUnloadGuard();

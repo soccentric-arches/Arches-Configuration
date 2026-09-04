@@ -177,6 +177,64 @@
   flex: 1 1 auto;
 }
 
+/* Brand block = two-line board header: app name over device model · serial
+   (filled by Topbar.setBoard from GET /api/v1/system/info). */
+.brand-text-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1.15;
+  min-width: 0;
+}
+
+.brand-sub {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+/* Segmented light/dark switch (components/theme-switch.js). */
+.theme-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  flex: 0 0 auto;
+}
+
+.theme-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  padding: 3px 9px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
+}
+
+.theme-opt:hover {
+  color: var(--foreground);
+}
+
+.theme-opt-active {
+  background: var(--muted);
+  color: var(--foreground);
+  box-shadow: var(--shadow-xs);
+}
+
 .content {
   flex: 1 1 auto;
   padding: var(--space-6) clamp(var(--space-4), 4vw, var(--space-8));
@@ -220,6 +278,19 @@
 
   .topbar-brand .brand-text {
     display: none;
+  }
+
+  /* Icon-only theme switch + no board identity line on narrow phones. */
+  .brand-sub {
+    display: none;
+  }
+
+  .theme-opt-label {
+    display: none;
+  }
+
+  .theme-opt {
+    padding: 3px 7px;
   }
 
   .sidebar {

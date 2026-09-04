@@ -8,8 +8,8 @@
   justify-content: center;
   padding: var(--space-4);
   background:
-    radial-gradient(circle at 20% 20%, #eef2ff 0%, transparent 45%),
-    radial-gradient(circle at 80% 80%, #f5f3ff 0%, transparent 45%), var(--muted);
+    radial-gradient(circle at 20% 20%, var(--page-glow-1) 0%, transparent 45%),
+    radial-gradient(circle at 80% 80%, var(--page-glow-2) 0%, transparent 45%), var(--muted);
 }
 
 .auth-card {

@@ -16,6 +16,9 @@ import { NAV, ROUTE_IDS, routeMeta } from '../pages/registry.js';
 let sidebarApi = null;
 let topbarApi = null;
 let current = null;
+// Window-title suffix — set from the board identity (app.js) so the browser
+// tab reads like a device header: "System — WebConfig · <model>".
+let titleSuffix = 'SoCcentric WebConfig';
 // The last hash we actually rendered — lets the hashchange guard below revert
 // browser back/forward or a manual hash edit if the current page is dirty,
 // the same way `go()` already guards programmatic navigation.
@@ -31,6 +34,16 @@ export function initRouter({ sidebar, topbar }) {
   topbarApi = topbar;
   lastHash = location.hash;
   window.addEventListener('hashchange', handleHashChange);
+}
+
+/** setWindowTitleSuffix(s) — app.js feeds the board identity here
+ * (e.g. "WebConfig · Arches Orin · SN 1042"); re-applies the current page
+ * title immediately, and every later navigation picks it up too. Passing a
+ * falsy value restores the default app-only title. */
+export function setWindowTitleSuffix(s) {
+  titleSuffix = s || 'SoCcentric WebConfig';
+  const meta = current == null ? null : routeMeta(current);
+  document.title = meta ? `${meta.label} — ${titleSuffix}` : titleSuffix;
 }
 
 /** Returns the route id, or `null` if the hash names a segment that isn't a
@@ -119,7 +132,7 @@ export async function renderCurrent() {
 
   if (route == null) {
     if (topbarApi) topbarApi.setTitle('Not found');
-    document.title = 'Not found — SoCcentric WebConfig';
+    document.title = `Not found — ${titleSuffix}`;
     mount(view, EmptyState({
       iconName: 'alertTriangle',
       title: 'Page not found',
@@ -130,7 +143,7 @@ export async function renderCurrent() {
 
   const meta = routeMeta(route);
   if (topbarApi) topbarApi.setTitle(meta ? meta.label : route);
-  document.title = meta ? `${meta.label} — SoCcentric WebConfig` : 'SoCcentric WebConfig';
+  document.title = meta ? `${meta.label} — ${titleSuffix}` : titleSuffix;
 
   mount(view, el('div', { class: 'page-loading' }, PageSkeleton()));
   startProgress();

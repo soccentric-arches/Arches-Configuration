@@ -38,6 +38,8 @@ const ICONS = {
   lock: '<rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
   monitor: '<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>',
   lightbulb: '<path d="M9 18h6M10 21h4"/><path d="M8 14.5a6 6 0 1 1 8 0c-.9.8-1 1.5-1 2.5H9c0-1-.1-1.7-1-2.5z"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
   cable: '<path d="M8 4v5a4 4 0 0 0 4 4h0a4 4 0 0 1 4 4v3M5 4v4M19 16v4M3 4h4M17 20h4"/>',
   usb: '<path d="M12 19V5M12 5l-2 2M12 5l2 2M12 12H7a2 2 0 1 0 0 4h1M12 9h4a2 2 0 1 1 0 4h-1"/><circle cx="7" cy="16" r="1"/><path d="M12 19h.01"/>',
   play: '<path d="M7 5v14l11-7z"/>',

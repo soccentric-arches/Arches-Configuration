@@ -6,6 +6,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="light" />
   <title>SoCcentric WebConfig</title>
+  <script>
+    // Apply the theme before first paint (no light/dark flash): the stored
+    // choice wins, otherwise follow the OS preference. Runtime toggling and
+    // persistence live in core/theme.js.
+    (function () {
+      var theme = null;
+      try { theme = localStorage.getItem('webconfig-theme'); } catch (_) {}
+      if (theme !== 'light' && theme !== 'dark') {
+        theme = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+      }
+      document.documentElement.setAttribute('data-theme', theme);
+      document.querySelector('meta[name="color-scheme"]').setAttribute('content', theme);
+    })();
+  </script>
   <link rel="stylesheet" href="/main.css" />
 </head>
 
