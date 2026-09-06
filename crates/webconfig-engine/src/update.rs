@@ -152,6 +152,69 @@ pub fn check_compatibility_against(
     Ok(())
 }
 
+/// Backend for a real device with no working update engine.
+///
+/// Every operation fails with an explicit, operator-readable error. This is
+/// NOT a degraded mock: it fabricates nothing.
+///
+/// The distinction matters more than it looks. Previously a real root without
+/// a usable update engine fell back to `MockUpdateBackend` seeded with a
+/// plausible Slot A/B pair, and logged a warning. The Updates page then showed
+/// "Slot A: 1.0.0 (running, confirmed)", accepted an install, and reported
+/// success — while flashing nothing. The operator's belief that the device
+/// updated is the whole failure, and a line in the journal does not correct
+/// it, because nobody reads the journal to check whether the UI was lying.
+///
+/// This is live on every Arches image today: RAUC is in no recipe, layer or
+/// package in Arches-OS. See Task.md B-04.
+#[derive(Debug)]
+pub struct UnavailableUpdateBackend {
+    /// Why there is no backend, surfaced verbatim to the operator.
+    reason: String,
+}
+
+impl UnavailableUpdateBackend {
+    pub fn new(reason: impl Into<String>) -> Self {
+        Self {
+            reason: reason.into(),
+        }
+    }
+
+    fn err<T>(&self) -> Result<T, UpdateError> {
+        Err(UpdateError::Other(format!(
+            "no OS update backend is available on this device: {}. \
+             Updates cannot be listed, verified, installed or confirmed. \
+             This is a device provisioning fault, not a transient error.",
+            self.reason
+        )))
+    }
+}
+
+impl UpdateBackend for UnavailableUpdateBackend {
+    fn slots(&self) -> Result<Vec<SlotStatus>, UpdateError> {
+        // Deliberately an error rather than an empty Vec: an empty slot list
+        // renders as "no slots" and reads like a device without A/B, which is
+        // a different and survivable condition.
+        self.err()
+    }
+    fn verify_bundle(&self, _bundle_path: &str) -> Result<BundleManifest, UpdateError> {
+        self.err()
+    }
+    fn install(
+        &self,
+        _bundle_path: &str,
+        _on_progress: &mut dyn FnMut(InstallProgress),
+    ) -> Result<(), UpdateError> {
+        self.err()
+    }
+    fn reboot_to_apply(&self) -> Result<(), UpdateError> {
+        self.err()
+    }
+    fn mark_good(&self) -> Result<(), UpdateError> {
+        self.err()
+    }
+}
+
 /// Mock backend for tests and the fake sysroot (spec §7 — real + mock, never a
 /// silent TODO). Records calls so tests can assert on them.
 #[derive(Debug, Default)]
