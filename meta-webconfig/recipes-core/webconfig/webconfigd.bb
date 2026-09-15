@@ -33,13 +33,18 @@ SRC_URI = " \
 "
 # SHA-256 of the source + vendored tarballs, for the SPDX/SBOM and
 # supply-chain audit (global §1: reproducible builds, pinned versions).
-# Placeholder pending a real `make release-artifacts` run against this repo
-# (tools/release-artifacts.sh) — same open item every other project's
-# webconfigd.bb already carries; do_fetch will fail loud until the real
-# tarballs and checksums exist, rather than silently accepting the wrong
-# ones.
-SRC_URI[src.sha256sum] = "92fb5966b71ef40989ead01fdd7f0d81993c056c72e9f68e377df5a0e98041d2"
-SRC_URI[vendor.sha256sum] = "32045b440cc598ca862c198fd2aac8d15b3018dd20ab2d59cd3a077f375a56dc"
+# These were a placeholder value copied verbatim across every project in
+# the fleet (identical across repos with different content, which cannot
+# be a real checksum for any of them) and the tarballs themselves never
+# existed anywhere -- do_fetch failed outright the first time this recipe
+# was ever actually built. Both tarballs are now committed in this
+# directory's files/ (git archive of this commit + `cargo vendor
+# --versioned-dirs`) with real checksums computed from them. Regenerate
+# both (tools/release-artifacts.sh, or the equivalent by hand) at every
+# release cut -- this checksum is only valid for the exact tarball
+# contents it was computed from.
+SRC_URI[src.sha256sum] = "7841421095a1b485e1e8703937c0ab072f2a84964eadfd0fdd6fde243cbd8544"
+SRC_URI[vendor.sha256sum] = "4adb755f4fbb75a571849aa7eeea901c18ab3fe28ff2acfd2a8e77822d9a2c06"
 
 S = "${WORKDIR}/webconfigd-${PV}"
 
