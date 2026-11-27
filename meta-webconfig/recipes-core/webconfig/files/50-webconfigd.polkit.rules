@@ -36,7 +36,12 @@ polkit.addRule(function(action, subject) {
             "systemd-networkd.service",
             "systemd-resolved.service",
             "wpa_supplicant.service",
-            "webconfigd.service"
+            "webconfigd.service",
+            "jetson_clocks.service",
+            "nv_l4t_bootloader.service",
+            "nvargus-daemon.service",
+            "nvfancontrol.service",
+            "nvpmodel.service"
         ];
         if (allowed.indexOf(unit) >= 0) {
             return polkit.Result.YES;
